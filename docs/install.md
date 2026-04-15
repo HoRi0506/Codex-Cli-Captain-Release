@@ -7,7 +7,7 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman 0.2.0 on this machine from npm, run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install the latest published codex-foreman package on this machine from npm, run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
@@ -19,7 +19,7 @@ Codex should execute these steps for the preferred install path:
 Install from the published package:
 
 ```bash
-npm install -g codex-foreman@0.2.0
+npm install -g codex-foreman
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -39,7 +39,7 @@ codex-foreman check-install
 If you are installing from a released tarball instead of the npm registry, use:
 
 ```bash
-npm install -g /absolute/path/to/codex-foreman-0.2.0.tgz
+npm install -g /absolute/path/to/codex-foreman-<version>.tgz
 codex-foreman setup
 codex-foreman check-install
 ```

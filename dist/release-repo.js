@@ -47,7 +47,7 @@ async function resolveSourceGitCommit(sourceRoot) {
     }
 }
 function createReleaseInstallGuide(input) {
-    const codexPrompt = `Install ${input.packageName} ${input.packageVersion} on this machine from npm, run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm, run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
@@ -69,7 +69,7 @@ Codex should execute these steps for the preferred install path:
 Install from the published package:
 
 \`\`\`bash
-npm install -g ${input.packageName}@${input.packageVersion}
+npm install -g ${input.packageName}
 \`\`\`
 
 Then register or refresh the MCP entrypoint:
@@ -89,7 +89,7 @@ codex-foreman check-install
 If you are installing from a released tarball instead of the npm registry, use:
 
 \`\`\`bash
-npm install -g /absolute/path/to/${input.packageName}-${input.packageVersion}.tgz
+npm install -g /absolute/path/to/${input.packageName}-<version>.tgz
 codex-foreman setup
 codex-foreman check-install
 \`\`\`
@@ -114,7 +114,7 @@ Please restart Codex CLI.
 `;
 }
 function createReleaseReadme(input) {
-    const codexPrompt = `Install ${input.packageName} ${input.packageVersion} on this machine from npm. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
 Install-only release surface for Codex-Foreman ${input.packageVersion}.
