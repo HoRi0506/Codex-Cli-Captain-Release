@@ -34,14 +34,14 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.2.0',
+    version: '0.5.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
     switch (policyMode) {
         case 'codex_cli_foreman_first':
             return ('Session entry policy is codex_cli_foreman_first. ' +
-                'For a fresh operator request that is not already about an existing run_id or an explicit Foreman command, prefer calling foreman_auto_entry first. ' +
+                'For a fresh operator request that is not already about an existing run_id or an explicit Foreman command, call foreman_auto_entry first before answering directly. ' +
                 'This is bounded MCP session guidance plus the explicit launcher wrapper surface, not upstream Codex CLI binary interception. ' +
                 'If auto-entry does not create a run, continue from its recommendation or the normal explicit workflow surface.');
         case 'foreman_first_bounded':
@@ -57,12 +57,12 @@ function createMcpEntryPolicyInstructions(policyMode) {
     }
 }
 async function createMcpInitializeInstructions(cwd) {
-    let policyMode = 'guided_explicit';
+    let policyMode = 'codex_cli_foreman_first';
     try {
         policyMode = (await (0, runtime_1.loadForemanConfig)(cwd)).entry_policy.mode;
     }
     catch {
-        policyMode = 'guided_explicit';
+        policyMode = 'codex_cli_foreman_first';
     }
     return `${createMcpEntryPolicyInstructions(policyMode)} ${MCP_INSTRUCTIONS_BASE}`;
 }
@@ -733,6 +733,21 @@ function describeForemanMcpMutationLeaseConflict(record, runId) {
         `through ${record.last_mutating_tool} until ${record.expires_at}. ` +
         'Retry from the same Codex CLI session or wait for that lease to expire before mutating this run.');
 }
+function isActiveOwnerProcessId(processId) {
+    if (processId === null || !Number.isInteger(processId) || processId <= 0) {
+        return null;
+    }
+    try {
+        process.kill(processId, 0);
+        return true;
+    }
+    catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH') {
+            return false;
+        }
+        return true;
+    }
+}
 async function acquireForemanMcpMutationLease(input) {
     const timestamp = (0, runtime_1.nowTimestamp)();
     const requestedRecord = createForemanMcpMutationLeaseRecord({
@@ -769,7 +784,8 @@ async function acquireForemanMcpMutationLease(input) {
         await persistForemanMcpMutationLeaseRecord(input.cwd, input.runId, refreshedRecord);
         return refreshedRecord;
     }
-    if (!isExpiredIsoTimestamp(currentRecord.expires_at, timestamp)) {
+    const ownerProcessActive = isActiveOwnerProcessId(currentRecord.owner_process_id);
+    if (ownerProcessActive !== false && !isExpiredIsoTimestamp(currentRecord.expires_at, timestamp)) {
         throw new Error(describeForemanMcpMutationLeaseConflict(currentRecord, input.runId));
     }
     await persistForemanMcpMutationLeaseRecord(input.cwd, input.runId, requestedRecord);
@@ -1397,6 +1413,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
     const actualModelLaunch = selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations);
     const executionOwner = activeDelegation || actualModelLaunch ? 'foreman_worker' : 'host_session';
+    const concreteWorkerId = activeDelegation?.child_agent.agent_id ??
+        (taskCard.owner_role === taskCard.assigned_role ? taskCard.assigned_agent_id : null);
     return {
         task_card_id: taskCard.task_card_id,
         title: taskCard.title,
@@ -1441,11 +1459,12 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         observation_match_state: actualModelLaunch?.observation_match_state ?? 'not_started',
         observation_unavailable_reason: actualModelLaunch?.observation_unavailable_reason ?? null,
         observation_mismatch_summary: actualModelLaunch?.observation_mismatch_summary ?? null,
-        concrete_worker_id: activeDelegation?.child_agent.agent_id ?? taskCard.assigned_agent_id,
+        concrete_worker_id: concreteWorkerId,
         worker_linkage: createCurrentTaskWorkerLinkage(taskCard, taskDelegations),
         run_mutation_lease: mcpMutationLease,
         task_kind: taskCard.task_kind,
         acceptance_checks: [...taskCard.acceptance_checks],
+        review_pass_count: taskCard.review_pass_count,
         review_of_task_card_ids: [...taskCard.review_of_task_card_ids],
         depends_on_task_card_ids: [...taskCard.depends_on_task_card_ids],
         fan_in_from_task_card_ids: [...taskCard.fan_in_from_task_card_ids],
@@ -1454,13 +1473,18 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
 }
 function createReadableRunContext(input) {
     const captain = createReadableAgentContext('orchestrator', constants_1.FOREMAN_AGENT_ROSTER.orchestrator, input.foremanConfig);
-    const taskOwner = createReadableAgentContext(input.ownerRole, input.assignedAgentId, input.foremanConfig);
+    const taskOwner = createReadableAgentContext(input.ownerRole, input.ownerRole === 'orchestrator' ? constants_1.FOREMAN_AGENT_ROSTER.orchestrator : input.assignedAgentId, input.foremanConfig);
     const task = createReadableTaskContext(input.taskCard);
+    const designatedAssignee = input.ownerRole !== input.assignedRole
+        ? createReadableAgentContext(input.assignedRole, input.assignedAgentId, input.foremanConfig)
+        : null;
     return {
         captain,
         task_owner: taskOwner,
         task,
-        summary: `${captain.display_name} is tracking ${taskOwner.display_name} on task "${task.title}".`,
+        summary: designatedAssignee === null
+            ? `${captain.display_name} is tracking ${taskOwner.display_name} on task "${task.title}".`
+            : `${captain.display_name} is preparing task "${task.title}" for ${designatedAssignee.display_name}.`,
     };
 }
 function isActiveDelegatedWorkerStatus(status) {
@@ -1776,6 +1800,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         goal: visibility.goal,
         readable_context: createReadableRunContext({
             ownerRole: currentTaskCard.owner_role,
+            assignedRole: currentTaskCard.assigned_role,
             assignedAgentId: currentTaskCard.assigned_agent_id,
             taskCard: currentTaskCard,
             foremanConfig,
@@ -2118,24 +2143,24 @@ function resolveCurrentTaskRole(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return currentTaskCard.assigned_role ?? currentTaskCard.owner_role;
+    return currentTaskCard.owner_role ?? currentTaskCard.assigned_role;
 }
 function resolveCurrentTaskModel(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return (currentTaskCard.resolved_request_settings?.model ??
+    return (currentTaskCard.agent_config_summary?.model ??
+        currentTaskCard.resolved_request_settings?.model ??
         currentTaskCard.role_config_snapshot?.model ??
-        currentTaskCard.agent_config_summary?.model ??
         'none');
 }
 function resolveCurrentTaskVariant(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return (currentTaskCard.resolved_request_settings?.variant ??
+    return (currentTaskCard.agent_config_summary?.variant ??
+        currentTaskCard.resolved_request_settings?.variant ??
         currentTaskCard.role_config_snapshot?.variant ??
-        currentTaskCard.agent_config_summary?.variant ??
         'none');
 }
 function resolveCurrentTaskDispatchedModel(currentTaskCard) {
@@ -2363,14 +2388,19 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflo
 }
 function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState, taskGraphSummary, guidanceSource) {
     let guidance = null;
+    let provenanceHeader = null;
     if (guidanceSource && 'user_message' in guidanceSource) {
         guidance = guidanceSource.user_message ?? null;
+        provenanceHeader = guidanceSource.provenance_header ?? null;
     }
     else if (guidanceSource && 'latest_response' in guidanceSource) {
         guidance = guidanceSource.latest_response?.user_message ?? guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
+        provenanceHeader =
+            guidanceSource.latest_response?.provenance_header ?? guidanceSource.latest_orchestrator_synthesis?.provenance_header ?? null;
     }
     else if (guidanceSource && 'latest_orchestrator_synthesis' in guidanceSource) {
         guidance = guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
+        provenanceHeader = guidanceSource.latest_orchestrator_synthesis?.provenance_header ?? null;
     }
     const graphSummary = [
         `total=${taskGraphSummary.total_task_cards}`,
@@ -2379,6 +2409,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workf
     ].join(' ');
     return [
         createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState),
+        ...(provenanceHeader ? [`Responder: ${provenanceHeader}`] : []),
         `Task: ${currentTaskCard?.task_kind ?? 'none'}`,
         `Graph: ${graphSummary}`,
         ...(guidance ? [`Guidance: ${guidance}`] : []),
@@ -2399,6 +2430,7 @@ function createOrchestratorOperatorVisibilitySummary(input) {
 function createOrchestratorSynthesisOperatorVisibilitySummary(input) {
     const synthesis = input.latest_orchestrator_synthesis;
     return [
+        `synthesis_provenance=${synthesis?.provenance_header ?? 'none'}`,
         `synthesis_boundary=${synthesis?.boundary ?? 'none'}`,
         `synthesis_step=${synthesis?.next_step ?? 'none'}`,
         `synthesis_action=${synthesis?.recommended_action ?? 'none'}`,
@@ -2437,6 +2469,20 @@ function createWorkflowOperatorVisibilitySummary(input) {
         `workflow_next=${input.workflow_operator_state.recommended_operator_action}`,
         `explore_evidence=${input.workflow_operator_state.explore_evidence_state}`,
         `plan_update=${input.workflow_operator_state.plan_update_available ? 'recorded' : 'missing'}`,
+    ].join(' ');
+}
+function createCaptainLoopOperatorVisibilitySummary(input) {
+    if (!input.current_task_card) {
+        return 'captain_directed=none common_review_path=none review_round=not_applicable';
+    }
+    return [
+        'captain_directed=true',
+        'common_review_path=captain->assigned_agent->arbiter->captain',
+        `current_stage=${input.stage}`,
+        `current_owner_role=${input.current_task_card.owner_role}`,
+        `current_assigned_role=${input.current_task_card.assigned_role}`,
+        `review_round=${input.current_task_card.review_pass_count}`,
+        `verification_state=${input.current_task_card.verification_state}`,
     ].join(' ');
 }
 function createServerIdentityOperatorVisibilitySummary(input) {
@@ -2901,8 +2947,7 @@ async function declareForemanDelegation(input, sessionContext = DEFAULT_MCP_SESS
         child_agent: {
             agent_id: input.child_agent_id,
             parent_agent_id: run.active_agent_id,
-            // In this declaration-only checkpoint the safest interpretation is same-role delegation from the active owner.
-            role: run.active_role,
+            role: taskCard.assigned_role,
             status: 'queued',
             task_card_id: taskCard.task_card_id,
         },
@@ -2913,7 +2958,7 @@ async function declareForemanDelegation(input, sessionContext = DEFAULT_MCP_SESS
             delegation_id: delegationId,
             child_agent_id: input.child_agent_id,
         },
-        worker_request: run.active_role === 'code specialist'
+        worker_request: taskCard.assigned_role === 'code specialist'
             ? {
                 prompt: input.summary,
                 acceptance: taskCard.acceptance,
@@ -3218,6 +3263,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                     const status = await getForemanStatus(parseForemanStatusArguments(value.params.arguments), sessionContext);
                     const verbosity = await resolveOperatorOutputVerbosity(status.cwd);
                     const operatorViewText = ` Operator view: ${createTaskOperatorVisibilitySummary(status.current_task_card)} ` +
+                        `${createCaptainLoopOperatorVisibilitySummary(status)} ` +
                         `${createWorkflowOperatorVisibilitySummary(status)} ` +
                         `${createOrchestratorOperatorVisibilitySummary(status)} ` +
                         `${createOrchestratorSynthesisOperatorVisibilitySummary(status)} ` +
@@ -3249,6 +3295,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                         ? ` Latest attempt ${result.latest_orchestration_attempt.attempt_id}: ${result.latest_orchestration_attempt.summary}`
                         : ' No orchestration attempt is recorded yet.';
                     const operatorViewText = ` Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ` +
+                        `${createCaptainLoopOperatorVisibilitySummary(result)} ` +
                         `${createWorkflowOperatorVisibilitySummary(result)} ` +
                         `${createOrchestratorOperatorVisibilitySummary(result)} ` +
                         `${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ` +
@@ -3301,13 +3348,18 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                 }
                 if (toolName === FOREMAN_AUTO_ENTRY_TOOL.name) {
                     const result = await autoEnterForemanForMcp(parseForemanAutoEntryArguments(value.params.arguments));
+                    const visibilitySummary = `policy=${result.policy_mode}, entry_boundary=${result.entry_boundary}, ` +
+                        `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}, ` +
+                        `fresh_active_runs=${result.fresh_active_run_count}, stale_active_runs=${result.stale_active_run_count}`;
                     return createSuccessResponse(value.id, {
                         content: [
                             {
                                 type: 'text',
-                                text: result.created
-                                    ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with policy=${result.policy_mode}, entry_boundary=${result.entry_boundary}, upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}, and next_step=${result.next_step}.`
-                                    : `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.`,
+                                text: result.run_selection === 'existing_run_reused' && result.run_id
+                                    ? `Foreman auto-entry reused active run ${result.run_id} with ${visibilitySummary} and next_step=${result.next_step}.`
+                                    : result.created
+                                        ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with ${visibilitySummary} and next_step=${result.next_step}.`
+                                        : `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.`,
                             },
                         ],
                         structuredContent: result,
@@ -3323,6 +3375,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 text: verbosity === 'debug'
                                     ? `Run ${result.run_id} was prepared locally in ${result.cwd} with status ${result.status} at stage ${result.stage}. ` +
                                         `Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ` +
+                                        `${createCaptainLoopOperatorVisibilitySummary(result)} ` +
                                         `${createWorkflowOperatorVisibilitySummary(result)} ` +
                                         `${createOrchestratorOperatorVisibilitySummary(result)} ` +
                                         `${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ` +
@@ -3346,6 +3399,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 text: verbosity === 'debug'
                                     ? `Run ${result.run_id} was created locally in ${result.cwd} and advanced through the bounded start+advance flow to stage ${result.stage} with next_step=${result.next_step}. ` +
                                         `Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ` +
+                                        `${createCaptainLoopOperatorVisibilitySummary(result)} ` +
                                         `${createWorkflowOperatorVisibilitySummary(result)} ` +
                                         `${createOrchestratorOperatorVisibilitySummary(result)} ` +
                                         `${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ` +
@@ -3363,6 +3417,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                     const result = await getForemanDelegations(parseForemanDelegationsArguments(value.params.arguments), sessionContext);
                     const verbosity = await resolveOperatorOutputVerbosity(result.cwd);
                     const operatorViewText = ` Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ` +
+                        `${createCaptainLoopOperatorVisibilitySummary(result)} ` +
                         `${createWorkflowOperatorVisibilitySummary(result)} ` +
                         `${createOrchestratorOperatorVisibilitySummary(result)} ` +
                         `${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ` +
@@ -3427,8 +3482,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 type: 'text',
                                 text: verbosity === 'debug'
                                     ? result.orchestration_status === 'dispatched'
-                                        ? `Run ${result.run_id} was routed through ${result.dispatched_via} and is now ${result.status} at stage ${result.stage} with next_step=${result.next_step}. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
-                                        : `Run ${result.run_id} was not mutated because next_step=${result.next_step} has no automatic orchestration action in this MCP milestone. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        ? `Run ${result.run_id} was routed through ${result.dispatched_via} and is now ${result.status} at stage ${result.stage} with next_step=${result.next_step}. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        : `Run ${result.run_id} was not mutated because next_step=${result.next_step} has no automatic orchestration action in this MCP milestone. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
                                         ? createQuietOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state)
                                         : createDefaultOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
@@ -3446,8 +3501,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 type: 'text',
                                 text: verbosity === 'debug'
                                     ? result.orchestration_status === 'dispatched'
-                                        ? `Run ${result.run_id} executed one bounded always-on companion slice and is now ${result.status} at stage ${result.stage} with next_step=${result.next_step}. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
-                                        : `Run ${result.run_id} inspected the enabled always-on companion state and stopped at ${result.stop_reason} without dispatching a step. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        ? `Run ${result.run_id} executed one bounded always-on companion slice and is now ${result.status} at stage ${result.stage} with next_step=${result.next_step}. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        : `Run ${result.run_id} inspected the enabled always-on companion state and stopped at ${result.stop_reason} without dispatching a step. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
                                         ? [
                                             createQuietOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state),
@@ -3471,8 +3526,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 type: 'text',
                                 text: verbosity === 'debug'
                                     ? result.orchestration_status === 'dispatched'
-                                        ? `Run ${result.run_id} executed an explicit bounded always-on companion loop and stopped at ${result.stop_reason} after ${result.tick_count} tick(s). Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
-                                        : `Run ${result.run_id} stopped its explicit bounded always-on companion loop at ${result.stop_reason} without dispatching a tick. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        ? `Run ${result.run_id} executed an explicit bounded always-on companion loop and stopped at ${result.stop_reason} after ${result.tick_count} tick(s). Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
+                                        : `Run ${result.run_id} stopped its explicit bounded always-on companion loop at ${result.stop_reason} without dispatching a tick. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
                                         ? [
                                             createQuietOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state),

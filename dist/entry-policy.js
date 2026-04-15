@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recommendForemanEntry = recommendForemanEntry;
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
+const runtime_1 = require("./runtime");
 const PLAN_KEYWORDS = [
     'plan',
     'planner',
@@ -45,6 +46,8 @@ const START_KEYWORDS = [
     'narrow',
     'single file',
 ];
+const REVIEW_KEYWORDS = ['review', 'verify', 'verification', 'validate', 'validation', 'check', 'regression'];
+const EXPLORE_KEYWORDS = ['inspect', 'trace', 'map', 'locate', 'find', 'summarize', 'explain', 'read-only', 'read only'];
 function countKeywordMatches(normalizedRequest, keywords) {
     let matchCount = 0;
     for (const keyword of keywords) {
@@ -96,6 +99,18 @@ function createOrchestratorScopeSummary() {
     return ('Orchestrator settings stay bounded to persisted synthesis/decision work plus one read-only advisory Codex pass and visibility surfaces. ' +
         'Today advise consumes them for one advisory Codex pass, while latest_orchestrator_synthesis and status/watch surfaces expose the bounded decision-and-response layer without turning the orchestrator into a generic execution worker or a general orchestration loop.');
 }
+function deriveBoundedStartTaskKind(normalizedRequest) {
+    const reviewKeywordMatches = countKeywordMatches(normalizedRequest, REVIEW_KEYWORDS);
+    const exploreKeywordMatches = countKeywordMatches(normalizedRequest, EXPLORE_KEYWORDS);
+    const startKeywordMatches = countKeywordMatches(normalizedRequest, START_KEYWORDS);
+    if (reviewKeywordMatches > 0 && startKeywordMatches === 0) {
+        return 'review';
+    }
+    if (exploreKeywordMatches > 0 && startKeywordMatches === 0) {
+        return 'explore';
+    }
+    return 'execution';
+}
 function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig) {
     const normalizedRequest = options.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(options.request);
@@ -105,6 +120,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     let recommendedEntrypoint = 'start';
     let taskShape = 'single_scoped_task';
     let confidence = 'medium';
+    let recommendedTaskKind = 'execution';
     let summary = 'Recommend `start` because the request reads like one bounded task that can be expressed directly as a single execution-ready task-card.';
     if (filePathMentions.length >= 4) {
         rationale.push(`The request already touches ${filePathMentions.length} distinct file paths, which usually means broader scoping or sequencing work.`);
@@ -132,6 +148,17 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     else if (startKeywordMatches > 0 || filePathMentions.length > 0) {
         confidence = startKeywordMatches > 1 || filePathMentions.length > 0 ? 'high' : 'medium';
     }
+    if (recommendedEntrypoint === 'start') {
+        recommendedTaskKind = deriveBoundedStartTaskKind(normalizedRequest);
+        if (recommendedTaskKind === 'explore') {
+            summary =
+                'Recommend `start` because the request looks like one bounded investigation task that captain can route to the explorer path first.';
+        }
+        else if (recommendedTaskKind === 'review') {
+            summary =
+                'Recommend `start` because the request looks like one bounded verification or review task that captain can route to the verifier path first.';
+        }
+    }
     if (rationale.length === 0) {
         rationale.push('The request does not carry strong multi-step planning signals, so a single scoped task-card is the safer default.');
     }
@@ -143,6 +170,9 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         config_entries: [],
     };
     const entryBoundary = createEntryBoundary(policy);
+    const suggestedMcpTool = recommendedEntrypoint === 'start' && (0, runtime_1.getAssignedRoleForTaskKind)(recommendedTaskKind) === 'code specialist'
+        ? 'foreman_start'
+        : null;
     return {
         cwd: options.cwd,
         request: options.request,
@@ -176,7 +206,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         summary,
         rationale,
         suggested_cli_command: recommendedEntrypoint === 'start' ? 'codex-foreman start' : 'codex-foreman plan',
-        suggested_mcp_tool: recommendedEntrypoint === 'start' ? 'foreman_start' : null,
+        suggested_mcp_tool: suggestedMcpTool,
     };
 }
 //# sourceMappingURL=entry-policy.js.map

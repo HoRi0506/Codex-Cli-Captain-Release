@@ -71,10 +71,15 @@ function parseCodexLauncherArgs(argv) {
     }
     return parsed;
 }
-function buildLauncherPrompt(runId, request) {
+function buildLauncherPrompt(result, request) {
+    const runId = result.run_id ?? 'unknown-run';
+    const firstLine = result.run_selection === 'existing_run_reused'
+        ? `Foreman auto-entry attached to existing run ${runId}.`
+        : `Foreman auto-entry already created run ${runId}.`;
     return [
-        `Foreman auto-entry already created run ${runId}.`,
+        firstLine,
         'Continue through the persisted Foreman workflow for that run instead of re-scoping the request from scratch.',
+        `Auto-entry summary: ${result.summary}`,
         `Original operator request: ${request}`,
     ].join('\n');
 }
@@ -118,8 +123,8 @@ async function runCodexLauncher(argv) {
             });
             process.stderr.write(`Foreman launcher policy=${autoEntryResult.policy_mode} created=${autoEntryResult.created} entrypoint=${autoEntryResult.entrypoint_used ?? 'none'}\n`);
             process.stderr.write(`Foreman launcher boundary=${autoEntryResult.entry_boundary}\n`);
-            if (autoEntryResult.created && autoEntryResult.run_id) {
-                launchPrompt = buildLauncherPrompt(autoEntryResult.run_id, parsed.request);
+            if (autoEntryResult.run_id) {
+                launchPrompt = buildLauncherPrompt(autoEntryResult, parsed.request);
             }
         }
     }

@@ -9,6 +9,7 @@ exports.checkCodexMcpInstall = checkCodexMcpInstall;
 exports.setupCodexMcp = setupCodexMcp;
 const node_child_process_1 = require("node:child_process");
 const promises_1 = require("node:fs/promises");
+const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
 class CodexMcpSetupConflictError extends Error {
@@ -20,6 +21,92 @@ class CodexMcpSetupConflictError extends Error {
 exports.CodexMcpSetupConflictError = CodexMcpSetupConflictError;
 function defaultPackageRoot() {
     return node_path_1.default.resolve(__dirname, '..');
+}
+const FOREMAN_CAP_SKILL_NAME = 'cap';
+function resolveCodexHome() {
+    const configured = process.env.CODEX_HOME?.trim();
+    if (configured && configured.length > 0) {
+        return configured;
+    }
+    return node_path_1.default.join((0, node_os_1.homedir)(), '.codex');
+}
+function resolveCodexSkillPath(skillName) {
+    return node_path_1.default.join(resolveCodexHome(), 'skills', skillName);
+}
+function resolvePackagedForemanCapSkillPath(packageRoot = defaultPackageRoot()) {
+    return node_path_1.default.join(packageRoot, 'skills', FOREMAN_CAP_SKILL_NAME, 'SKILL.md');
+}
+async function readTextIfExists(filePath) {
+    try {
+        return await (0, promises_1.readFile)(filePath, 'utf8');
+    }
+    catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+}
+function createCapSkillSummary(status, skillPath) {
+    switch (status) {
+        case 'matching_install':
+            return `Codex skill $cap is installed at ${skillPath} and matches the packaged Foreman skill content.`;
+        case 'missing_install':
+            return `Codex skill $cap is missing at ${skillPath}. Run codex-foreman setup, then restart Codex CLI.`;
+        case 'outdated_install':
+            return `Codex skill $cap exists at ${skillPath} but does not match the packaged Foreman skill content. Re-run codex-foreman setup, then restart Codex CLI.`;
+        case 'unreadable_install':
+        default:
+            return `Codex skill $cap at ${skillPath} could not be inspected reliably.`;
+    }
+}
+async function installPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
+    const sourceSkillFile = resolvePackagedForemanCapSkillPath(packageRoot);
+    const destinationSkillDir = resolveCodexSkillPath(FOREMAN_CAP_SKILL_NAME);
+    const destinationSkillFile = node_path_1.default.join(destinationSkillDir, 'SKILL.md');
+    const packagedContent = await (0, promises_1.readFile)(sourceSkillFile, 'utf8');
+    const installedContent = await readTextIfExists(destinationSkillFile);
+    if (installedContent === packagedContent) {
+        return {
+            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillPath: destinationSkillDir,
+            status: 'already_installed',
+        };
+    }
+    await (0, promises_1.mkdir)(destinationSkillDir, { recursive: true });
+    await (0, promises_1.cp)(sourceSkillFile, destinationSkillFile, { force: true });
+    return {
+        skillName: FOREMAN_CAP_SKILL_NAME,
+        skillPath: destinationSkillDir,
+        status: installedContent === null ? 'installed' : 'updated',
+    };
+}
+async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
+    const skillPath = resolveCodexSkillPath(FOREMAN_CAP_SKILL_NAME);
+    const packagedSkillFile = resolvePackagedForemanCapSkillPath(packageRoot);
+    const installedSkillFile = node_path_1.default.join(skillPath, 'SKILL.md');
+    try {
+        const [packagedContent, installedContent] = await Promise.all([
+            (0, promises_1.readFile)(packagedSkillFile, 'utf8'),
+            readTextIfExists(installedSkillFile),
+        ]);
+        const status = installedContent === null ? 'missing_install' : installedContent === packagedContent ? 'matching_install' : 'outdated_install';
+        return {
+            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillPath,
+            status,
+            summary: createCapSkillSummary(status, skillPath),
+        };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown filesystem error.';
+        return {
+            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillPath,
+            status: 'unreadable_install',
+            summary: `${createCapSkillSummary('unreadable_install', skillPath)} ${message}`,
+        };
+    }
 }
 function quoteCommandPart(value) {
     if (/^[A-Za-z0-9_./:-]+$/.test(value)) {
@@ -319,7 +406,13 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     else {
         registryInspectionSummary = `${registryInspectionSummary} ${formatCommandFailure(options.codexPath, listArgs, listResult)}`;
     }
-    const status = registrationStatus === 'matching_registration' && configExists && registryInspectionStatus === 'listed' ? 'ok' : 'warning';
+    const capSkill = await inspectPackagedForemanCapSkill(dependencies.packageRoot);
+    const status = registrationStatus === 'matching_registration' &&
+        configExists &&
+        registryInspectionStatus === 'listed' &&
+        capSkill.status === 'matching_install'
+        ? 'ok'
+        : 'warning';
     return {
         status,
         serverName: options.serverName,
@@ -337,6 +430,10 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         registryInspectionSummary,
         otherInstalledMcpServers,
         companionMcpUsageSummary: summarizeCompanionMcpServers(otherInstalledMcpServers),
+        capSkillName: capSkill.skillName,
+        capSkillPath: capSkill.skillPath,
+        capSkillStatus: capSkill.status,
+        capSkillSummary: capSkill.summary,
     };
 }
 async function setupCodexMcp(options, dependencies = {}) {
@@ -358,6 +455,7 @@ async function setupCodexMcp(options, dependencies = {}) {
         }
         if (await hasMatchingRegistration(existingRegistration, launchTarget.command, launchTarget.args)) {
             const configResult = await (0, runtime_1.ensureForemanConfig)(options.cwd);
+            const capSkill = await installPackagedForemanCapSkill(dependencies.packageRoot);
             return {
                 status: 'already_registered',
                 serverName: options.serverName,
@@ -365,6 +463,10 @@ async function setupCodexMcp(options, dependencies = {}) {
                 launchArgs: [...launchTarget.args],
                 configPath: configResult.configPath,
                 configCreated: configResult.configCreated,
+                capSkillName: capSkill.skillName,
+                capSkillPath: capSkill.skillPath,
+                capSkillStatus: capSkill.status,
+                restartRequired: capSkill.status !== 'already_installed',
             };
         }
         throw new CodexMcpSetupConflictError([
@@ -380,6 +482,7 @@ async function setupCodexMcp(options, dependencies = {}) {
         throw new Error(formatCommandFailure(options.codexPath, addArgs, addResult));
     }
     const configResult = await (0, runtime_1.ensureForemanConfig)(options.cwd);
+    const capSkill = await installPackagedForemanCapSkill(dependencies.packageRoot);
     return {
         status: 'registered',
         serverName: options.serverName,
@@ -387,6 +490,10 @@ async function setupCodexMcp(options, dependencies = {}) {
         launchArgs: [...launchTarget.args],
         configPath: configResult.configPath,
         configCreated: configResult.configCreated,
+        capSkillName: capSkill.skillName,
+        capSkillPath: capSkill.skillPath,
+        capSkillStatus: capSkill.status,
+        restartRequired: true,
     };
 }
 //# sourceMappingURL=setup-codex-mcp.js.map

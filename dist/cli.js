@@ -41,9 +41,9 @@ function usage() {
         '  codex-foreman resolve --run-id <id> --outcome <passed|needs_work|blocked> --summary <text> [--cwd <path>]',
         '    Resolve a verification-pending run explicitly through the verifier/operator path.',
         '  codex-foreman setup [--codex-bin <path>] [--server-name <name>]',
-        '    Register the installed codex-foreman MCP server with Codex CLI by preflighting `codex mcp get --json` and adding it only when no conflicting registration exists.',
+        '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill under the local Codex skills directory, and add the MCP only when no conflicting registration exists.',
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
-        '    Inspect Foreman MCP registration health, shared config presence, and other installed Codex MCP servers without mutating Codex config.',
+        '    Inspect Foreman MCP registration health, shared config presence, $cap skill install state, and other installed Codex MCP servers without mutating Codex config.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
         '    Convenience wrapper: start + advance.',
     ].join('\n');
@@ -633,7 +633,9 @@ function formatReadableWorkerAssignments(status) {
     if (!workerVisibility) {
         return 'No active workers.';
     }
-    const visibleSource = workerVisibility.active_workers.length > 0 ? workerVisibility.active_workers : workerVisibility.workers;
+    const activeWorkers = workerVisibility.active_workers ?? [];
+    const allWorkers = workerVisibility.workers ?? [];
+    const visibleSource = activeWorkers.length > 0 ? activeWorkers : allWorkers;
     if (visibleSource.length === 0) {
         return workerVisibility?.summary ?? 'No active workers.';
     }
@@ -738,12 +740,12 @@ function describeWatchConfigDrift(status) {
     return `${drift.state} ${drift.request_kind}/${drift.role}: ${drift.persisted_model ?? 'none'} -> ${drift.current_model ?? 'none'}`;
 }
 function formatCompactWatchStatusLine(status) {
-    const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
-        status.current_task_card?.role_config_snapshot?.model ??
-        status.current_task_card?.agent_config_summary?.model);
-    const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
-        status.current_task_card?.role_config_snapshot?.variant ??
-        status.current_task_card?.agent_config_summary?.variant);
+    const model = compactWatchText(status.current_task_card?.agent_config_summary?.model ??
+        status.current_task_card?.resolved_request_settings?.model ??
+        status.current_task_card?.role_config_snapshot?.model);
+    const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
+        status.current_task_card?.resolved_request_settings?.variant ??
+        status.current_task_card?.role_config_snapshot?.variant);
     const dispatchedModel = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_model ??
         status.current_task_card?.actual_model_launch?.dispatched_model ??
         status.current_task_card?.actual_model_launch?.actual_model ??
@@ -759,8 +761,10 @@ function formatCompactWatchStatusLine(status) {
     const observationMatch = compactWatchText(status.current_task_card?.observation_match_state ??
         status.current_task_card?.actual_model_launch?.observation_match_state ??
         'not_started');
-    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ?? status.active_agent_id);
-    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.active_role);
+    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
+        status.active_agent_id ??
+        status.current_task_card?.agent_config_summary?.roster_name);
+    const role = compactWatchText(status.current_task_card?.owner_role ?? status.active_role ?? status.current_task_card?.assigned_role);
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
@@ -772,17 +776,18 @@ function formatCompactWatchStatusLine(status) {
         `Task: ${compactWatchText(status.current_task_card?.task_kind)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
+        `Lease: ${formatWatchMutationLeaseSummary(status)}`,
         `Workers: ${formatReadableWorkerAssignments(status)}`,
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
     ].join('\n');
 }
 function formatQuietWatchStatusLine(status) {
-    const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
-        status.current_task_card?.role_config_snapshot?.model ??
-        status.current_task_card?.agent_config_summary?.model);
-    const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
-        status.current_task_card?.role_config_snapshot?.variant ??
-        status.current_task_card?.agent_config_summary?.variant);
+    const model = compactWatchText(status.current_task_card?.agent_config_summary?.model ??
+        status.current_task_card?.resolved_request_settings?.model ??
+        status.current_task_card?.role_config_snapshot?.model);
+    const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
+        status.current_task_card?.resolved_request_settings?.variant ??
+        status.current_task_card?.role_config_snapshot?.variant);
     const dispatchedModel = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_model ??
         status.current_task_card?.actual_model_launch?.dispatched_model ??
         status.current_task_card?.actual_model_launch?.actual_model ??
@@ -798,8 +803,10 @@ function formatQuietWatchStatusLine(status) {
     const observationMatch = compactWatchText(status.current_task_card?.observation_match_state ??
         status.current_task_card?.actual_model_launch?.observation_match_state ??
         'not_started');
-    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ?? status.active_agent_id);
-    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.active_role);
+    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
+        status.active_agent_id ??
+        status.current_task_card?.agent_config_summary?.roster_name);
+    const role = compactWatchText(status.current_task_card?.owner_role ?? status.active_role ?? status.current_task_card?.assigned_role);
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
@@ -810,6 +817,7 @@ function formatQuietWatchStatusLine(status) {
         `Ownership: ${describeWatchOwnership(status)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
+        `Lease: ${formatWatchMutationLeaseSummary(status)}`,
     ].join('\n');
 }
 function formatWatchStatusLine(status, verbosity) {
@@ -873,6 +881,7 @@ function formatWatchStatusLine(status, verbosity) {
         `workers_completed=${status.worker_visibility?.completed_worker_count ?? 0}`,
         formatWatchTaskGraphSummary(status),
         formatWorkflowOperatorSummary(status),
+        `synthesis_provenance=${quoteWatchText(status.latest_orchestrator_synthesis?.provenance_header ?? 'none')}`,
         `synthesis_boundary=${compactWatchText(status.latest_orchestrator_synthesis?.boundary)}`,
         `synthesis_step=${compactWatchText(status.latest_orchestrator_synthesis?.next_step)}`,
         `synthesis_action=${compactWatchText(status.latest_orchestrator_synthesis?.recommended_action)}`,
@@ -880,6 +889,7 @@ function formatWatchStatusLine(status, verbosity) {
         `synthesis_review=${compactWatchText(status.latest_orchestrator_synthesis?.review_outcome)}`,
         `response_boundary=${compactWatchText(status.latest_response?.boundary)}`,
         `response_action=${compactWatchText(status.latest_response?.recommended_action)}`,
+        `response_provenance=${quoteWatchText(status.latest_response?.provenance_header ?? 'none')}`,
         `always_on=${status.always_on_mode.status}`,
         formatAlwaysOnOperatorSummary(status),
         `context=${quoteWatchText(status.readable_context?.summary)}`,
@@ -979,9 +989,9 @@ function createWatchSnapshot(status, activity) {
         task_observation_mismatch: compactWatchText(status.current_task_card?.observation_mismatch_summary ??
             status.current_task_card?.actual_model_launch?.observation_mismatch_summary),
         task_request: compactWatchText(status.current_task_card?.resolved_request_settings?.request_kind),
-        task_profile: compactWatchText(status.current_task_card?.resolved_request_settings?.profile ?? status.current_task_card?.agent_config_summary?.profile),
-        task_model: compactWatchText(status.current_task_card?.resolved_request_settings?.model ?? status.current_task_card?.agent_config_summary?.model),
-        task_variant: compactWatchText(status.current_task_card?.resolved_request_settings?.variant ?? status.current_task_card?.agent_config_summary?.variant),
+        task_profile: compactWatchText(status.current_task_card?.agent_config_summary?.profile ?? status.current_task_card?.resolved_request_settings?.profile),
+        task_model: compactWatchText(status.current_task_card?.agent_config_summary?.model ?? status.current_task_card?.resolved_request_settings?.model),
+        task_variant: compactWatchText(status.current_task_card?.agent_config_summary?.variant ?? status.current_task_card?.resolved_request_settings?.variant),
         captain_profile: compactWatchText(status.orchestrator_request_settings_preview?.profile ?? status.orchestrator_agent_config_summary?.profile),
         captain_scope: compactWatchText(status.orchestrator_scope),
         captain_model: compactWatchText(status.orchestrator_request_settings_preview?.model ?? status.orchestrator_agent_config_summary?.model),
@@ -1368,12 +1378,13 @@ async function runCli(argv) {
         }
         if (parsed.command === 'auto-entry') {
             const result = await (0, run_command_1.autoEnterForeman)(parsed.options);
-            process.stdout.write(`Foreman auto-entry policy=${result.policy_mode} automatic_entry_supported=${result.automatic_entry_supported} created=${result.created} recommended_entrypoint=${result.recommendation.recommended_entrypoint} in ${result.cwd}\n`);
+            process.stdout.write(`Foreman auto-entry policy=${result.policy_mode} automatic_entry_supported=${result.automatic_entry_supported} created=${result.created} run_selection=${result.run_selection} recommended_entrypoint=${result.recommendation.recommended_entrypoint} in ${result.cwd}\n`);
             process.stdout.write(`Entry boundary: ${result.entry_boundary} (${result.entry_boundary_summary})\n`);
             process.stdout.write(`Upstream binary intercept supported: ${result.upstream_codex_binary_intercept_supported} (${result.upstream_codex_binary_intercept_summary})\n`);
+            process.stdout.write(`Active run inspection: inspected=${result.inspected_active_run_count} fresh=${result.fresh_active_run_count} stale=${result.stale_active_run_count}\n`);
             process.stdout.write(`Summary: ${result.summary}\n`);
-            if (result.created) {
-                process.stdout.write(`Run ${result.run_id} entrypoint=${result.entrypoint_used} scoping_source=${result.scoping_source} status=${result.status} stage=${result.stage} next_step=${result.next_step} in ${result.run_directory}\n`);
+            if (result.run_id) {
+                process.stdout.write(`Run ${result.run_id} selection=${result.run_selection} entrypoint=${result.entrypoint_used ?? 'reused'} scoping_source=${result.scoping_source} status=${result.status} stage=${result.stage} next_step=${result.next_step} in ${result.run_directory}\n`);
             }
             else {
                 process.stdout.write(`Fallback explicit CLI command: ${result.recommendation.suggested_cli_command}\n`);
@@ -1515,16 +1526,26 @@ async function runCli(argv) {
             const result = await (0, setup_codex_mcp_1.setupCodexMcp)(parsed.options);
             const action = result.status === 'registered' ? 'Registered' : 'Codex already has';
             const suffix = result.status === 'registered' ? 'ready for plain codex use.' : 'so no changes were made.';
+            const skillAction = result.capSkillStatus === 'installed'
+                ? 'Installed'
+                : result.capSkillStatus === 'updated'
+                    ? 'Updated'
+                    : 'Using existing';
             process.stdout.write(`${action} MCP server ${result.serverName} -> ${[result.launchCommand, ...result.launchArgs].join(' ')}; ${suffix}\n`);
             process.stdout.write(`${result.configCreated ? 'Created' : 'Using'} shared config ${result.configPath}.\n`);
+            process.stdout.write(`${skillAction} Codex skill $${result.capSkillName} at ${result.capSkillPath}.\n`);
+            if (result.restartRequired) {
+                process.stdout.write('Restart Codex CLI to pick up the new Foreman skill or refreshed MCP session.\n');
+            }
             return 0;
         }
         if (parsed.command === 'check-install') {
             const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
-            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
             process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
             process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
             process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);
+            process.stdout.write(`Codex skill $${result.capSkillName}: ${result.capSkillSummary}\n`);
             process.stdout.write(`Registry summary: ${result.registryInspectionSummary}\n`);
             for (const server of result.otherInstalledMcpServers) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} hint=${server.usageHint}\n`);

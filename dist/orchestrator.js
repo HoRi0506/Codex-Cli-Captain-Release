@@ -726,6 +726,33 @@ function decideOrchestratorNextStep(run, taskCard, options = {}) {
         });
     }
     const activeTaskDelegationCounts = options.activeTaskDelegationCounts;
+    const isOrchestratorExecutionReadyState = run.status === 'active' &&
+        run.stage === 'execution' &&
+        run.active_role === 'orchestrator' &&
+        taskCard.status === 'active' &&
+        taskCard.owner_role === 'orchestrator';
+    if (isOrchestratorExecutionReadyState) {
+        if (activeTaskDelegationCounts && activeTaskDelegationCounts.total > activeTaskDelegationCounts.queued) {
+            return withDerivedRouteSelection({
+                run,
+                taskCard,
+                policy: effectivePolicy,
+                activeTaskDelegationCounts,
+                decision: createAwaitFanInDecision(taskCard, activeTaskDelegationCounts, 'execution'),
+            });
+        }
+        return withDerivedRouteSelection({
+            run,
+            taskCard,
+            policy: effectivePolicy,
+            activeTaskDelegationCounts,
+            decision: {
+                next_step: 'execute_task',
+                can_advance: true,
+                summary: 'The orchestrator can advance this run by handing the active task to the assigned specialist and executing it through Codex.',
+            },
+        });
+    }
     const isExecutionOwnerState = run.status === 'active' &&
         run.stage === 'execution' &&
         isExecutionOwnerRole(run.active_role) &&

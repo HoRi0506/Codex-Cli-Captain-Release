@@ -135,6 +135,21 @@ function describeRunMutationLeaseConflict(record, runId) {
         `through ${record.last_mutating_tool} until ${record.expires_at}. ` +
         'Retry from the same CLI or MCP session, or wait for that lease to expire before mutating this run.');
 }
+function isActiveOwnerProcessId(processId) {
+    if (processId === null || !Number.isInteger(processId) || processId <= 0) {
+        return null;
+    }
+    try {
+        process.kill(processId, 0);
+        return true;
+    }
+    catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ESRCH') {
+            return false;
+        }
+        return true;
+    }
+}
 function createCliMutationLeaseSessionContext(env = process.env) {
     const configuredSessionId = env.FOREMAN_SESSION_ID?.trim();
     const parentScopedSessionId = typeof process.ppid === 'number' && Number.isInteger(process.ppid) && process.ppid > 0
@@ -184,7 +199,8 @@ async function acquireCliRunMutationLease(input) {
         });
         return;
     }
-    if (!isExpiredIsoTimestamp(currentRecord.expires_at, timestamp)) {
+    const ownerProcessActive = isActiveOwnerProcessId(currentRecord.owner_process_id);
+    if (ownerProcessActive !== false && !isExpiredIsoTimestamp(currentRecord.expires_at, timestamp)) {
         throw new Error(describeRunMutationLeaseConflict(currentRecord, input.runId));
     }
     await persistRunMutationLeaseRecord(input.cwd, input.runId, requestedRecord);

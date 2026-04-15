@@ -48,7 +48,7 @@
       "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
     },
     "active_agent_id": {
-      "enum": ["tactician", "scout", "raider", "arbiter", null]
+      "enum": ["captain", "tactician", "scout", "raider", "arbiter", null]
     },
     "active_task_card_id": {
       "type": ["string", "null"],
@@ -354,6 +354,10 @@
           "type": "string",
           "enum": ["continue", "manual_hold", "terminal"]
         },
+        "provenance_header": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "summary": {
           "type": "string",
           "minLength": 1
@@ -425,6 +429,10 @@
         "boundary": {
           "type": "string",
           "enum": ["manual_hold", "terminal"]
+        },
+        "provenance_header": {
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "summary": {
           "type": "string",

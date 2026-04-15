@@ -289,9 +289,26 @@ function trimAutoEntryTitle(request) {
     }
     return `${normalized.slice(0, AUTO_ENTRY_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
-function createAutoEntryStartOptions(options) {
+function createAutoEntryStartOptions(options, recommendation) {
     const normalizedRequest = normalizeInlinePromptText(options.request);
     const title = trimAutoEntryTitle(normalizedRequest);
+    const lowerRequest = normalizedRequest.toLowerCase();
+    const taskKind = recommendation.recommended_entrypoint === 'plan'
+        ? 'plan'
+        : lowerRequest.includes('review') ||
+            lowerRequest.includes('verify') ||
+            lowerRequest.includes('validation') ||
+            lowerRequest.includes('regression')
+            ? 'review'
+            : lowerRequest.includes('inspect') ||
+                lowerRequest.includes('trace') ||
+                lowerRequest.includes('map') ||
+                lowerRequest.includes('locate') ||
+                lowerRequest.includes('find') ||
+                lowerRequest.includes('summarize') ||
+                lowerRequest.includes('explain')
+                ? 'explore'
+                : 'execution';
     return {
         cwd: options.cwd,
         goal: normalizedRequest,
@@ -300,6 +317,7 @@ function createAutoEntryStartOptions(options) {
         scope: normalizedRequest,
         acceptance: `Complete the operator request within the stated scope and leave the result ready for explicit verification against "${title}".`,
         prompt: options.request,
+        taskKind,
     };
 }
 function createAdvanceRunResult(input) {
@@ -1261,10 +1279,12 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
         }
         return `Stopped "${taskCard.title}" because the bounded execution failed.`;
     };
+    const responseProvenanceHeader = `[Foreman ${(0, runtime_1.getAgentIdForRole)('orchestrator')} | assigned=${taskCard.assigned_agent_id ?? 'unassigned'} | review=${(0, runtime_1.getAgentIdForRole)('verifier')}]`;
     if (run.status === 'completed') {
         const summary = run.latest_verified_checkpoint?.summary ?? run.latest_verification?.summary ?? `Completed "${taskCard.title}".`;
         nextResponse = {
             boundary: 'terminal',
+            provenance_header: responseProvenanceHeader,
             summary,
             user_message: workerCount > 0
                 ? `Completed "${taskCard.title}" after aggregating ${workerCount} delegated worker result${workerCount === 1 ? '' : 's'}.`
@@ -1282,6 +1302,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
         const summary = run.latest_failure?.summary ?? run.latest_verification?.summary ?? `${run.status} while handling "${taskCard.title}".`;
         nextResponse = {
             boundary: 'terminal',
+            provenance_header: responseProvenanceHeader,
             summary,
             user_message: buildFailureUserMessage(),
             recommended_action: 'escalate',
@@ -1296,6 +1317,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
     else if (decision.next_step === 'await_verification') {
         nextResponse = {
             boundary: 'manual_hold',
+            provenance_header: responseProvenanceHeader,
             summary: run.latest_verification?.summary ?? `Verification is still required for "${taskCard.title}".`,
             user_message: appendEvidenceGuidance(`Verification is required for "${taskCard.title}" before Foreman can continue.`),
             recommended_action: 'resolve',
@@ -1311,6 +1333,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
         const summary = run.latest_failure?.summary ?? run.latest_verification?.summary ?? `Repair input is required for "${taskCard.title}".`;
         nextResponse = {
             boundary: 'manual_hold',
+            provenance_header: responseProvenanceHeader,
             summary,
             user_message: appendEvidenceGuidance(run.latest_verification?.state === 'blocked'
                 ? `Repair is blocked for "${taskCard.title}". Escalate with operator guidance before continuing.`
@@ -1336,6 +1359,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
             : decision.next_step === 'halt_completed' || decision.next_step === 'halt_failed' || decision.next_step === 'halt_cancelled'
                 ? 'terminal'
                 : 'continue',
+        provenance_header: responseProvenanceHeader,
         summary: nextResponse?.summary ?? decision.summary,
         user_message: nextResponse?.user_message ??
             (decision.next_step === 'execute_task'
@@ -1363,6 +1387,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
     if (nextResponse !== null &&
         run.latest_response !== null &&
         run.latest_response.boundary === nextResponse.boundary &&
+        run.latest_response.provenance_header === nextResponse.provenance_header &&
         run.latest_response.summary === nextResponse.summary &&
         run.latest_response.user_message === nextResponse.user_message &&
         run.latest_response.recommended_action === nextResponse.recommended_action &&
@@ -3132,6 +3157,8 @@ async function startForemanRun(options) {
     const { config: foremanConfig } = await (0, runtime_1.ensureForemanConfig)(options.cwd);
     const verificationSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)((0, runtime_1.getForemanAgentConfigForRole)(foremanConfig, 'verifier'));
     const run = (0, runtime_1.createInitialRunRecord)({ runId, goal: options.goal, taskCardId });
+    const taskKind = options.taskKind ?? 'execution';
+    const assignedRole = (0, runtime_1.getAssignedRoleForTaskKind)(taskKind);
     const taskCard = (0, runtime_1.createInitialTaskCardRecord)({
         taskCardId,
         runId,
@@ -3140,15 +3167,20 @@ async function startForemanRun(options) {
         scope: options.scope,
         acceptance: options.acceptance,
         executionPrompt: options.prompt,
-        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', foremanConfig),
+        taskKind,
+        ownerRole: 'orchestrator',
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)(assignedRole, foremanConfig),
     });
+    run.active_role = 'orchestrator';
+    run.active_agent_id = (0, runtime_1.getRunActiveAgentIdForRole)('orchestrator');
+    run.updated_at = taskCard.updated_at;
     const initialHandoff = (0, runtime_1.createHandoffRecord)({
         handoffId: (0, node_crypto_1.randomUUID)(),
         runId,
         taskCardId,
         fromRole: 'orchestrator',
-        toRole: taskCard.assigned_role,
-        summary: 'Orchestrator handed the active task to the assigned specialist role for execution.',
+        toRole: 'orchestrator',
+        summary: 'Orchestrator accepted the active task and is preparing the specialist handoff boundary.',
     });
     (0, runtime_1.applyInitialTaskHandoff)(run, taskCard, initialHandoff);
     const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
@@ -3183,12 +3215,81 @@ async function startForemanRun(options) {
         canAdvance: initialDecision.can_advance,
     };
 }
+const AUTO_ENTRY_STALE_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+function classifyAutoEntryRunFreshness(updatedAt, now = Date.now()) {
+    const updatedAtMs = Date.parse(updatedAt);
+    if (!Number.isFinite(updatedAtMs)) {
+        return 'stale';
+    }
+    return now - updatedAtMs <= AUTO_ENTRY_STALE_RUN_THRESHOLD_MS ? 'fresh' : 'stale';
+}
+async function inspectPersistedActiveRunsForAutoEntry(cwd) {
+    const runsDirectory = (0, runtime_1.createRunPaths)(cwd, 'placeholder').runsDir;
+    let runIds = [];
+    try {
+        runIds = await (0, promises_1.readdir)(runsDirectory);
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            return { fresh: [], stale: [] };
+        }
+        throw error;
+    }
+    const candidates = [];
+    for (const runId of runIds.sort((left, right) => left.localeCompare(right))) {
+        const runPaths = (0, runtime_1.createRunPaths)(cwd, runId);
+        let run;
+        try {
+            run = await (0, runtime_1.loadRunRecord)(runPaths);
+        }
+        catch {
+            continue;
+        }
+        if (run.status !== 'active') {
+            continue;
+        }
+        try {
+            const snapshot = await loadContinueRunSnapshot({ cwd, runId });
+            candidates.push({
+                snapshot,
+                updatedAt: run.updated_at,
+            });
+        }
+        catch {
+            continue;
+        }
+    }
+    candidates.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    return {
+        fresh: candidates.filter((candidate) => classifyAutoEntryRunFreshness(candidate.updatedAt) === 'fresh'),
+        stale: candidates.filter((candidate) => classifyAutoEntryRunFreshness(candidate.updatedAt) === 'stale'),
+    };
+}
+function summarizeNewAutoEntryRunCreation(input) {
+    if (input.freshCount > 1) {
+        return (`Foreman-first auto-entry inspected ${input.freshCount} fresh active runs and ${input.staleCount} stale active runs ` +
+            `before creating a new bounded run because automatic reuse would be ambiguous. ${input.routedSummary}`);
+    }
+    if (input.staleCount > 0) {
+        return (`Foreman-first auto-entry inspected ${input.staleCount} stale active runs and created a new bounded run ` +
+            `because no fresh active candidate was available to reuse safely. ${input.routedSummary}`);
+    }
+    return input.routedSummary;
+}
 async function autoEnterForeman(options) {
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
         cwd: options.cwd,
         request: options.request,
     }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+    const activeRunInspection = recommendation.automatic_entry_supported
+        ? await inspectPersistedActiveRunsForAutoEntry(options.cwd)
+        : { fresh: [], stale: [] };
+    const inspectedActiveRunCount = activeRunInspection.fresh.length + activeRunInspection.stale.length;
+    const reusableRun = recommendation.automatic_entry_supported && activeRunInspection.fresh.length === 1 ? activeRunInspection.fresh[0] : null;
     if (!recommendation.automatic_entry_supported) {
         return {
             cwd: options.cwd,
@@ -3200,6 +3301,10 @@ async function autoEnterForeman(options) {
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
             created: false,
+            run_selection: 'no_run_created',
+            inspected_active_run_count: inspectedActiveRunCount,
+            fresh_active_run_count: activeRunInspection.fresh.length,
+            stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: null,
             scoping_source: null,
             run_id: null,
@@ -3210,6 +3315,36 @@ async function autoEnterForeman(options) {
             next_step: null,
             can_advance: null,
             summary: 'Automatic Foreman-first entry is not enabled for the current shared config policy. Use recommend-entry, start, or plan explicitly, or opt into foreman_first_bounded first.',
+            recommendation,
+        };
+    }
+    if (reusableRun) {
+        return {
+            cwd: options.cwd,
+            request: options.request,
+            policy_mode: recommendation.policy_mode,
+            automatic_entry_supported: true,
+            entry_boundary: recommendation.entry_boundary,
+            entry_boundary_summary: recommendation.entry_boundary_summary,
+            upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
+            upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            created: false,
+            run_selection: 'existing_run_reused',
+            inspected_active_run_count: inspectedActiveRunCount,
+            fresh_active_run_count: activeRunInspection.fresh.length,
+            stale_active_run_count: activeRunInspection.stale.length,
+            entrypoint_used: null,
+            scoping_source: 'persisted_active_run_reuse',
+            run_id: reusableRun.snapshot.runId,
+            task_card_id: reusableRun.snapshot.taskCardId,
+            run_directory: reusableRun.snapshot.runDirectory,
+            status: reusableRun.snapshot.status,
+            stage: reusableRun.snapshot.stage,
+            next_step: reusableRun.snapshot.nextStep,
+            can_advance: reusableRun.snapshot.canAdvance,
+            summary: `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
+                `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
+                'because it was the only fresh active candidate in the workspace.',
             recommendation,
         };
     }
@@ -3230,6 +3365,10 @@ async function autoEnterForeman(options) {
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
             created: true,
+            run_selection: 'new_run_created',
+            inspected_active_run_count: inspectedActiveRunCount,
+            fresh_active_run_count: activeRunInspection.fresh.length,
+            stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: 'plan',
             scoping_source: 'planner_scoping',
             run_id: result.runId,
@@ -3239,13 +3378,17 @@ async function autoEnterForeman(options) {
             stage: result.stage,
             next_step: result.nextStep,
             can_advance: result.canAdvance,
-            summary: result.clarificationRequest === null
-                ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
-                : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
+            summary: summarizeNewAutoEntryRunCreation({
+                freshCount: activeRunInspection.fresh.length,
+                staleCount: activeRunInspection.stale.length,
+                routedSummary: result.clarificationRequest === null
+                    ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
+                    : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
+            }),
             recommendation,
         };
     }
-    const startResult = await startForemanRun(createAutoEntryStartOptions(options));
+    const startResult = await startForemanRun(createAutoEntryStartOptions(options, recommendation));
     return {
         cwd: options.cwd,
         request: options.request,
@@ -3256,6 +3399,10 @@ async function autoEnterForeman(options) {
         upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
         upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
         created: true,
+        run_selection: 'new_run_created',
+        inspected_active_run_count: inspectedActiveRunCount,
+        fresh_active_run_count: activeRunInspection.fresh.length,
+        stale_active_run_count: activeRunInspection.stale.length,
         entrypoint_used: 'start',
         scoping_source: 'bounded_request_defaults',
         run_id: startResult.runId,
@@ -3265,7 +3412,11 @@ async function autoEnterForeman(options) {
         stage: startResult.stage,
         next_step: startResult.nextStep,
         can_advance: startResult.canAdvance,
-        summary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
+        summary: summarizeNewAutoEntryRunCreation({
+            freshCount: activeRunInspection.fresh.length,
+            staleCount: activeRunInspection.stale.length,
+            routedSummary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
+        }),
         recommendation,
     };
 }
@@ -3376,6 +3527,33 @@ async function advanceForemanRun(options) {
             threadId: run.active_thread_id,
             decision,
             advanced: false,
+        });
+    }
+    if (run.active_role === 'orchestrator' && taskCard.owner_role === 'orchestrator') {
+        const executionHandoff = (0, runtime_1.createHandoffRecord)({
+            handoffId: (0, node_crypto_1.randomUUID)(),
+            runId: run.run_id,
+            taskCardId: taskCard.task_card_id,
+            fromRole: 'orchestrator',
+            toRole: taskCard.assigned_role,
+            summary: 'Orchestrator handed the active task to the assigned specialist role for execution.',
+        });
+        (0, runtime_1.applyInitialTaskHandoff)(run, taskCard, executionHandoff);
+        (0, runtime_1.activatePlannedTask)(run, taskCard, executionHandoff);
+        taskCard.owner_role = taskCard.assigned_role;
+        taskCard.updated_at = executionHandoff.created_at;
+        currentLatestHandoff = executionHandoff;
+        ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+        (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
+        await (0, runtime_1.persistHandoffRecord)(runPaths, executionHandoff);
+        await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
+        await persistRunArtifactsAndProgress(runPaths, {
+            run,
+            taskCards: await ensureTaskCards(),
+            taskCard,
+            latestHandoff: currentLatestHandoff,
+            decision,
+            orchestrationPolicy: orchestratorState.orchestration_policy,
         });
     }
     const routeSelection = (0, orchestrator_1.getOrchestratorRouteSelection)(orchestratorState.current_decision);

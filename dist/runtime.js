@@ -511,7 +511,7 @@ function createDefaultForemanAgentConfig(role) {
 }
 function createDefaultForemanEntryPolicy() {
     return {
-        mode: 'guided_explicit',
+        mode: 'codex_cli_foreman_first',
     };
 }
 function createDefaultForemanOutputConfig() {
@@ -576,6 +576,8 @@ function getDefaultForemanAgentConfigForRole(role) {
 }
 function getRunActiveAgentIdForRole(role) {
     switch (role) {
+        case 'orchestrator':
+            return constants_1.FOREMAN_AGENT_ROSTER.orchestrator;
         case 'planner':
             return constants_1.FOREMAN_PLANNER_AGENT_ID;
         case 'explorer':
@@ -584,7 +586,6 @@ function getRunActiveAgentIdForRole(role) {
             return constants_1.FOREMAN_CODE_SPECIALIST_AGENT_ID;
         case 'verifier':
             return constants_1.FOREMAN_VERIFIER_AGENT_ID;
-        case 'orchestrator':
         default:
             return null;
     }
@@ -1250,6 +1251,7 @@ function createInitialTaskCardRecord(input) {
     const timestamp = input.createdAt ?? nowTimestamp();
     const taskKind = input.taskKind ?? 'execution';
     const assignedRole = getAssignedRoleForTaskKind(taskKind);
+    const ownerRole = input.ownerRole ?? assignedRole;
     const roleConfigSnapshot = input.roleConfigSnapshot ?? createTaskRoleConfigSnapshot(assignedRole);
     const modelTierIntent = deriveTaskModelTierIntent(roleConfigSnapshot);
     const childAggregationContract = deriveTaskChildAggregationContract('execution');
@@ -1270,7 +1272,7 @@ function createInitialTaskCardRecord(input) {
         fan_in_from_task_card_ids: [],
         node_kind: 'execution',
         status: 'active',
-        owner_role: assignedRole,
+        owner_role: ownerRole,
         assigned_role: assignedRole,
         assigned_agent_id: getAgentIdForRole(assignedRole),
         role_config_snapshot: roleConfigSnapshot,
@@ -2095,6 +2097,7 @@ async function normalizeLoadedRunRecord(paths, candidate) {
             boundary: value.boundary === 'continue' || value.boundary === 'manual_hold' || value.boundary === 'terminal'
                 ? value.boundary
                 : 'manual_hold',
+            provenance_header: typeof value.provenance_header === 'string' ? value.provenance_header : null,
             summary: typeof value.summary === 'string' ? value.summary : 'details recorded in persisted state.',
             user_message: typeof value.user_message === 'string' ? value.user_message : 'details recorded in persisted state.',
             recommended_action: value.recommended_action === 'advance' ||
@@ -2146,6 +2149,7 @@ async function normalizeLoadedRunRecord(paths, candidate) {
         }
         return {
             boundary: value.boundary === 'manual_hold' ? 'manual_hold' : 'terminal',
+            provenance_header: typeof value.provenance_header === 'string' ? value.provenance_header : null,
             summary: typeof value.summary === 'string' ? value.summary : 'details recorded in persisted state.',
             user_message: typeof value.user_message === 'string' ? value.user_message : 'details recorded in persisted state.',
             recommended_action: value.recommended_action === 'advance' ||

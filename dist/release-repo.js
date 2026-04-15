@@ -11,6 +11,8 @@ const node_child_process_1 = require("node:child_process");
 const node_util_1 = require("node:util");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const RELEASE_REPO_MANIFEST_FILE = 'release-repo-manifest.json';
+const RELEASE_REPO_GITIGNORE_FILE = '.gitignore';
+const RELEASE_REPO_GITIGNORE_CONTENT = 'node_modules/\n.DS_Store\n*.tgz\n';
 function toPosixRelativePath(filePath) {
     return filePath.split(node_path_1.default.sep).join('/');
 }
@@ -47,7 +49,7 @@ async function resolveSourceGitCommit(sourceRoot) {
     }
 }
 function createReleaseInstallGuide(input) {
-    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm, run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm, run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
@@ -78,6 +80,8 @@ Then register or refresh the MCP entrypoint:
 codex-foreman setup
 \`\`\`
 
+That step also installs or refreshes the packaged \`$cap\` skill under your local Codex skills directory.
+
 Verify the install:
 
 \`\`\`bash
@@ -102,24 +106,35 @@ The install is in the expected state when:
 
 - \`codex-foreman check-install\` reports \`status=ok\`
 - the registration summary says the installed MCP entrypoint matches
+- the skill summary says \`$cap\` matches the packaged Foreman skill content
 - \`foreman_server_identity\` reports the expected MCP build after the next Codex session starts
+- after restarting Codex CLI, you can invoke \`$cap\` to enter the captain-first Foreman path
 
 ## Notes
 
 - there is no separate \`mcp update\` command today
-- \`codex-foreman setup\` handles MCP registration and conflict checks; it is not the package installer
+- \`codex-foreman setup\` handles MCP registration, \`$cap\` skill installation, and conflict checks; it is not the package installer
 - install from npm or from a release tarball when you want a no-clone setup
 
 Please restart Codex CLI.
 `;
 }
 function createReleaseReadme(input) {
-    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install the latest published ${input.packageName} package on this machine from npm. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
-Install-only release surface for Codex-Foreman ${input.packageVersion}.
+Bring a captain-first workflow to Codex CLI without replacing the way you already work.
 
-This repository is generated from the source-of-truth development repository and intentionally ships only the install boundary.
+Codex-Foreman adds a local MCP server, a sibling CLI, a launcher wrapper, persisted run state, and the packaged \`$cap\` skill so requests can enter Foreman through \`captain\` before they fall back to the host Codex session.
+
+This repository is the install-facing release surface for Codex-Foreman ${input.packageVersion}. It is generated from the source repository and keeps the focus on install, setup, and everyday operator use.
+
+## Why Use It
+
+- start work through \`captain\` with \`$cap <request>\`
+- keep Foreman state, run visibility, and MCP registration in one local workflow
+- use the same Codex environment while letting Foreman coordinate the entry path
+- keep shared operator config in \`$XDG_CONFIG_HOME/foreman/foreman-config.json\` or \`~/.config/foreman/foreman-config.json\`
 
 ## Install
 
@@ -138,24 +153,43 @@ That guide covers:
 - \`codex-foreman\`
 - \`codex-foreman-mcp\`
 - \`codex-foreman-codex\`
+- the packaged \`$cap\` skill
 - no-clone install from npm or a released tarball
 - setup through \`codex-foreman setup\`
 - verification through \`codex-foreman check-install\`
 - the final Codex CLI restart step
 
-## Shared config contract
+## Quick Start
+
+After install and restart:
+
+- use \`$cap <your request>\` when you want the request to enter Foreman through \`captain\`
+- use \`codex-foreman check-install\` when you want to confirm the install boundary is still healthy
+- use \`foreman_server_identity\` when you want to confirm the attached MCP session and build
+
+Foreman can also work alongside other installed MCP servers such as \`context7\`, \`fetch\`, \`filesystem\`, and \`git\` when they are available in the same Codex environment.
+
+## Included Tools
+
+- \`codex-foreman\`: setup, checks, and explicit Foreman commands
+- \`codex-foreman-mcp\`: the MCP server Codex connects to
+- \`codex-foreman-codex\`: the launcher wrapper for Foreman-first entry
+- the packaged \`$cap\` skill: the operator-facing shortcut that sends work to \`captain\` first
+
+## Config
 
 The shared editable config stays here:
 
 - \`$XDG_CONFIG_HOME/foreman/foreman-config.json\`
 - \`~/.config/foreman/foreman-config.json\`
 
-Installing this package does not remove operator control over that file. \`codex-foreman setup\` is the primary supported path for creating or reusing it after install, and the shipped bootstrap helper remains available as a manual fallback instead of hiding config inside repository-local state.
+\`codex-foreman setup\` is the primary supported path for creating or reusing that file after install. The shipped bootstrap helper remains available as a manual fallback instead of hiding config inside repository-local state.
 
 ## What is included
 
 - built \`dist/\` binaries
 - runtime \`schemas/\`
+- packaged \`skills/\` content for \`$cap\`
 - the bootstrap helper script for manual config bootstrapping
 - package metadata for install and packaging
 
@@ -188,7 +222,7 @@ function createReleasePackageJson(rootPackage) {
             'codex-foreman-mcp': 'dist/mcp-main.js',
             'codex-foreman-codex': 'dist/codex-launcher-main.js',
         },
-        files: ['dist', 'schemas', 'scripts/bootstrap-foreman-config.cjs', 'README.md', 'docs/install.md', RELEASE_REPO_MANIFEST_FILE],
+        files: ['dist', 'schemas', 'skills', 'scripts/bootstrap-foreman-config.cjs', 'README.md', 'docs/install.md', RELEASE_REPO_MANIFEST_FILE],
         engines: rootPackage.engines ?? {
             node: '>=20',
         },
@@ -219,6 +253,22 @@ async function copyDirectory(sourcePath, destinationPath) {
     await (0, promises_1.mkdir)(node_path_1.default.dirname(destinationPath), { recursive: true });
     await (0, promises_1.cp)(sourcePath, destinationPath, { recursive: true });
 }
+async function copyInstallOnlyDist(sourcePath, destinationPath) {
+    const entries = await (0, promises_1.readdir)(sourcePath, { withFileTypes: true });
+    for (const entry of entries) {
+        const sourceEntryPath = node_path_1.default.join(sourcePath, entry.name);
+        const destinationEntryPath = node_path_1.default.join(destinationPath, entry.name);
+        if (entry.isDirectory()) {
+            await copyInstallOnlyDist(sourceEntryPath, destinationEntryPath);
+            continue;
+        }
+        if (!entry.name.endsWith('.js')) {
+            continue;
+        }
+        await (0, promises_1.mkdir)(node_path_1.default.dirname(destinationEntryPath), { recursive: true });
+        await (0, promises_1.cp)(sourceEntryPath, destinationEntryPath);
+    }
+}
 async function buildInstallOnlyReleaseRepo(options) {
     const sourceRoot = node_path_1.default.resolve(options.sourceRoot);
     const outputDir = node_path_1.default.resolve(options.outputDir);
@@ -227,6 +277,7 @@ async function buildInstallOnlyReleaseRepo(options) {
     const bootstrapScriptPath = node_path_1.default.join(sourceRoot, 'scripts', 'bootstrap-foreman-config.cjs');
     const distPath = node_path_1.default.join(sourceRoot, 'dist');
     const schemasPath = node_path_1.default.join(sourceRoot, 'schemas');
+    const skillsPath = node_path_1.default.join(sourceRoot, 'skills');
     const rootPackage = await readJsonDocument(packageJsonPath);
     const sourceGitCommit = await resolveSourceGitCommit(sourceRoot);
     if (!(await pathExists(distPath))) {
@@ -237,14 +288,17 @@ async function buildInstallOnlyReleaseRepo(options) {
     const managedPaths = [
         'dist',
         'schemas',
+        'skills',
         'docs',
         'scripts',
         'package.json',
         'README.md',
+        RELEASE_REPO_GITIGNORE_FILE,
         RELEASE_REPO_MANIFEST_FILE,
     ];
-    await copyDirectory(distPath, node_path_1.default.join(outputDir, 'dist'));
+    await copyInstallOnlyDist(distPath, node_path_1.default.join(outputDir, 'dist'));
     await copyDirectory(schemasPath, node_path_1.default.join(outputDir, 'schemas'));
+    await copyDirectory(skillsPath, node_path_1.default.join(outputDir, 'skills'));
     await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'docs'), { recursive: true });
     await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'scripts'), { recursive: true });
     await (0, promises_1.cp)(bootstrapScriptPath, node_path_1.default.join(outputDir, 'scripts', 'bootstrap-foreman-config.cjs'));
@@ -254,6 +308,7 @@ async function buildInstallOnlyReleaseRepo(options) {
         packageVersion: rootPackage.version,
         sourceGitCommit,
     }), 'utf8');
+    await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, RELEASE_REPO_GITIGNORE_FILE), RELEASE_REPO_GITIGNORE_CONTENT, 'utf8');
     await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, 'docs', 'install.md'), createReleaseInstallGuide({
         packageName: rootPackage.name,
         packageVersion: rootPackage.version,
