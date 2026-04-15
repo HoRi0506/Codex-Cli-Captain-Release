@@ -6,46 +6,21 @@ This repository is generated from the source-of-truth development repository and
 
 ## Install
 
-Use one of these paths:
+Use the dedicated install guide:
 
-```bash
-npm install
-npm link
-```
+- [docs/install.md](./docs/install.md)
 
-That makes these commands available:
+If Codex is helping with installation, point it at that guide so it can follow the install, setup, verification, and restart flow end to end.
+
+That guide covers:
 
 - `codex-foreman`
 - `codex-foreman-mcp`
 - `codex-foreman-codex`
-
-## Setup
-
-Register the MCP server with plain Codex CLI through the explicit wrapper:
-
-```bash
-codex-foreman setup
-```
-
-That registers the installed MCP entrypoint and creates or reuses the shared Foreman config.
-
-## Update
-
-When a newer release is published, update the installed package first, then restart Codex CLI so it launches a fresh MCP process from the new install.
-
-Typical local update flow:
-
-```bash
-npm install
-npm link
-codex-foreman check-install
-```
-
-Notes:
-
-- there is no separate `mcp update` command today
-- `codex-foreman setup` is the MCP registration and conflict-check path, not a package updater
-- after updating the installed package, restart Codex CLI and confirm the attached MCP build through `foreman_server_identity` or `codex-foreman check-install`
+- no-clone install from npm or a released tarball
+- setup through `codex-foreman setup`
+- verification through `codex-foreman check-install`
+- the final Codex CLI restart step
 
 ## Shared config contract
 

@@ -46,6 +46,66 @@ async function resolveSourceGitCommit(sourceRoot) {
         return null;
     }
 }
+function createReleaseInstallGuide(input) {
+    return `# Install Codex-Foreman
+
+Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
+
+## Codex-guided flow
+
+If Codex is assisting with installation, point it at this file and tell it:
+
+> Read this install guide, install ${input.packageName} ${input.packageVersion} on this machine, verify the install, and finish with: Please restart Codex CLI.
+
+## Preferred install path
+
+Install from the published package:
+
+\`\`\`bash
+npm install -g ${input.packageName}@${input.packageVersion}
+\`\`\`
+
+Then register or refresh the MCP entrypoint:
+
+\`\`\`bash
+codex-foreman setup
+\`\`\`
+
+Verify the install:
+
+\`\`\`bash
+codex-foreman check-install
+\`\`\`
+
+## Tarball fallback
+
+If you are installing from a released tarball instead of the npm registry, use:
+
+\`\`\`bash
+npm install -g /absolute/path/to/${input.packageName}-${input.packageVersion}.tgz
+codex-foreman setup
+codex-foreman check-install
+\`\`\`
+
+This path still does not require keeping a cloned release repository after the install succeeds.
+
+## Verification checklist
+
+The install is in the expected state when:
+
+- \`codex-foreman check-install\` reports \`status=ok\`
+- the registration summary says the installed MCP entrypoint matches
+- \`foreman_server_identity\` reports the expected MCP build after the next Codex session starts
+
+## Notes
+
+- there is no separate \`mcp update\` command today
+- \`codex-foreman setup\` handles MCP registration and conflict checks; it is not the package installer
+- install from npm or from a release tarball when you want a no-clone setup
+
+Please restart Codex CLI.
+`;
+}
 function createReleaseReadme(input) {
     return `# ${input.packageName}
 
@@ -55,46 +115,21 @@ This repository is generated from the source-of-truth development repository and
 
 ## Install
 
-Use one of these paths:
+Use the dedicated install guide:
 
-\`\`\`bash
-npm install
-npm link
-\`\`\`
+- [docs/install.md](./docs/install.md)
 
-That makes these commands available:
+If Codex is helping with installation, point it at that guide so it can follow the install, setup, verification, and restart flow end to end.
+
+That guide covers:
 
 - \`codex-foreman\`
 - \`codex-foreman-mcp\`
 - \`codex-foreman-codex\`
-
-## Setup
-
-Register the MCP server with plain Codex CLI through the explicit wrapper:
-
-\`\`\`bash
-codex-foreman setup
-\`\`\`
-
-That registers the installed MCP entrypoint and creates or reuses the shared Foreman config.
-
-## Update
-
-When a newer release is published, update the installed package first, then restart Codex CLI so it launches a fresh MCP process from the new install.
-
-Typical local update flow:
-
-\`\`\`bash
-npm install
-npm link
-codex-foreman check-install
-\`\`\`
-
-Notes:
-
-- there is no separate \`mcp update\` command today
-- \`codex-foreman setup\` is the MCP registration and conflict-check path, not a package updater
-- after updating the installed package, restart Codex CLI and confirm the attached MCP build through \`foreman_server_identity\` or \`codex-foreman check-install\`
+- no-clone install from npm or a released tarball
+- setup through \`codex-foreman setup\`
+- verification through \`codex-foreman check-install\`
+- the final Codex CLI restart step
 
 ## Shared config contract
 
@@ -141,7 +176,7 @@ function createReleasePackageJson(rootPackage) {
             'codex-foreman-mcp': 'dist/mcp-main.js',
             'codex-foreman-codex': 'dist/codex-launcher-main.js',
         },
-        files: ['dist', 'schemas', 'scripts/bootstrap-foreman-config.cjs', 'README.md', RELEASE_REPO_MANIFEST_FILE],
+        files: ['dist', 'schemas', 'scripts/bootstrap-foreman-config.cjs', 'README.md', 'docs/install.md', RELEASE_REPO_MANIFEST_FILE],
         engines: rootPackage.engines ?? {
             node: '>=20',
         },
@@ -190,6 +225,7 @@ async function buildInstallOnlyReleaseRepo(options) {
     const managedPaths = [
         'dist',
         'schemas',
+        'docs',
         'scripts',
         'package.json',
         'README.md',
@@ -197,6 +233,7 @@ async function buildInstallOnlyReleaseRepo(options) {
     ];
     await copyDirectory(distPath, node_path_1.default.join(outputDir, 'dist'));
     await copyDirectory(schemasPath, node_path_1.default.join(outputDir, 'schemas'));
+    await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'docs'), { recursive: true });
     await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'scripts'), { recursive: true });
     await (0, promises_1.cp)(bootstrapScriptPath, node_path_1.default.join(outputDir, 'scripts', 'bootstrap-foreman-config.cjs'));
     await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, 'package.json'), `${JSON.stringify(createReleasePackageJson(rootPackage), null, 2)}\n`, 'utf8');
@@ -204,6 +241,10 @@ async function buildInstallOnlyReleaseRepo(options) {
         packageName: rootPackage.name,
         packageVersion: rootPackage.version,
         sourceGitCommit,
+    }), 'utf8');
+    await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, 'docs', 'install.md'), createReleaseInstallGuide({
+        packageName: rootPackage.name,
+        packageVersion: rootPackage.version,
     }), 'utf8');
     const manifest = {
         generated_at: new Date().toISOString(),
