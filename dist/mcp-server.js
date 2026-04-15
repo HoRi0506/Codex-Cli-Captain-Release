@@ -27,15 +27,16 @@ const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
+const setup_codex_mcp_1 = require("./setup-codex-mcp");
 const runtime_1 = require("./runtime");
 const JSON_RPC_VERSION = '2.0';
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.0.1',
+    version: '0.1.0',
 };
-const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
+const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
     switch (policyMode) {
         case 'codex_cli_foreman_first':
@@ -1583,8 +1584,23 @@ function createForemanServerIdentityView(sessionContext) {
     };
 }
 async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
+    const serverIdentity = createForemanServerIdentityView(sessionContext);
+    const installCheck = await (0, setup_codex_mcp_1.checkCodexMcpInstall)({
+        cwd: process.cwd(),
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    });
+    const sessionRegistrationMatch = serverIdentity.entrypoint_path === null || installCheck.registeredEntrypointPath === null
+        ? 'unknown'
+        : serverIdentity.entrypoint_path === installCheck.registeredEntrypointPath
+            ? 'matches_registered_target'
+            : 'differs_from_registered_target';
     return {
-        server_identity: createForemanServerIdentityView(sessionContext),
+        server_identity: serverIdentity,
+        install_check: {
+            ...installCheck,
+            session_registration_match: sessionRegistrationMatch,
+        },
     };
 }
 function createTaskGraphSummary(taskCardIndex) {
@@ -3173,6 +3189,9 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                 const toolName = readRequiredString(value.params, 'name');
                 if (toolName === FOREMAN_SERVER_IDENTITY_TOOL.name) {
                     const result = await getForemanServerIdentity(sessionContext);
+                    const companionNames = result.install_check.otherInstalledMcpServers.length > 0
+                        ? result.install_check.otherInstalledMcpServers.map((server) => server.name).join(', ')
+                        : 'none';
                     return createSuccessResponse(value.id, {
                         content: [
                             {
@@ -3184,6 +3203,11 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     `Started: ${result.server_identity.started_at}`,
                                     `Entrypoint: ${result.server_identity.entrypoint_path ?? 'none'}`,
                                     `Config: ${result.server_identity.shared_config_path}`,
+                                    `Install check: ${result.install_check.status}`,
+                                    `Registration: ${result.install_check.registrationStatus}`,
+                                    `Session registration match: ${result.install_check.session_registration_match}`,
+                                    `Registry summary: ${result.install_check.registryInspectionSummary}`,
+                                    `Companion MCPs: ${companionNames}`,
                                 ].join('\n'),
                             },
                         ],

@@ -767,6 +767,43 @@ export interface SetupCodexMcpResult {
     configPath: string;
     configCreated: boolean;
 }
+export type CodexMcpRegistrationStatus = 'matching_registration' | 'missing_registration' | 'conflicting_registration' | 'unreadable_registration';
+export type CodexMcpRegistryInspectionStatus = 'listed' | 'unavailable';
+export type ForemanCompanionMcpCompatibility = 'recommended_companion' | 'generic_companion';
+export interface CheckCodexMcpInstallOptions {
+    cwd: string;
+    codexPath: string;
+    serverName: string;
+}
+export interface CodexCompanionMcpServerSummary {
+    name: string;
+    enabled: boolean;
+    disabledReason: string | null;
+    transportType: string | null;
+    command: string | null;
+    args: string[];
+    authStatus: string | null;
+    compatibility: ForemanCompanionMcpCompatibility;
+    usageHint: string;
+}
+export interface CheckCodexMcpInstallResult {
+    status: 'ok' | 'warning';
+    serverName: string;
+    expectedLaunchCommand: string;
+    expectedLaunchArgs: string[];
+    expectedEntrypointPath: string | null;
+    registrationStatus: CodexMcpRegistrationStatus;
+    registrationSummary: string;
+    registeredLaunchCommand: string | null;
+    registeredLaunchArgs: string[];
+    registeredEntrypointPath: string | null;
+    configPath: string;
+    configExists: boolean;
+    registryInspectionStatus: CodexMcpRegistryInspectionStatus;
+    registryInspectionSummary: string;
+    otherInstalledMcpServers: CodexCompanionMcpServerSummary[];
+    companionMcpUsageSummary: string;
+}
 export type ForemanEntryEntrypoint = 'start' | 'plan';
 export type ForemanEntryTaskShape = 'single_scoped_task' | 'multi_step_or_unclear';
 export type ForemanEntryConfidence = 'high' | 'medium';

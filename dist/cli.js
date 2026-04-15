@@ -42,6 +42,8 @@ function usage() {
         '    Resolve a verification-pending run explicitly through the verifier/operator path.',
         '  codex-foreman setup [--codex-bin <path>] [--server-name <name>]',
         '    Register the installed codex-foreman MCP server with Codex CLI by preflighting `codex mcp get --json` and adding it only when no conflicting registration exists.',
+        '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
+        '    Inspect Foreman MCP registration health, shared config presence, and other installed Codex MCP servers without mutating Codex config.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
         '    Convenience wrapper: start + advance.',
     ].join('\n');
@@ -1261,6 +1263,33 @@ function parseSetupOptions(rest) {
     }
     return options;
 }
+function parseCheckInstallOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--codex-bin':
+                options.codexPath = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--server-name':
+                options.serverName = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    return options;
+}
 function parseCliArgs(argv) {
     const [command, ...rest] = argv;
     if (!command || command === '--help' || command === '-h') {
@@ -1307,6 +1336,9 @@ function parseCliArgs(argv) {
     }
     if (command === 'setup') {
         return { command, options: parseSetupOptions(rest) };
+    }
+    if (command === 'check-install') {
+        return { command, options: parseCheckInstallOptions(rest) };
     }
     if (command === 'run') {
         return { command, options: parseStartLikeOptions(rest, 'run') };
@@ -1486,6 +1518,18 @@ async function runCli(argv) {
             process.stdout.write(`${action} MCP server ${result.serverName} -> ${[result.launchCommand, ...result.launchArgs].join(' ')}; ${suffix}\n`);
             process.stdout.write(`${result.configCreated ? 'Created' : 'Using'} shared config ${result.configPath}.\n`);
             return 0;
+        }
+        if (parsed.command === 'check-install') {
+            const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
+            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
+            process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
+            process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);
+            process.stdout.write(`Registry summary: ${result.registryInspectionSummary}\n`);
+            for (const server of result.otherInstalledMcpServers) {
+                process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} hint=${server.usageHint}\n`);
+            }
+            return result.status === 'ok' ? 0 : 1;
         }
         const result = await (0, run_command_1.runForemanCommand)(parsed.options);
         process.stdout.write(`Run ${result.runId} finished with status=${result.status} stage=${result.stage} next_step=${result.nextStep} in ${result.runDirectory}\n`);

@@ -78,6 +78,24 @@ codex-foreman setup
 
 That registers the installed MCP entrypoint and creates or reuses the shared Foreman config.
 
+## Update
+
+When a newer release is published, update the installed package first, then restart Codex CLI so it launches a fresh MCP process from the new install.
+
+Typical local update flow:
+
+\`\`\`bash
+npm install
+npm link
+codex-foreman check-install
+\`\`\`
+
+Notes:
+
+- there is no separate \`mcp update\` command today
+- \`codex-foreman setup\` is the MCP registration and conflict-check path, not a package updater
+- after updating the installed package, restart Codex CLI and confirm the attached MCP build through \`foreman_server_identity\` or \`codex-foreman check-install\`
+
 ## Shared config contract
 
 The shared editable config stays here:

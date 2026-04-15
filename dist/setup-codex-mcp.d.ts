@@ -1,4 +1,4 @@
-import type { SetupCodexMcpOptions, SetupCodexMcpResult } from './types';
+import type { CheckCodexMcpInstallOptions, CheckCodexMcpInstallResult, SetupCodexMcpOptions, SetupCodexMcpResult } from './types';
 interface CommandResult {
     code: number | null;
     signal: NodeJS.Signals | null;
@@ -16,5 +16,6 @@ export declare function resolveInstalledCodexForemanMcpLaunchTarget(packageRoot?
     command: string;
     args: [string];
 }>;
+export declare function checkCodexMcpInstall(options: CheckCodexMcpInstallOptions, dependencies?: SetupCodexMcpDependencies): Promise<CheckCodexMcpInstallResult>;
 export declare function setupCodexMcp(options: SetupCodexMcpOptions, dependencies?: SetupCodexMcpDependencies): Promise<SetupCodexMcpResult>;
 export {};

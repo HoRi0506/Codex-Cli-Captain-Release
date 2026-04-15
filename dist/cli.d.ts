@@ -1,4 +1,4 @@
-import type { AlwaysOnModeOptions, AutoEnterForemanOptions, AdviseRunOptions, AdvanceRunOptions, ContinueRunOptions, RecommendForemanEntryOptions, PlanRunOptions, ReplanRunOptions, ResolveRunOptions, RetryRunOptions, RunCommandOptions, SetupCodexMcpOptions, StartRunOptions, VerifyRunOptions, WatchStatusOptions } from './types';
+import type { AlwaysOnModeOptions, AutoEnterForemanOptions, AdviseRunOptions, AdvanceRunOptions, CheckCodexMcpInstallOptions, ContinueRunOptions, RecommendForemanEntryOptions, PlanRunOptions, ReplanRunOptions, ResolveRunOptions, RetryRunOptions, RunCommandOptions, SetupCodexMcpOptions, StartRunOptions, VerifyRunOptions, WatchStatusOptions } from './types';
 type ParsedCliCommand = {
     command: 'plan';
     options: PlanRunOptions;
@@ -41,6 +41,9 @@ type ParsedCliCommand = {
 } | {
     command: 'setup';
     options: SetupCodexMcpOptions;
+} | {
+    command: 'check-install';
+    options: CheckCodexMcpInstallOptions;
 } | {
     command: 'run';
     options: RunCommandOptions;

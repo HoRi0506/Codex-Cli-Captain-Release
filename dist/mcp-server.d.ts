@@ -1,6 +1,6 @@
 import type { Readable, Writable } from 'node:stream';
 import type { ContinuityProjection } from './runtime';
-import type { AlwaysOnCompanionRequestSettingsSummary, AlwaysOnCompanionLoopStopReason, AutoEnterForemanResult, AlwaysOnModeRecord, AdvisorRecommendedNextAction, ChildAgentSnapshot, ContextHydrationSummary, DelegationRecord, FailureRecord, FailureReason, ForemanOrchestratorScope, ForemanReasoningVariant, ForemanWorkflowPhase, OrchestrationAttemptRecord, OrchestrationStopReason, OrchestratorDecisionStep, OrchestratorState, PolicyAwareMutationGuardrailsTrace, PolicyAwareResearchTrace, PolicyAwareReviewTrace, PolicyAwareRoutingTrace, RecommendForemanEntryResult, ReviewerOutcomeRecord, Role, RoleModelLaunchEvidence, RunRecord, RunCommandResult, SpecialistExecutorSnapshot, TaskCardRecord, VerificationResolutionOutcome, VisibilityProjection, WorkflowStage } from './types';
+import type { AlwaysOnCompanionRequestSettingsSummary, AlwaysOnCompanionLoopStopReason, AutoEnterForemanResult, AlwaysOnModeRecord, AdvisorRecommendedNextAction, CheckCodexMcpInstallResult, ChildAgentSnapshot, ContextHydrationSummary, DelegationRecord, FailureRecord, FailureReason, ForemanOrchestratorScope, ForemanReasoningVariant, ForemanWorkflowPhase, OrchestrationAttemptRecord, OrchestrationStopReason, OrchestratorDecisionStep, OrchestratorState, PolicyAwareMutationGuardrailsTrace, PolicyAwareResearchTrace, PolicyAwareReviewTrace, PolicyAwareRoutingTrace, RecommendForemanEntryResult, ReviewerOutcomeRecord, Role, RoleModelLaunchEvidence, RunRecord, RunCommandResult, SpecialistExecutorSnapshot, TaskCardRecord, VerificationResolutionOutcome, VisibilityProjection, WorkflowStage } from './types';
 export interface ForemanStatusArguments {
     run_id?: string;
     run_ref?: string;
@@ -140,8 +140,12 @@ export interface ForemanServerIdentityView {
     entrypoint_path: string | null;
     shared_config_path: string;
 }
+export interface ForemanServerInstallCheckView extends CheckCodexMcpInstallResult {
+    session_registration_match: 'matches_registered_target' | 'differs_from_registered_target' | 'unknown';
+}
 export interface ForemanServerIdentityResult {
     server_identity: ForemanServerIdentityView;
+    install_check: ForemanServerInstallCheckView;
 }
 export interface ForemanTaskGraphSummary {
     total_task_cards: number;
