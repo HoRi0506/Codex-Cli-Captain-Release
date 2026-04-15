@@ -9,9 +9,6 @@
     "codex-foreman-mcp": "dist/mcp-main.js",
     "codex-foreman-codex": "dist/codex-launcher-main.js"
   },
-  "scripts": {
-    "postinstall": "node scripts/bootstrap-foreman-config.cjs"
-  },
   "files": [
     "dist",
     "schemas",

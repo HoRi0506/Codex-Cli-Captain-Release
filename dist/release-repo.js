@@ -85,13 +85,13 @@ The shared editable config stays here:
 - \`$XDG_CONFIG_HOME/foreman/foreman-config.json\`
 - \`~/.config/foreman/foreman-config.json\`
 
-Installing this package does not remove operator control over that file. The postinstall bootstrap and \`codex-foreman setup\` continue to create or reuse it instead of hiding config inside repository-local state.
+Installing this package does not remove operator control over that file. \`codex-foreman setup\` is the primary supported path for creating or reusing it after install, and the shipped bootstrap helper remains available as a manual fallback instead of hiding config inside repository-local state.
 
 ## What is included
 
 - built \`dist/\` binaries
 - runtime \`schemas/\`
-- the bootstrap script that creates or reuses shared Foreman config
+- the bootstrap helper script for manual config bootstrapping
 - package metadata for install and packaging
 
 ## What is intentionally not included
@@ -122,9 +122,6 @@ function createReleasePackageJson(rootPackage) {
             'codex-foreman': 'dist/cli-main.js',
             'codex-foreman-mcp': 'dist/mcp-main.js',
             'codex-foreman-codex': 'dist/codex-launcher-main.js',
-        },
-        scripts: {
-            postinstall: 'node scripts/bootstrap-foreman-config.cjs',
         },
         files: ['dist', 'schemas', 'scripts/bootstrap-foreman-config.cjs', 'README.md', RELEASE_REPO_MANIFEST_FILE],
         engines: rootPackage.engines ?? {
