@@ -2,13 +2,19 @@
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
 
-## Codex-guided flow
+## Paste Into Codex CLI
 
-If Codex is assisting with installation, point it at this file and tell it:
+Copy this text into Codex CLI:
 
-> Read this install guide, install codex-foreman 0.2.0 on this machine, verify the install, and finish with: Please restart Codex CLI.
+```text
+Install codex-foreman 0.2.0 on this machine from npm, run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the MCP registration matches the installed entrypoint. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+```
 
-## Preferred install path
+If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
+
+## Shell Reference
+
+Codex should execute these steps for the preferred install path:
 
 Install from the published package:
 
