@@ -52,16 +52,10 @@ async function resolveSourceGitCommit(sourceRoot) {
 }
 function createReleaseInstallGuide(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} ${input.packageVersion} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
-
-Authoritative install sources:
-
-- exact release tarball: ${releaseTarballUrl}
-- release tarballs: ${RELEASES_URL}
-- repository-local guide: \`docs/install.md\`
 
 ## Paste Into Codex CLI
 
@@ -130,7 +124,7 @@ Please restart Codex CLI.
 }
 function createReleaseReadme(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} ${input.packageVersion} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\` and that the packaged \`$cap\` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
 Captain-first workflow for Codex CLI.
@@ -155,12 +149,6 @@ Copy this text into Codex CLI:
 \`\`\`text
 ${codexPrompt}
 \`\`\`
-
-Authoritative install sources:
-
-- exact release tarball: ${releaseTarballUrl}
-- release tarballs: ${RELEASES_URL}
-- repository-local guide: \`docs/install.md\`
 
 ## What To Expect
 

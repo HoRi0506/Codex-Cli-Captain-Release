@@ -2,18 +2,12 @@
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
 
-Authoritative install sources:
-
-- exact release tarball: https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz
-- release tarballs: https://github.com/HoRi0506/Codex-Foreman-release/releases
-- repository-local guide: `docs/install.md`
-
 ## Paste Into Codex CLI
 
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman 1.0.0 on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.

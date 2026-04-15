@@ -20,14 +20,8 @@ Codex-Foreman lets you send a request into a Foreman-managed path before it fall
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman 1.0.0 on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
-
-Authoritative install sources:
-
-- exact release tarball: https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz
-- release tarballs: https://github.com/HoRi0506/Codex-Foreman-release/releases
-- repository-local guide: `docs/install.md`
 
 ## What To Expect
 
