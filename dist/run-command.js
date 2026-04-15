@@ -1270,6 +1270,15 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
         const note = buildEvidenceGuidanceNote();
         return note ? `${message} ${note}` : message;
     };
+    const responseExecutionOwner = workerCount > 0 || taskCard.latest_model_launch !== null ? 'foreman_worker' : 'host_session';
+    const responseExecutionAgent = relevantDelegations
+        .slice()
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .map((delegation) => delegation.child_agent.agent_id)
+        .find((agentId) => typeof agentId === 'string' && agentId.length > 0) ??
+        taskCard.completed_by_agent_id ??
+        taskCard.assigned_agent_id ??
+        'unassigned';
     const buildFailureUserMessage = () => {
         if (run.status === 'cancelled') {
             return `Stopped "${taskCard.title}" because the bounded execution was cancelled.`;
@@ -1293,7 +1302,7 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
         }
         return `Stopped "${taskCard.title}" because the bounded execution failed.`;
     };
-    const responseProvenanceHeader = `[Foreman ${(0, runtime_1.getAgentIdForRole)('orchestrator')} | assigned=${taskCard.assigned_agent_id ?? 'unassigned'} | review=${(0, runtime_1.getAgentIdForRole)('verifier')}]`;
+    const responseProvenanceHeader = `[Foreman ${(0, runtime_1.getAgentIdForRole)('orchestrator')} | assigned=${taskCard.assigned_agent_id ?? 'unassigned'} | execution=${responseExecutionOwner}:${responseExecutionAgent} | review=${(0, runtime_1.getAgentIdForRole)('verifier')}]`;
     if (run.status === 'completed') {
         const summary = run.latest_verified_checkpoint?.summary ?? run.latest_verification?.summary ?? `Completed "${taskCard.title}".`;
         nextResponse = {

@@ -751,9 +751,11 @@ function formatCompactWatchStatusLine(status) {
         status.active_agent_id ??
         status.current_task_card?.agent_config_summary?.roster_name);
     const role = compactWatchText(status.current_task_card?.owner_role ?? status.active_role ?? status.current_task_card?.assigned_role);
+    const executionSummary = compactWatchText(status.current_task_card?.execution_proof?.summary);
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
+        `Execution: ${executionSummary}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,

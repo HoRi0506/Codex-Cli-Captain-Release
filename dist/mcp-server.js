@@ -35,7 +35,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.7.0',
+    version: '0.8.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -1409,6 +1409,34 @@ function selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations) {
         .find((evidence) => evidence !== null);
     return taskLinkedDelegationEvidence ?? taskCard.latest_model_launch;
 }
+function createCurrentTaskExecutionProof(input) {
+    const model = input.actualModelLaunch?.actual_model ??
+        input.actualModelLaunch?.dispatched_model ??
+        input.resolvedRequestSettings?.model ??
+        input.agentConfigSummary?.model ??
+        input.taskCard.role_config_snapshot.model ??
+        null;
+    const variant = input.actualModelLaunch?.actual_variant ??
+        input.actualModelLaunch?.dispatched_variant ??
+        input.resolvedRequestSettings?.variant ??
+        input.agentConfigSummary?.variant ??
+        input.taskCard.role_config_snapshot.variant ??
+        null;
+    const actualAgentId = input.executionOwner === 'foreman_worker'
+        ? input.concreteWorkerId ?? input.taskCard.assigned_agent_id ?? null
+        : null;
+    const modelSummary = `${model ?? 'none'} / ${variant ?? 'none'}`;
+    return {
+        proof_state: input.executionOwner === 'foreman_worker' ? 'foreman_worker_visible' : 'host_session_fallback',
+        assigned_agent_id: input.taskCard.assigned_agent_id,
+        actual_agent_id: actualAgentId,
+        model,
+        variant,
+        summary: input.executionOwner === 'foreman_worker'
+            ? `foreman_worker via ${actualAgentId ?? 'assigned worker'} using ${modelSummary}`
+            : `host_session fallback for ${input.taskCard.assigned_agent_id ?? 'unassigned'} using ${modelSummary}`,
+    };
+}
 function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
     const activeDelegation = taskDelegations.find((delegation) => delegation.task_card_id === taskCard.task_card_id &&
         (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
@@ -1416,6 +1444,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
     const executionOwner = activeDelegation || actualModelLaunch ? 'foreman_worker' : 'host_session';
     const concreteWorkerId = activeDelegation?.child_agent.agent_id ??
         (taskCard.owner_role === taskCard.assigned_role ? taskCard.assigned_agent_id : null);
+    const agentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
+    const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
     const assignmentFraming = (0, helper_agents_1.createTaskAssignmentFraming)(taskCard.owner_role === 'verifier'
         ? {
             assigned_role: 'verifier',
@@ -1433,6 +1463,14 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         provenanceHeader: run.latest_orchestrator_synthesis?.provenance_header ?? run.latest_response?.provenance_header ?? null,
         concreteWorkerId,
     });
+    const executionProof = createCurrentTaskExecutionProof({
+        taskCard,
+        executionOwner,
+        concreteWorkerId,
+        actualModelLaunch,
+        agentConfigSummary,
+        resolvedRequestSettings,
+    });
     return {
         task_card_id: taskCard.task_card_id,
         title: taskCard.title,
@@ -1449,8 +1487,9 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         verification_state: taskCard.verification_state,
         completed_by_agent_id: taskCard.completed_by_agent_id,
         latest_model_launch: taskCard.latest_model_launch,
-        agent_config_summary: createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig),
-        resolved_request_settings: createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig),
+        agent_config_summary: agentConfigSummary,
+        resolved_request_settings: resolvedRequestSettings,
+        execution_proof: executionProof,
         execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard),
         execution_source: executionOwner === 'foreman_worker' ? 'foreman_worker' : 'codex_session',
         execution_owner: executionOwner,
@@ -2337,6 +2376,12 @@ function resolveCurrentAgentName(currentTaskCard) {
         currentTaskCard.assigned_agent_id ??
         'none');
 }
+function describeCurrentTaskExecutionProof(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    return currentTaskCard.execution_proof?.summary ?? 'none';
+}
 function createTaskOperatorVisibilitySummary(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'task=none';
@@ -2422,6 +2467,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workf
     ].join(' ');
     return [
         createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState),
+        `Execution: ${describeCurrentTaskExecutionProof(currentTaskCard)}`,
         `Graph: ${graphSummary}`,
         ...(guidance ? [`Guidance: ${guidance}`] : []),
     ].join('\n');
