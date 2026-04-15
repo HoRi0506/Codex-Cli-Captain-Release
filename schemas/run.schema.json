@@ -1,0 +1,482 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-foreman.local/schemas/run.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "goal",
+    "status",
+    "stage",
+    "active_role",
+    "active_agent_id",
+    "active_task_card_id",
+    "active_thread_id",
+    "task_card_ids",
+    "latest_handoff_id",
+    "child_agents",
+    "specialist_executors",
+    "latest_verified_checkpoint",
+    "latest_verification",
+    "latest_failure",
+    "latest_orchestrator_synthesis",
+    "latest_response",
+    "planning_clarification_request",
+    "raw_thread_ids",
+    "created_at",
+    "updated_at",
+    "completed_at"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "active", "blocked", "completed", "failed", "cancelled"]
+    },
+    "stage": {
+      "type": "string",
+      "enum": ["planning", "handoff", "execution", "verification", "compatibility"]
+    },
+    "active_role": {
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+    },
+    "active_agent_id": {
+      "enum": ["tactician", "scout", "raider", "arbiter", null]
+    },
+    "active_task_card_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "active_thread_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "task_card_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "latest_handoff_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "child_agents": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/childAgent"
+      }
+    },
+    "specialist_executors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/specialistExecutor"
+      }
+    },
+    "latest_verified_checkpoint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/verifiedCheckpointRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_verification": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/verificationRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/failureRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_orchestrator_synthesis": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/orchestratorSynthesisRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_response": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/synthesizedRunResponse"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "planning_clarification_request": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/planningClarificationRequestRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "raw_thread_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "childAgent": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent_id", "parent_agent_id", "role", "status", "task_card_id"],
+      "properties": {
+        "agent_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "parent_agent_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "running", "completed", "failed", "cancelled"]
+        },
+        "task_card_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        }
+      }
+    },
+    "specialistExecutor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["executor_id", "status", "task_card_id", "delegation_id", "child_agent_id"],
+      "properties": {
+        "executor_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "enum": ["queued", "running", "completed", "failed", "cancelled"]
+        },
+        "task_card_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delegation_id": {
+          "type": "string",
+          "pattern": "^delegation-[0-9]{4,}$"
+        },
+        "child_agent_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verificationRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "summary", "recorded_at"],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["pending", "passed", "needs_work", "blocked"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "verifiedCheckpointRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["task_card_id", "title", "summary", "recorded_at"],
+      "properties": {
+        "task_card_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "failureRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "reason", "summary", "recorded_at"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["planning", "handoff", "execution", "verification", "compatibility"]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "surface_mismatch",
+            "invalid_output",
+            "timeout",
+            "cancelled",
+            "blocked_dependency",
+            "verification_failed",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "planningClarificationRequestRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planner_attempt_id", "summary", "clarification_request", "recorded_at"],
+      "properties": {
+        "planner_attempt_id": {
+          "type": "string",
+          "pattern": "^attempt-[0-9]{4,}$"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "clarification_request": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "orchestratorSynthesisRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_card_id",
+        "next_step",
+        "boundary",
+        "summary",
+        "user_message",
+        "recommended_action",
+        "decision_class",
+        "allowed_next_actions",
+        "decision_source",
+        "worker_result_count",
+        "review_outcome",
+        "recorded_at"
+      ],
+      "properties": {
+        "task_card_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "next_step": {
+          "type": "string",
+          "enum": [
+            "execute_task",
+            "verify_task",
+            "await_fan_in",
+            "await_verification",
+            "await_repair_decision",
+            "await_operator",
+            "halt_completed",
+            "halt_failed",
+            "halt_cancelled"
+          ]
+        },
+        "boundary": {
+          "type": "string",
+          "enum": ["continue", "manual_hold", "terminal"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user_message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": ["advance", "verify", "resolve", "retry", "replan", "escalate", "none"]
+        },
+        "decision_class": {
+          "type": "string",
+          "enum": [
+            "continue_execute",
+            "continue_verify",
+            "continue_fan_in",
+            "manual_resolve",
+            "manual_retry",
+            "manual_replan",
+            "manual_escalate",
+            "terminal_success",
+            "terminal_failure",
+            "terminal_cancelled"
+          ]
+        },
+        "allowed_next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["advance", "verify", "resolve", "retry", "replan", "escalate", "none"]
+          }
+        },
+        "decision_source": {
+          "type": "string",
+          "enum": ["orchestrator_policy"]
+        },
+        "worker_result_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_outcome": {
+          "type": ["string", "null"],
+          "enum": ["pass", "repair", "hold", "pending", null]
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "synthesizedRunResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "boundary",
+        "summary",
+        "user_message",
+        "recommended_action",
+        "decision_class",
+        "allowed_next_actions",
+        "decision_source",
+        "worker_result_count",
+        "review_outcome",
+        "recorded_at"
+      ],
+      "properties": {
+        "boundary": {
+          "type": "string",
+          "enum": ["manual_hold", "terminal"]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "user_message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommended_action": {
+          "type": "string",
+          "enum": ["advance", "verify", "resolve", "retry", "replan", "escalate", "none"]
+        },
+        "decision_class": {
+          "type": "string",
+          "enum": [
+            "continue_execute",
+            "continue_verify",
+            "continue_fan_in",
+            "manual_resolve",
+            "manual_retry",
+            "manual_replan",
+            "manual_escalate",
+            "terminal_success",
+            "terminal_failure",
+            "terminal_cancelled"
+          ]
+        },
+        "allowed_next_actions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["advance", "verify", "resolve", "retry", "replan", "escalate", "none"]
+          }
+        },
+        "decision_source": {
+          "type": "string",
+          "enum": ["orchestrator_policy"]
+        },
+        "worker_result_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "review_outcome": {
+          "type": ["string", "null"],
+          "enum": ["pass", "repair", "hold", "pending", null]
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

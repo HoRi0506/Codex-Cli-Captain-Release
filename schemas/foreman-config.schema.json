@@ -1,0 +1,148 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-foreman.local/schemas/foreman-config.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "agents", "output"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "entry_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["explicit_only", "guided_explicit", "foreman_first_bounded", "codex_cli_foreman_first"]
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["verbosity"],
+      "properties": {
+        "verbosity": {
+          "type": "string",
+          "enum": ["quiet", "default", "debug"]
+        }
+      }
+    },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["orchestrator", "planner", "code specialist", "verifier"],
+      "properties": {
+        "orchestrator": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "captain"
+                }
+              }
+            }
+          ]
+        },
+        "planner": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "tactician"
+                }
+              }
+            }
+          ]
+        },
+        "explorer": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "scout"
+                }
+              }
+            }
+          ]
+        },
+        "code specialist": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "raider"
+                }
+              }
+            }
+          ]
+        },
+        "verifier": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "arbiter"
+                }
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "definitions": {
+    "agentConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "profile", "model", "variant", "config_entries"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "config_entries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

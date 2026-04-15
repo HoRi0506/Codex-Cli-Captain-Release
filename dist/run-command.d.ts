@@ -1,0 +1,13 @@
+import type { AlwaysOnModeOptions, AlwaysOnModeResult, AutoEnterForemanOptions, AutoEnterForemanResult, AdviseRunOptions, AdviseRunResult, AdvanceRunOptions, AdvanceRunResult, ContinueRunOptions, ContinueRunResult, PlanRunOptions, PlanRunResult, ReplanRunOptions, ReplanRunResult, ResolveRunOptions, ResolveRunResult, RunCommandOptions, RunCommandResult, RetryRunOptions, RetryRunResult, StartRunOptions, StartRunResult, VerifyRunOptions, VerifyRunResult } from './types';
+export declare function planForemanRun(options: PlanRunOptions): Promise<PlanRunResult>;
+export declare function startForemanRun(options: StartRunOptions): Promise<StartRunResult>;
+export declare function autoEnterForeman(options: AutoEnterForemanOptions): Promise<AutoEnterForemanResult>;
+export declare function advanceForemanRun(options: AdvanceRunOptions): Promise<AdvanceRunResult>;
+export declare function adviseForemanRun(options: AdviseRunOptions): Promise<AdviseRunResult>;
+export declare function retryForemanRun(options: RetryRunOptions): Promise<RetryRunResult>;
+export declare function replanForemanRun(options: ReplanRunOptions): Promise<ReplanRunResult>;
+export declare function runForemanCommand(options: RunCommandOptions): Promise<RunCommandResult>;
+export declare function continueForemanRun(options: ContinueRunOptions): Promise<ContinueRunResult>;
+export declare function resolveForemanRun(options: ResolveRunOptions): Promise<ResolveRunResult>;
+export declare function verifyForemanRun(options: VerifyRunOptions): Promise<VerifyRunResult>;
+export declare function manageForemanAlwaysOnMode(options: AlwaysOnModeOptions): Promise<AlwaysOnModeResult>;

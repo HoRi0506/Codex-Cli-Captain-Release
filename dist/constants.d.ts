@@ -1,0 +1,25 @@
+export declare const RUN_STATUSES: readonly ["queued", "active", "blocked", "completed", "failed", "cancelled"];
+export declare const TASK_CARD_STATUSES: readonly ["queued", "active", "in_handoff", "blocked", "completed", "failed", "cancelled"];
+export declare const WORKFLOW_STAGES: readonly ["planning", "handoff", "execution", "verification", "compatibility"];
+export declare const FAILURE_REASONS: readonly ["surface_mismatch", "invalid_output", "timeout", "cancelled", "blocked_dependency", "verification_failed", "unknown"];
+export declare const ROLES: readonly ["orchestrator", "planner", "explorer", "code specialist", "verifier"];
+export declare const ROLE_DEFAULT_ROLES: readonly ["planner", "explorer", "code specialist", "verifier"];
+export declare const VERIFICATION_STATES: readonly ["pending", "passed", "needs_work", "blocked"];
+export declare const CHILD_AGENT_STATUSES: readonly ["queued", "running", "completed", "failed", "cancelled"];
+export declare const HANDOFF_OUTCOMES: readonly ["accepted"];
+export declare const ORCHESTRATOR_DECISION_STEPS: readonly ["execute_task", "verify_task", "await_fan_in", "await_verification", "await_repair_decision", "halt_completed", "halt_failed", "halt_cancelled", "await_operator"];
+export declare const FOREMAN_AGENT_ROSTER: {
+    readonly orchestrator: "captain";
+    readonly planner: "tactician";
+    readonly explorer: "scout";
+    readonly codeSpecialist: "raider";
+    readonly verifier: "arbiter";
+};
+export declare const FOREMAN_ORCHESTRATOR_AGENT_ID: "captain";
+export declare const FOREMAN_PLANNER_AGENT_ID: "tactician";
+export declare const FOREMAN_EXPLORER_AGENT_ID: "scout";
+export declare const FOREMAN_CODE_SPECIALIST_AGENT_ID: "raider";
+export declare const FOREMAN_VERIFIER_AGENT_ID: "arbiter";
+export declare const FOREMAN_ACTIVE_TASK_MAX_WORKERS: 2;
+export declare const PERSISTED_RUN_ACTIVE_AGENT_IDS: readonly ["tactician", "scout", "raider", "arbiter"];
+export declare const PERSISTED_TASK_CARD_ASSIGNED_AGENT_IDS: readonly ["tactician", "scout", "raider", "arbiter"];

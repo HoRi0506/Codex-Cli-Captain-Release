@@ -1,0 +1,16 @@
+import type { AdvisorOutput, DelegationRecord, ExploreArtifact, ForemanConfigFile, HandoffRecord, OrchestratorDecision, OrchestrationAttemptRecord, OrchestratorState, PlanUpdateArtifact, PlanningOutput, ResumeCheckpointRecord, RoleDefaultsFile, RunRecord, TaskCardRecord, VerificationAutomationOutput } from './types';
+export declare function assertValidRunRecord(value: unknown): asserts value is RunRecord;
+export declare function assertValidAdvisorOutput(value: unknown): asserts value is AdvisorOutput;
+export declare function assertValidDelegationRecord(value: unknown): asserts value is DelegationRecord;
+export declare function assertValidExploreArtifact(value: unknown): asserts value is ExploreArtifact;
+export declare function assertValidForemanConfigFile(value: unknown): asserts value is ForemanConfigFile;
+export declare function assertValidHandoffRecord(value: unknown): asserts value is HandoffRecord;
+export declare function assertValidOrchestrationAttemptRecord(value: unknown): asserts value is OrchestrationAttemptRecord;
+export declare function assertValidOrchestratorDecision(value: unknown): asserts value is OrchestratorDecision;
+export declare function assertValidOrchestratorState(value: unknown): asserts value is OrchestratorState;
+export declare function assertValidPlanUpdateArtifact(value: unknown): asserts value is PlanUpdateArtifact;
+export declare function assertValidPlanningOutput(value: unknown): asserts value is PlanningOutput;
+export declare function assertValidResumeCheckpointRecord(value: unknown): asserts value is ResumeCheckpointRecord;
+export declare function assertValidRoleDefaultsFile(value: unknown): asserts value is RoleDefaultsFile;
+export declare function assertValidTaskCardRecord(value: unknown): asserts value is TaskCardRecord;
+export declare function assertValidVerificationAutomationOutput(value: unknown): asserts value is VerificationAutomationOutput;

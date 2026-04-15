@@ -1,0 +1,29 @@
+{
+  "name": "codex-foreman",
+  "version": "0.0.1",
+  "private": false,
+  "description": "Thin Codex CLI orchestration wrapper for the Codex-Foreman MVP",
+  "main": "dist/index.js",
+  "bin": {
+    "codex-foreman": "dist/cli-main.js",
+    "codex-foreman-mcp": "dist/mcp-main.js",
+    "codex-foreman-codex": "dist/codex-launcher-main.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/bootstrap-foreman-config.cjs"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "scripts/bootstrap-foreman-config.cjs",
+    "README.md",
+    "release-repo-manifest.json"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "ajv": "^8.17.1"
+  }
+}

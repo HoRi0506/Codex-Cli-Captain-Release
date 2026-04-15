@@ -1,0 +1,424 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-foreman.local/schemas/task-card.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "task_card_id",
+    "run_id",
+    "title",
+    "intent",
+    "scope",
+    "execution_prompt",
+    "planner_attempt_id",
+    "task_kind",
+    "acceptance_checks",
+    "review_of_task_card_ids",
+    "depends_on_task_card_ids",
+    "fan_in_from_task_card_ids",
+    "node_kind",
+    "status",
+    "owner_role",
+    "assigned_role",
+    "assigned_agent_id",
+    "role_config_snapshot",
+    "model_tier_intent",
+    "child_aggregation_contract",
+    "fan_in_barrier_semantics",
+    "orchestrator_review_gate",
+    "acceptance",
+    "input_handoff_id",
+    "output_handoff_id",
+    "verification_state",
+    "review_pass_count",
+    "latest_failure",
+    "latest_model_launch",
+    "thread_ids",
+    "completed_by_agent_id",
+    "created_at",
+    "updated_at",
+    "completed_at"
+  ],
+  "properties": {
+    "task_card_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string",
+      "minLength": 1
+    },
+    "execution_prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "planner_attempt_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "task_kind": {
+      "type": "string",
+      "enum": ["execution", "review", "explore", "plan"]
+    },
+    "acceptance_checks": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "review_of_task_card_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "depends_on_task_card_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "fan_in_from_task_card_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "node_kind": {
+      "type": "string",
+      "enum": ["execution", "fan_in"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["queued", "active", "in_handoff", "blocked", "completed", "failed", "cancelled"]
+    },
+    "owner_role": {
+      "type": "string",
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+    },
+    "assigned_role": {
+      "type": "string",
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+    },
+    "assigned_agent_id": {
+      "enum": ["tactician", "scout", "raider", "arbiter", null]
+    },
+    "role_config_snapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "role", "profile", "model", "variant", "config_entries"],
+      "properties": {
+        "source": {
+          "const": "shared_role_config"
+        },
+        "role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "config_entries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "model_tier_intent": {
+      "type": "string",
+      "enum": ["low_cost", "standard", "high_tier"]
+    },
+    "child_aggregation_contract": {
+      "type": "string",
+      "enum": ["none", "explicit_fan_in_summary"]
+    },
+    "fan_in_barrier_semantics": {
+      "type": "string",
+      "enum": ["none", "explicit_wait_for_all_sources"]
+    },
+    "orchestrator_review_gate": {
+      "type": "string",
+      "enum": ["none", "after_child_completion"]
+    },
+    "acceptance": {
+      "type": "string",
+      "minLength": 1
+    },
+    "input_handoff_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "output_handoff_id": {
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "verification_state": {
+      "type": "string",
+      "enum": ["pending", "passed", "needs_work", "blocked"]
+    },
+    "review_pass_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "latest_failure": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/failureRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_model_launch": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/roleModelLaunchEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "thread_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "completed_by_agent_id": {
+      "enum": ["tactician", "scout", "raider", "arbiter", null]
+    },
+    "created_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "updated_at": {
+      "type": "string",
+      "minLength": 1
+    },
+    "completed_at": {
+      "type": ["string", "null"],
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "failureRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["stage", "reason", "summary", "recorded_at"],
+      "properties": {
+        "stage": {
+          "type": "string",
+          "enum": ["planning", "handoff", "execution", "verification", "compatibility"]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "surface_mismatch",
+            "invalid_output",
+            "timeout",
+            "cancelled",
+            "blocked_dependency",
+            "verification_failed",
+            "unknown"
+          ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "roleModelLaunchEvidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "request_kind",
+        "launch_source",
+        "codex_path",
+        "configured_profile",
+        "configured_model",
+        "configured_variant",
+        "dispatched_profile",
+        "dispatched_model",
+        "dispatched_variant",
+        "dispatched_config_entries",
+        "actual_profile",
+        "actual_model",
+        "actual_variant",
+        "actual_config_entries",
+        "observed_profile",
+        "observed_model",
+        "observed_variant",
+        "observed_source",
+        "observed_confidence",
+        "observed_capability",
+        "observation_status",
+        "observation_match_state",
+        "observation_unavailable_reason",
+        "observation_mismatch_summary",
+        "match_state",
+        "mismatch_summary",
+        "recorded_at"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "request_kind": {
+          "type": "string",
+          "enum": ["execution", "verification", "planning", "advisory"]
+        },
+        "launch_source": {
+          "const": "foreman_spawn"
+        },
+        "codex_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "configured_profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "configured_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "configured_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "dispatched_profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "dispatched_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "dispatched_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "dispatched_config_entries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "actual_profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "actual_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "actual_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "actual_config_entries": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "observed_profile": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "observed_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "observed_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "observed_source": {
+          "type": ["string", "null"],
+          "enum": ["codex_state_db", "provider_surface", null]
+        },
+        "observed_confidence": {
+          "type": ["string", "null"],
+          "enum": ["best_effort_local", "provider_confirmed", null]
+        },
+        "observed_capability": {
+          "type": "string",
+          "enum": ["thread_observable", "launch_request_only", "unsupported"]
+        },
+        "observation_status": {
+          "type": "string",
+          "enum": ["not_started", "observed", "unavailable"]
+        },
+        "observation_match_state": {
+          "type": "string",
+          "enum": ["not_started", "matched", "mismatch", "unavailable"]
+        },
+        "observation_unavailable_reason": {
+          "type": ["string", "null"],
+          "enum": ["unsupported", "no_thread_id", "temporary_probe_failure", "environment_limited", "surface_mismatch", null]
+        },
+        "observation_mismatch_summary": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "match_state": {
+          "type": "string",
+          "enum": ["verified_match", "mismatch"]
+        },
+        "mismatch_summary": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
