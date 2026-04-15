@@ -4,7 +4,7 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 
 Authoritative install sources:
 
-- npm registry package: https://www.npmjs.com/package/codex-foreman
+- exact release tarball: https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz
 - release tarballs: https://github.com/HoRi0506/Codex-Foreman-release/releases
 - repository-local guide: `docs/install.md`
 
@@ -13,7 +13,7 @@ Authoritative install sources:
 Copy this text into Codex CLI:
 
 ```text
-Install the latest published codex-foreman package from the npm registry package at https://www.npmjs.com/package/codex-foreman. If the npm route is unavailable, use the latest release tarball from https://github.com/HoRi0506/Codex-Foreman-release/releases. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman 1.0.0 on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
@@ -22,10 +22,10 @@ If Codex has access to this repository, tell it to read this file before it star
 
 Codex should execute these steps for the preferred install path:
 
-Install from the published package:
+Install from the exact release tarball:
 
 ```bash
-npm install -g codex-foreman
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.0.0/codex-foreman-1.0.0.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -42,9 +42,9 @@ Verify the install:
 codex-foreman check-install
 ```
 
-## Tarball fallback
+## Local tarball fallback
 
-If you are installing from a released tarball instead of the npm registry, use:
+If you already downloaded the release asset locally, use:
 
 ```bash
 npm install -g /absolute/path/to/codex-foreman-<version>.tgz
@@ -68,6 +68,6 @@ The install is in the expected state when:
 
 - there is no separate `mcp update` command today
 - `codex-foreman setup` handles MCP registration, `$cap` skill installation, and conflict checks; it is not the package installer
-- install from npm or from a release tarball when you want a no-clone setup
+- install from the GitHub release tarball when you want a no-clone setup
 
 Please restart Codex CLI.
