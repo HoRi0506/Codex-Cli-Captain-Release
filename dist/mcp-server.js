@@ -24,6 +24,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
 const constants_1 = require("./constants");
 const entry_policy_1 = require("./entry-policy");
+const helper_agents_1 = require("./helper-agents");
 const orchestration_loop_1 = require("./orchestration-loop");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
@@ -34,7 +35,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.5.0',
+    version: '0.6.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -1415,6 +1416,23 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
     const executionOwner = activeDelegation || actualModelLaunch ? 'foreman_worker' : 'host_session';
     const concreteWorkerId = activeDelegation?.child_agent.agent_id ??
         (taskCard.owner_role === taskCard.assigned_role ? taskCard.assigned_agent_id : null);
+    const assignmentFraming = (0, helper_agents_1.createTaskAssignmentFraming)(taskCard.owner_role === 'verifier'
+        ? {
+            assigned_role: 'verifier',
+            assigned_agent_id: (0, runtime_1.getAgentIdForRole)('verifier'),
+            task_kind: 'review',
+            title: taskCard.title,
+            scope: taskCard.scope,
+            acceptance: taskCard.acceptance,
+        }
+        : taskCard);
+    const ownershipGuard = (0, helper_agents_1.createTaskOwnershipGuard)({
+        assignedAgentId: assignmentFraming.target_agent_id,
+        executionOwner,
+        codexUiTraceOwner: 'host_session',
+        provenanceHeader: run.latest_orchestrator_synthesis?.provenance_header ?? run.latest_response?.provenance_header ?? null,
+        concreteWorkerId,
+    });
     return {
         task_card_id: taskCard.task_card_id,
         title: taskCard.title,
@@ -1440,6 +1458,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         ownership_summary: executionOwner === 'foreman_worker'
             ? 'Execution is Foreman-owned, but Codex CLI Explored/Called trace remains host-session UI and is not rewritten by Foreman.'
             : 'Work is currently being carried by the attached host Codex session, and Codex CLI Explored/Called trace belongs to that host session rather than a Foreman worker.',
+        assignment_framing: assignmentFraming,
+        ownership_guard: ownershipGuard,
         shared_config_drift: createCurrentTaskSharedConfigDrift({
             run,
             taskCard,
@@ -2235,10 +2255,11 @@ function describeCurrentTaskOwnership(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
+    const guardVerdict = currentTaskCard.ownership_guard?.verdict ?? 'ownership_unclear';
     if ((currentTaskCard.execution_owner ?? 'host_session') === 'foreman_worker') {
-        return `Foreman worker execution; Codex trace=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}`;
+        return `Foreman worker execution; Codex trace=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}; sentinel=${guardVerdict}`;
     }
-    return `host session work; Codex trace=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}`;
+    return `host session work; Codex trace=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}; sentinel=${guardVerdict}`;
 }
 function resolveCurrentTaskModelEvidenceSlug(currentTaskCard) {
     if (currentTaskCard === null) {
@@ -2346,7 +2367,9 @@ function createTaskOperatorVisibilitySummary(currentTaskCard) {
     const configDriftState = currentTaskCard.shared_config_drift?.state ?? 'none';
     const configDriftRequest = currentTaskCard.shared_config_drift?.request_kind ?? 'none';
     const configDriftRole = currentTaskCard.shared_config_drift?.role ?? 'none';
-    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker}`;
+    const guardVerdict = currentTaskCard.ownership_guard?.verdict ?? 'ownership_unclear';
+    const framingTarget = currentTaskCard.assignment_framing?.target_agent_id ?? 'none';
+    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
 }
 function createCompactOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
@@ -2382,6 +2405,8 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflo
         `Evidence: ${describeCurrentTaskModelEvidence(currentTaskCard)}`,
         `Config drift: ${currentTaskCard?.shared_config_drift?.summary ?? 'none'}`,
         `Ownership: ${describeCurrentTaskOwnership(currentTaskCard)}`,
+        `Framing: ${currentTaskCard?.assignment_framing?.summary ?? 'none'}`,
+        `Sentinel: ${currentTaskCard?.ownership_guard?.summary ?? 'none'}`,
         `Phase: ${phase}`,
         `Next: ${workflowNext !== 'none' ? workflowNext : nextStep}`,
     ].join('\n');

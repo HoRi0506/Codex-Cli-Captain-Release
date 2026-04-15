@@ -727,10 +727,11 @@ function describeWatchModelEvidence(status) {
 function describeWatchOwnership(status) {
     const executionOwner = status.current_task_card?.execution_owner ?? 'host_session';
     const codexUiTraceOwner = status.current_task_card?.codex_ui_trace_owner ?? 'host_session';
+    const guardVerdict = status.current_task_card?.ownership_guard?.verdict ?? 'ownership_unclear';
     if (executionOwner === 'foreman_worker') {
-        return `Foreman worker execution; Codex trace=${codexUiTraceOwner}`;
+        return `Foreman worker execution; Codex trace=${codexUiTraceOwner}; sentinel=${guardVerdict}`;
     }
-    return `host session work; Codex trace=${codexUiTraceOwner}`;
+    return `host session work; Codex trace=${codexUiTraceOwner}; sentinel=${guardVerdict}`;
 }
 function describeWatchConfigDrift(status) {
     const drift = status.current_task_card?.shared_config_drift;
@@ -773,6 +774,8 @@ function formatCompactWatchStatusLine(status) {
         `Evidence: ${describeWatchModelEvidence(status)}`,
         `Config drift: ${describeWatchConfigDrift(status)}`,
         `Ownership: ${describeWatchOwnership(status)}`,
+        `Framing: ${status.current_task_card?.assignment_framing?.summary ?? 'none'}`,
+        `Sentinel: ${status.current_task_card?.ownership_guard?.summary ?? 'none'}`,
         `Task: ${compactWatchText(status.current_task_card?.task_kind)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
@@ -815,6 +818,8 @@ function formatQuietWatchStatusLine(status) {
         `Evidence: ${describeWatchModelEvidence(status)}`,
         `Config drift: ${describeWatchConfigDrift(status)}`,
         `Ownership: ${describeWatchOwnership(status)}`,
+        `Framing: ${status.current_task_card?.assignment_framing?.summary ?? 'none'}`,
+        `Sentinel: ${status.current_task_card?.ownership_guard?.summary ?? 'none'}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
         `Lease: ${formatWatchMutationLeaseSummary(status)}`,

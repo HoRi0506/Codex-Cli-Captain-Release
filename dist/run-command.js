@@ -61,6 +61,7 @@ const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
+const helper_agents_1 = require("./helper-agents");
 const validation_1 = require("./validation");
 const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
@@ -471,6 +472,14 @@ function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowe
     ].join('\n');
 }
 function buildVerificationPrompt(run, taskCard) {
+    const verifierFraming = (0, helper_agents_1.createTaskAssignmentFraming)({
+        assigned_role: 'verifier',
+        assigned_agent_id: (0, runtime_1.getAgentIdForRole)('verifier'),
+        task_kind: 'review',
+        title: taskCard.title,
+        scope: taskCard.scope,
+        acceptance: taskCard.acceptance,
+    });
     const untrustedTaskMetadata = stringifyPromptJson({
         g: shouldCollapsePlannerGoal(run.goal, taskCard.execution_prompt) ||
             normalizeInlinePromptText(run.goal) === normalizeInlinePromptText(taskCard.scope)
@@ -487,6 +496,8 @@ function buildVerificationPrompt(run, taskCard) {
         },
     });
     return [
+        verifierFraming.prompt_prefix,
+        '',
         'You are the verifier for a Codex-Foreman task.',
         'Review the current repository state against the scoped task and acceptance criteria.',
         UNTRUSTED_JSON_PROMPT_RULE,
@@ -873,8 +884,11 @@ function determineSynthesisAllowedActions(input) {
     return [];
 }
 function buildExpectedExecutionRequest(orchestratorState, taskCard) {
+    if (taskCard.owner_role === 'verifier') {
+        return orchestratorState.execution_request;
+    }
     const requestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-    return buildExecutionRequest(taskCard.execution_prompt, requestSettings.profile, requestSettings.configEntries);
+    return buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), requestSettings.profile, requestSettings.configEntries);
 }
 function buildExpectedVerificationRequest(run, taskCard, orchestratorState) {
     if (!orchestratorState.verification_request) {
@@ -885,7 +899,7 @@ function buildExpectedVerificationRequest(run, taskCard, orchestratorState) {
 function syncOrchestratorStateRequests(orchestratorState, run, taskCard) {
     const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
     orchestratorState.task_card_id = taskCard.task_card_id;
-    orchestratorState.execution_request = buildExecutionRequest(taskCard.execution_prompt, executionRequestSettings.profile, executionRequestSettings.configEntries);
+    orchestratorState.execution_request = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
     if (!orchestratorState.verification_request) {
         return;
     }
@@ -1800,7 +1814,7 @@ function createQueuedGraphChildDelegation(input) {
             delegation_id: input.delegationId,
             child_agent_id: childAgentId,
         },
-        worker_request: createExecutionDelegationWorkerRequest(input.sourceTaskCard, input.sourceTaskCard.execution_prompt),
+        worker_request: createExecutionDelegationWorkerRequest(input.sourceTaskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.sourceTaskCard)),
         worker_role_config_snapshot: input.sourceTaskCard.role_config_snapshot,
         worker_launch_evidence: null,
         worker_result: null,
@@ -2203,7 +2217,7 @@ async function syncDelegatedVerificationRepairArtifacts(runPaths, run, taskCard,
             delegation_id: repairDelegationId,
         },
         worker_request: sourceDelegation.worker_request ??
-            createExecutionDelegationWorkerRequest(taskCard, taskCard.execution_prompt),
+            createExecutionDelegationWorkerRequest(taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(taskCard)),
         worker_launch_evidence: null,
         worker_result: null,
         result_summary: null,
@@ -3048,7 +3062,7 @@ async function planForemanRun(options) {
         run.task_card_ids = taskCards.map((plannedTaskCard) => plannedTaskCard.task_card_id);
         (0, runtime_1.activatePlannedTask)(run, taskCard, handoff);
         const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-        const executionRequest = buildExecutionRequest(taskCard.execution_prompt, executionRequestSettings.profile, executionRequestSettings.configEntries);
+        const executionRequest = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
         const verificationRequest = buildVerificationRequest(run, taskCard, verificationSettings.profile, verificationSettings.config_entries);
         const decision = (0, orchestrator_1.decideOrchestratorNextStep)(run, taskCard, { verificationRequestAvailable: true });
         const orchestratorState = (0, runtime_1.createOrchestratorState)({
@@ -3184,7 +3198,7 @@ async function startForemanRun(options) {
     });
     (0, runtime_1.applyInitialTaskHandoff)(run, taskCard, initialHandoff);
     const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-    const executionRequest = buildExecutionRequest(taskCard.execution_prompt, executionRequestSettings.profile, executionRequestSettings.configEntries);
+    const executionRequest = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
     const verificationRequest = buildVerificationRequest(run, taskCard, verificationSettings.profile, verificationSettings.config_entries);
     const initialDecision = (0, orchestrator_1.decideOrchestratorNextStep)(run, taskCard, { verificationRequestAvailable: true });
     const orchestratorState = (0, runtime_1.createOrchestratorState)({
