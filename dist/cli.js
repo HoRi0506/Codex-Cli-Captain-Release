@@ -25,7 +25,7 @@ function usage() {
         '  codex-foreman advise --run-id <id> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
         '    Run one read-only advisory Codex pass against the current active task, require one strict JSON object containing summary and recommended_next_action, and leave persisted Foreman state unchanged.',
         '  codex-foreman advance --run-id <id> [--codex-bin <path>] [--cwd <path>]',
-        '    Resume a persisted run and perform the next orchestrator-approved step. In this MVP, execution happens here.',
+        '    Resume a persisted run and perform the next orchestrator-approved step. This is the main explicit execution entrypoint.',
         '  codex-foreman continue --run-id <id> [--codex-bin <path>] [--max-steps <n>] [--cwd <path>]',
         '    Thin wrapper over advance/verify only: it chains already-approved execution and verification steps, then stops at manual/operator boundaries or when the safe max-steps window is consumed.',
         '  codex-foreman watch --run-id <id> [--interval-ms <n>] [--iterations <n>] [--activity] [--show-changes] [--changes-only] [--quiet|--debug] [--cwd <path>]',
@@ -759,16 +759,17 @@ function formatWatchRoutingSummary(status) {
     return `target=${targetRole} tier=${modelTier} route=${route} category=${category} skills=${compactWatchText(skills)} reason=${compactWatchRoutingReason(routingTrace?.selected_route_reason)}`;
 }
 function formatCompactWatchStatusLine(status) {
-    const model = compactWatchText(status.current_task_card?.agent_config_summary?.model ??
-        status.current_task_card?.resolved_request_settings?.model ??
-        status.current_task_card?.role_config_snapshot?.model);
-    const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
-        status.current_task_card?.resolved_request_settings?.variant ??
-        status.current_task_card?.role_config_snapshot?.variant);
+    const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
+        status.current_task_card?.role_config_snapshot?.model ??
+        status.current_task_card?.agent_config_summary?.model);
+    const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
+        status.current_task_card?.role_config_snapshot?.variant ??
+        status.current_task_card?.agent_config_summary?.variant);
     const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
+        status.current_task_card?.assigned_agent_id ??
         status.active_agent_id ??
         status.current_task_card?.agent_config_summary?.roster_name);
-    const role = compactWatchText(status.current_task_card?.owner_role ?? status.active_role ?? status.current_task_card?.assigned_role);
+    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role);
     const executionSummary = compactWatchText(status.current_task_card?.execution_proof?.summary);
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
@@ -781,16 +782,17 @@ function formatCompactWatchStatusLine(status) {
     ].join('\n');
 }
 function formatQuietWatchStatusLine(status) {
-    const model = compactWatchText(status.current_task_card?.agent_config_summary?.model ??
-        status.current_task_card?.resolved_request_settings?.model ??
-        status.current_task_card?.role_config_snapshot?.model);
-    const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
-        status.current_task_card?.resolved_request_settings?.variant ??
-        status.current_task_card?.role_config_snapshot?.variant);
+    const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
+        status.current_task_card?.role_config_snapshot?.model ??
+        status.current_task_card?.agent_config_summary?.model);
+    const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
+        status.current_task_card?.role_config_snapshot?.variant ??
+        status.current_task_card?.agent_config_summary?.variant);
     const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
+        status.current_task_card?.assigned_agent_id ??
         status.active_agent_id ??
         status.current_task_card?.agent_config_summary?.roster_name);
-    const role = compactWatchText(status.current_task_card?.owner_role ?? status.active_role ?? status.current_task_card?.assigned_role);
+    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role);
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,

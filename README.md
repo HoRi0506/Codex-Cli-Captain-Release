@@ -2,8 +2,6 @@
 
 Captain-first workflow for Codex CLI.
 
-> Beta: Codex-Foreman is still evolving. The operator-facing entry path is usable today, but the internal execution and visibility model is still being tightened.
-
 Codex-Foreman lets you send a request into a Foreman-managed path before it falls back to the host Codex session. The main entrypoint is `$cap`, which hands the request to `captain` first.
 
 ## What Captain Does
@@ -22,8 +20,14 @@ Codex-Foreman lets you send a request into a Foreman-managed path before it fall
 Copy this text into Codex CLI:
 
 ```text
-Install the latest published codex-foreman package on this machine from npm. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install the latest published codex-foreman package from the npm registry package at https://www.npmjs.com/package/codex-foreman. If the npm route is unavailable, use the latest release tarball from https://github.com/HoRi0506/Codex-Foreman-release/releases. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
+
+Authoritative install sources:
+
+- npm registry package: https://www.npmjs.com/package/codex-foreman
+- release tarballs: https://github.com/HoRi0506/Codex-Foreman-release/releases
+- repository-local guide: `docs/install.md`
 
 ## What To Expect
 

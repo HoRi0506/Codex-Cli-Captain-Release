@@ -345,7 +345,7 @@ function assertAdvisorActionAllowedForDecision(advice, decision, allowedActions)
         return;
     }
     if (allowedActions.length === 0) {
-        throw new Error(`Advisor output recommended ${advice.recommended_next_action}, but the current orchestrator decision ${decision.next_step} has no valid explicit operator action in this MVP.`);
+        throw new Error(`Advisor output recommended ${advice.recommended_next_action}, but the current orchestrator decision ${decision.next_step} has no valid explicit operator action in the current harness boundary.`);
     }
     throw new Error(`Advisor output recommended ${advice.recommended_next_action}, but the current orchestrator decision ${decision.next_step} only allows: ${formatAdvisorActionList(allowedActions)}.`);
 }
@@ -3885,7 +3885,7 @@ async function adviseForemanRun(options) {
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     if (allowedActions.length === 0) {
-        throw new Error(`advise is not available when the current orchestrator decision is ${currentDecision.next_step} because no explicit operator action is valid in this MVP.`);
+        throw new Error(`advise is not available when the current orchestrator decision is ${currentDecision.next_step} because no explicit operator action is valid in the current harness boundary.`);
     }
     const orchestratorRequestSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)(foremanConfig.agents.orchestrator);
     const advisorSettings = resolveRequestSettings(options, orchestratorRequestSettings);

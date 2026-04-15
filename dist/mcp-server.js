@@ -35,7 +35,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.9.0',
+    version: '1.0.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -1413,14 +1413,14 @@ function createCurrentTaskExecutionProof(input) {
     const model = input.actualModelLaunch?.actual_model ??
         input.actualModelLaunch?.dispatched_model ??
         input.resolvedRequestSettings?.model ??
-        input.agentConfigSummary?.model ??
         input.taskCard.role_config_snapshot.model ??
+        input.agentConfigSummary?.model ??
         null;
     const variant = input.actualModelLaunch?.actual_variant ??
         input.actualModelLaunch?.dispatched_variant ??
         input.resolvedRequestSettings?.variant ??
-        input.agentConfigSummary?.variant ??
         input.taskCard.role_config_snapshot.variant ??
+        input.agentConfigSummary?.variant ??
         null;
     const actualAgentId = input.executionOwner === 'foreman_worker'
         ? input.concreteWorkerId ?? input.taskCard.assigned_agent_id ?? null
@@ -1444,7 +1444,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
     const executionOwner = activeDelegation || actualModelLaunch ? 'foreman_worker' : 'host_session';
     const concreteWorkerId = activeDelegation?.child_agent.agent_id ??
         (taskCard.owner_role === taskCard.assigned_role ? taskCard.assigned_agent_id : null);
-    const agentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
+    const ownerAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
+    const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.assigned_role ?? taskCard.owner_role, foremanConfig);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
     const assignmentFraming = (0, helper_agents_1.createTaskAssignmentFraming)(taskCard.owner_role === 'verifier'
         ? {
@@ -1468,7 +1469,7 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         executionOwner,
         concreteWorkerId,
         actualModelLaunch,
-        agentConfigSummary,
+        agentConfigSummary: assignedAgentConfigSummary ?? ownerAgentConfigSummary,
         resolvedRequestSettings,
     });
     return {
@@ -1487,7 +1488,9 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         verification_state: taskCard.verification_state,
         completed_by_agent_id: taskCard.completed_by_agent_id,
         latest_model_launch: taskCard.latest_model_launch,
-        agent_config_summary: agentConfigSummary,
+        agent_config_summary: ownerAgentConfigSummary,
+        owner_agent_config_summary: ownerAgentConfigSummary,
+        assigned_agent_config_summary: assignedAgentConfigSummary,
         resolved_request_settings: resolvedRequestSettings,
         execution_proof: executionProof,
         execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard),
@@ -2202,24 +2205,24 @@ function resolveCurrentTaskRole(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return currentTaskCard.owner_role ?? currentTaskCard.assigned_role;
+    return currentTaskCard.assigned_role ?? currentTaskCard.owner_role;
 }
 function resolveCurrentTaskModel(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return (currentTaskCard.agent_config_summary?.model ??
-        currentTaskCard.resolved_request_settings?.model ??
+    return (currentTaskCard.resolved_request_settings?.model ??
         currentTaskCard.role_config_snapshot?.model ??
+        currentTaskCard.agent_config_summary?.model ??
         'none');
 }
 function resolveCurrentTaskVariant(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
     }
-    return (currentTaskCard.agent_config_summary?.variant ??
-        currentTaskCard.resolved_request_settings?.variant ??
+    return (currentTaskCard.resolved_request_settings?.variant ??
         currentTaskCard.role_config_snapshot?.variant ??
+        currentTaskCard.agent_config_summary?.variant ??
         'none');
 }
 function resolveCurrentTaskDispatchedModel(currentTaskCard) {
@@ -2372,8 +2375,8 @@ function resolveCurrentAgentName(currentTaskCard) {
         return 'none';
     }
     return (currentTaskCard.concrete_worker_id ??
-        currentTaskCard.agent_config_summary?.roster_name ??
         currentTaskCard.assigned_agent_id ??
+        currentTaskCard.agent_config_summary?.roster_name ??
         'none');
 }
 function describeCurrentTaskExecutionProof(currentTaskCard) {

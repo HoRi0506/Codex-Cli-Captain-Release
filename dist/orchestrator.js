@@ -652,7 +652,7 @@ function decideOrchestratorNextStep(run, taskCard, options = {}) {
             decision: {
                 next_step: 'halt_completed',
                 can_advance: false,
-                summary: 'The run is completed. No further automatic action is available in this MVP.',
+                summary: 'The run is completed. No further automatic action is available in the current harness boundary.',
             },
         });
     }
@@ -665,7 +665,7 @@ function decideOrchestratorNextStep(run, taskCard, options = {}) {
             decision: {
                 next_step: 'halt_cancelled',
                 can_advance: false,
-                summary: 'The run is cancelled. No further automatic action is available in this MVP.',
+                summary: 'The run is cancelled. No further automatic action is available in the current harness boundary.',
             },
         });
     }
@@ -721,7 +721,7 @@ function decideOrchestratorNextStep(run, taskCard, options = {}) {
             decision: {
                 next_step: 'await_operator',
                 can_advance: false,
-                summary: 'The run is blocked and awaits operator or manual workflow action in this MVP.',
+                summary: 'The run is blocked and awaits operator or manual workflow action in the current harness boundary.',
             },
         });
     }
