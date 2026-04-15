@@ -740,6 +740,24 @@ function describeWatchConfigDrift(status) {
     }
     return `${drift.state} ${drift.request_kind}/${drift.role}: ${drift.persisted_model ?? 'none'} -> ${drift.current_model ?? 'none'}`;
 }
+function compactWatchRoutingReason(reason) {
+    const compacted = compactWatchText(reason);
+    if (compacted === 'none') {
+        return compacted;
+    }
+    return compacted.length > 72 ? `${compacted.slice(0, 69)}...` : compacted;
+}
+function formatWatchRoutingSummary(status) {
+    const routingTrace = status.routing_trace;
+    const targetRole = compactWatchText(routingTrace?.route_target_role ?? status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role);
+    const modelTier = compactWatchText(status.current_task_card?.model_tier_intent);
+    const route = compactWatchText(routingTrace?.selected_route);
+    const category = compactWatchText(routingTrace?.recommended_category);
+    const skills = routingTrace?.recommended_skills && routingTrace.recommended_skills.length > 0
+        ? routingTrace.recommended_skills.join(',')
+        : undefined;
+    return `target=${targetRole} tier=${modelTier} route=${route} category=${category} skills=${compactWatchText(skills)} reason=${compactWatchRoutingReason(routingTrace?.selected_route_reason)}`;
+}
 function formatCompactWatchStatusLine(status) {
     const model = compactWatchText(status.current_task_card?.agent_config_summary?.model ??
         status.current_task_card?.resolved_request_settings?.model ??
@@ -756,6 +774,7 @@ function formatCompactWatchStatusLine(status) {
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
         `Execution: ${executionSummary}`,
+        `Routing: ${formatWatchRoutingSummary(status)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,

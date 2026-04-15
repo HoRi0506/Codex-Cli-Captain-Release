@@ -35,7 +35,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.8.0',
+    version: '0.9.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -2382,6 +2382,31 @@ function describeCurrentTaskExecutionProof(currentTaskCard) {
     }
     return currentTaskCard.execution_proof?.summary ?? 'none';
 }
+function compactRoutingReason(reason) {
+    const compacted = reason?.replace(/\s+/g, ' ').trim();
+    if (!compacted) {
+        return 'none';
+    }
+    return compacted.length > 72 ? `${compacted.slice(0, 69)}...` : compacted;
+}
+function extractRoutingTraceFromGuidanceSource(guidanceSource) {
+    if (!guidanceSource || typeof guidanceSource !== 'object' || !('routing_trace' in guidanceSource)) {
+        return null;
+    }
+    const candidate = guidanceSource;
+    return candidate.routing_trace ?? null;
+}
+function describeCurrentTaskRouting(currentTaskCard, routingTrace) {
+    const targetRole = routingTrace?.route_target_role ?? currentTaskCard?.assigned_role ?? currentTaskCard?.owner_role ?? 'none';
+    const modelTier = currentTaskCard?.model_tier_intent ?? 'none';
+    const selectedRoute = routingTrace?.selected_route ?? 'none';
+    const category = routingTrace?.recommended_category ?? 'none';
+    const skills = routingTrace?.recommended_skills && routingTrace.recommended_skills.length > 0
+        ? routingTrace.recommended_skills.join(',')
+        : 'none';
+    const reason = compactRoutingReason(routingTrace?.selected_route_reason);
+    return `target=${targetRole} tier=${modelTier} route=${selectedRoute} category=${category} skills=${skills} reason=${reason}`;
+}
 function createTaskOperatorVisibilitySummary(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'task=none';
@@ -2451,6 +2476,7 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflo
 }
 function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState, taskGraphSummary, guidanceSource) {
     let guidance = null;
+    const routingTrace = extractRoutingTraceFromGuidanceSource(guidanceSource);
     if (guidanceSource && 'user_message' in guidanceSource) {
         guidance = guidanceSource.user_message ?? null;
     }
@@ -2468,6 +2494,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workf
     return [
         createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState),
         `Execution: ${describeCurrentTaskExecutionProof(currentTaskCard)}`,
+        `Routing: ${describeCurrentTaskRouting(currentTaskCard, routingTrace)}`,
         `Graph: ${graphSummary}`,
         ...(guidance ? [`Guidance: ${guidance}`] : []),
     ].join('\n');

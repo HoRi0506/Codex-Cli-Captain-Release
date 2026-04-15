@@ -1,6 +1,6 @@
 {
   "name": "codex-foreman",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "private": false,
   "description": "Thin Codex CLI orchestration wrapper for the Codex-Foreman MVP",
   "main": "dist/index.js",
