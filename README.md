@@ -1,17 +1,21 @@
 # codex-foreman
 
-Bring a captain-first workflow to Codex CLI without replacing the way you already work.
+Captain-first workflow for Codex CLI.
 
-Codex-Foreman adds a local MCP server, a sibling CLI, a launcher wrapper, persisted run state, and the packaged `$cap` skill so requests can enter Foreman through `captain` before they fall back to the host Codex session.
+> Beta: Codex-Foreman is still evolving. The operator-facing entry path is usable today, but the internal execution and visibility model is still being tightened.
 
-This repository is the install-facing release surface for Codex-Foreman 0.5.0. It is generated from the source repository and keeps the focus on install, setup, and everyday operator use.
+Codex-Foreman lets you send a request into a Foreman-managed path before it falls back to the host Codex session. The main entrypoint is `$cap`, which hands the request to `captain` first.
 
-## Why Use It
+## What Captain Does
 
-- start work through `captain` with `$cap <request>`
-- keep Foreman state, run visibility, and MCP registration in one local workflow
-- use the same Codex environment while letting Foreman coordinate the entry path
-- keep shared operator config in `$XDG_CONFIG_HOME/foreman/foreman-config.json` or `~/.config/foreman/foreman-config.json`
+`captain` is the orchestrator. It receives the request, decides whether to continue an existing run or start a new one, breaks work into bounded steps, chooses the right agent role for the next task, and pulls the result back into one visible Foreman run.
+
+## How It Works
+
+- you send a request with `$cap <request>`
+- `captain` reads the request and the current Foreman state
+- Foreman routes work to role-shaped agents such as planning, exploration, execution, or review
+- results flow back through `captain`, which decides whether to continue, reroute, review, or answer
 
 ## Install
 
@@ -21,37 +25,28 @@ Copy this text into Codex CLI:
 Install the latest published codex-foreman package on this machine from npm. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok` and that the packaged `$cap` skill is installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
-Detailed install reference:
+## What To Expect
 
-- [docs/install.md](./docs/install.md)
+- a more structured entry path for requests that need orchestration
+- visible run state instead of one opaque turn of work
+- a captain-led loop that can hand work off and bring it back
+- room for planning and review before the final answer is synthesized
 
-That guide covers:
+## Agent Roles
 
-- `codex-foreman`
-- `codex-foreman-mcp`
-- `codex-foreman-codex`
-- the packaged `$cap` skill
-- no-clone install from npm or a released tarball
-- setup through `codex-foreman setup`
-- verification through `codex-foreman check-install`
-- the final Codex CLI restart step
+- `captain` leads orchestration
+- planning agents shape and scope work
+- exploration agents inspect state and gather bounded evidence
+- execution agents handle implementation work
+- review agents check results before they return to `captain`
 
 ## Quick Start
 
 After install and restart:
 
 - use `$cap <your request>` when you want the request to enter Foreman through `captain`
-- use `codex-foreman check-install` when you want to confirm the install boundary is still healthy
-- use `foreman_server_identity` when you want to confirm the attached MCP session and build
-
-Foreman can also work alongside other installed MCP servers such as `context7`, `fetch`, `filesystem`, and `git` when they are available in the same Codex environment.
-
-## Included Tools
-
-- `codex-foreman`: setup, checks, and explicit Foreman commands
-- `codex-foreman-mcp`: the MCP server Codex connects to
-- `codex-foreman-codex`: the launcher wrapper for Foreman-first entry
-- the packaged `$cap` skill: the operator-facing shortcut that sends work to `captain` first
+- use `codex-foreman check-install` when you want to confirm the install is healthy
+- restart Codex CLI after install or update so the latest MCP session and skill are loaded
 
 ## Config
 
@@ -62,26 +57,7 @@ The shared editable config stays here:
 
 `codex-foreman setup` is the primary supported path for creating or reusing that file after install. The shipped bootstrap helper remains available as a manual fallback instead of hiding config inside repository-local state.
 
-## What is included
-
-- built `dist/` binaries
-- runtime `schemas/`
-- packaged `skills/` content for `$cap`
-- the bootstrap helper script for manual config bootstrapping
-- package metadata for install and packaging
-
-## What is intentionally not included
-
-- source TypeScript files
-- tests
-- roadmap docs
-- broader development history or internal implementation layout
-
 ## Notes
 
 - This repository is for install and execution, not source development.
 - Managed install-surface files may be replaced by the next export run from the source repository.
-
-## Provenance
-
-- source repo commit: 093744cd8fb06db0f49c64e4a82a2360c3c8b9c8
