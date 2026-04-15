@@ -35,7 +35,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '0.6.0',
+    version: '0.7.0',
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -2400,32 +2400,20 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflo
     return [
         `Agent: ${resolveCurrentAgentName(currentTaskCard)}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${resolveCurrentTaskModel(currentTaskCard)} / ${resolveCurrentTaskVariant(currentTaskCard)}`,
-        `Dispatched: ${resolveCurrentTaskDispatchedModel(currentTaskCard)} / ${resolveCurrentTaskDispatchedVariant(currentTaskCard)} (${resolveCurrentTaskModelEvidenceState(currentTaskCard)})`,
-        `Observed: ${resolveCurrentTaskObservedModel(currentTaskCard)} / ${resolveCurrentTaskObservedVariant(currentTaskCard)} (${resolveCurrentTaskObservationMatchState(currentTaskCard)})`,
-        `Evidence: ${describeCurrentTaskModelEvidence(currentTaskCard)}`,
-        `Config drift: ${currentTaskCard?.shared_config_drift?.summary ?? 'none'}`,
-        `Ownership: ${describeCurrentTaskOwnership(currentTaskCard)}`,
-        `Framing: ${currentTaskCard?.assignment_framing?.summary ?? 'none'}`,
-        `Sentinel: ${currentTaskCard?.ownership_guard?.summary ?? 'none'}`,
         `Phase: ${phase}`,
         `Next: ${workflowNext !== 'none' ? workflowNext : nextStep}`,
     ].join('\n');
 }
 function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState, taskGraphSummary, guidanceSource) {
     let guidance = null;
-    let provenanceHeader = null;
     if (guidanceSource && 'user_message' in guidanceSource) {
         guidance = guidanceSource.user_message ?? null;
-        provenanceHeader = guidanceSource.provenance_header ?? null;
     }
     else if (guidanceSource && 'latest_response' in guidanceSource) {
         guidance = guidanceSource.latest_response?.user_message ?? guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
-        provenanceHeader =
-            guidanceSource.latest_response?.provenance_header ?? guidanceSource.latest_orchestrator_synthesis?.provenance_header ?? null;
     }
     else if (guidanceSource && 'latest_orchestrator_synthesis' in guidanceSource) {
         guidance = guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
-        provenanceHeader = guidanceSource.latest_orchestrator_synthesis?.provenance_header ?? null;
     }
     const graphSummary = [
         `total=${taskGraphSummary.total_task_cards}`,
@@ -2434,8 +2422,6 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workf
     ].join(' ');
     return [
         createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState),
-        ...(provenanceHeader ? [`Responder: ${provenanceHeader}`] : []),
-        `Task: ${currentTaskCard?.task_kind ?? 'none'}`,
         `Graph: ${graphSummary}`,
         ...(guidance ? [`Guidance: ${guidance}`] : []),
     ].join('\n');
@@ -3306,7 +3292,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         ? appendContinuityText(`Run ${status.run_id} is ${status.status} at stage ${status.stage}. Current next_step=${status.next_step}.${operatorViewText}`)
                                         : verbosity === 'quiet'
                                             ? createQuietOperatorVisibilitySummary(status.current_task_card, status.next_step, status.workflow_operator_state)
-                                            : appendContinuityText(createDefaultOperatorVisibilitySummary(status.current_task_card, status.next_step, status.workflow_operator_state, status.task_graph_summary, status))
+                                            : createDefaultOperatorVisibilitySummary(status.current_task_card, status.next_step, status.workflow_operator_state, status.task_graph_summary, status)
                                     : appendClarificationText(`Run ${status.run_id} is blocked at stage planning with next_step=await_clarification. No active task runtime exists yet.`),
                             },
                         ],
@@ -3337,10 +3323,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 latestAttemptText)
                             : verbosity === 'quiet'
                                 ? createQuietOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state)
-                                : appendContinuityText([
-                                    createDefaultOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
-                                    `Delegations: ${result.active_task_delegations?.running ?? 0} running / ${result.active_task_delegations?.queued ?? 0} queued`,
-                                ].join('\n'))
+                                : createDefaultOperatorVisibilitySummary(result.current_task_card, result.next_step, result.workflow_operator_state, result.task_graph_summary, result)
                         : appendClarificationText(`Run ${result.run_id} is blocked at stage planning with next_step=await_clarification. ` +
                             `No active task, delegation runtime, or orchestration attempt exists yet.`);
                     return createSuccessResponse(value.id, {

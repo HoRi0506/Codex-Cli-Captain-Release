@@ -747,21 +747,6 @@ function formatCompactWatchStatusLine(status) {
     const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
         status.current_task_card?.resolved_request_settings?.variant ??
         status.current_task_card?.role_config_snapshot?.variant);
-    const dispatchedModel = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_model ??
-        status.current_task_card?.actual_model_launch?.dispatched_model ??
-        status.current_task_card?.actual_model_launch?.actual_model ??
-        'pending');
-    const dispatchedVariant = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_variant ??
-        status.current_task_card?.actual_model_launch?.dispatched_variant ??
-        status.current_task_card?.actual_model_launch?.actual_variant ??
-        'pending');
-    const modelState = compactWatchText(status.current_task_card?.model_enforcement_state ?? 'not_started');
-    const observedModel = compactWatchText(status.current_task_card?.observed_model ?? status.current_task_card?.actual_model_launch?.observed_model ?? 'pending');
-    const observedVariant = compactWatchText(status.current_task_card?.observed_variant ?? status.current_task_card?.actual_model_launch?.observed_variant ?? 'pending');
-    const observationState = compactWatchText(status.current_task_card?.observation_status ?? status.current_task_card?.actual_model_launch?.observation_status ?? 'not_started');
-    const observationMatch = compactWatchText(status.current_task_card?.observation_match_state ??
-        status.current_task_card?.actual_model_launch?.observation_match_state ??
-        'not_started');
     const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
         status.active_agent_id ??
         status.current_task_card?.agent_config_summary?.roster_name);
@@ -769,18 +754,8 @@ function formatCompactWatchStatusLine(status) {
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
-        `Dispatched: ${dispatchedModel} / ${dispatchedVariant} (${modelState})`,
-        `Observed: ${observedModel} / ${observedVariant} (${observationMatch})`,
-        `Evidence: ${describeWatchModelEvidence(status)}`,
-        `Config drift: ${describeWatchConfigDrift(status)}`,
-        `Ownership: ${describeWatchOwnership(status)}`,
-        `Framing: ${status.current_task_card?.assignment_framing?.summary ?? 'none'}`,
-        `Sentinel: ${status.current_task_card?.ownership_guard?.summary ?? 'none'}`,
-        `Task: ${compactWatchText(status.current_task_card?.task_kind)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
-        `Lease: ${formatWatchMutationLeaseSummary(status)}`,
-        `Workers: ${formatReadableWorkerAssignments(status)}`,
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
     ].join('\n');
 }
@@ -791,21 +766,6 @@ function formatQuietWatchStatusLine(status) {
     const variant = compactWatchText(status.current_task_card?.agent_config_summary?.variant ??
         status.current_task_card?.resolved_request_settings?.variant ??
         status.current_task_card?.role_config_snapshot?.variant);
-    const dispatchedModel = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_model ??
-        status.current_task_card?.actual_model_launch?.dispatched_model ??
-        status.current_task_card?.actual_model_launch?.actual_model ??
-        'pending');
-    const dispatchedVariant = compactWatchText(status.current_task_card?.dispatched_model_launch?.dispatched_variant ??
-        status.current_task_card?.actual_model_launch?.dispatched_variant ??
-        status.current_task_card?.actual_model_launch?.actual_variant ??
-        'pending');
-    const modelState = compactWatchText(status.current_task_card?.model_enforcement_state ?? 'not_started');
-    const observedModel = compactWatchText(status.current_task_card?.observed_model ?? status.current_task_card?.actual_model_launch?.observed_model ?? 'pending');
-    const observedVariant = compactWatchText(status.current_task_card?.observed_variant ?? status.current_task_card?.actual_model_launch?.observed_variant ?? 'pending');
-    const observationState = compactWatchText(status.current_task_card?.observation_status ?? status.current_task_card?.actual_model_launch?.observation_status ?? 'not_started');
-    const observationMatch = compactWatchText(status.current_task_card?.observation_match_state ??
-        status.current_task_card?.actual_model_launch?.observation_match_state ??
-        'not_started');
     const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
         status.active_agent_id ??
         status.current_task_card?.agent_config_summary?.roster_name);
@@ -813,16 +773,8 @@ function formatQuietWatchStatusLine(status) {
     return [
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Model: ${model} / ${variant}`,
-        `Dispatched: ${dispatchedModel} / ${dispatchedVariant} (${modelState})`,
-        `Observed: ${observedModel} / ${observedVariant} (${observationMatch})`,
-        `Evidence: ${describeWatchModelEvidence(status)}`,
-        `Config drift: ${describeWatchConfigDrift(status)}`,
-        `Ownership: ${describeWatchOwnership(status)}`,
-        `Framing: ${status.current_task_card?.assignment_framing?.summary ?? 'none'}`,
-        `Sentinel: ${status.current_task_card?.ownership_guard?.summary ?? 'none'}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
-        `Lease: ${formatWatchMutationLeaseSummary(status)}`,
     ].join('\n');
 }
 function formatWatchStatusLine(status, verbosity) {
