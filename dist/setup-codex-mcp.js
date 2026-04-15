@@ -23,6 +23,7 @@ function defaultPackageRoot() {
     return node_path_1.default.resolve(__dirname, '..');
 }
 const FOREMAN_CAP_SKILL_NAME = 'cap';
+const PACKAGED_FOREMAN_CUSTOM_AGENT_PREFIX = 'foreman-';
 function resolveCodexHome() {
     const configured = process.env.CODEX_HOME?.trim();
     if (configured && configured.length > 0) {
@@ -33,8 +34,14 @@ function resolveCodexHome() {
 function resolveCodexSkillPath(skillName) {
     return node_path_1.default.join(resolveCodexHome(), 'skills', skillName);
 }
+function resolveCodexAgentsDirectoryPath() {
+    return node_path_1.default.join(resolveCodexHome(), 'agents');
+}
 function resolvePackagedForemanCapSkillPath(packageRoot = defaultPackageRoot()) {
     return node_path_1.default.join(packageRoot, 'skills', FOREMAN_CAP_SKILL_NAME, 'SKILL.md');
+}
+function resolvePackagedForemanAgentsDirectoryPath(packageRoot = defaultPackageRoot()) {
+    return node_path_1.default.join(packageRoot, 'agents');
 }
 async function readTextIfExists(filePath) {
     try {
@@ -47,6 +54,16 @@ async function readTextIfExists(filePath) {
         throw error;
     }
 }
+async function listPackagedForemanCustomAgentFiles(packageRoot = defaultPackageRoot()) {
+    const agentsDir = resolvePackagedForemanAgentsDirectoryPath(packageRoot);
+    const entries = await (0, promises_1.readdir)(agentsDir, { withFileTypes: true });
+    return entries
+        .filter((entry) => entry.isFile() &&
+        entry.name.startsWith(PACKAGED_FOREMAN_CUSTOM_AGENT_PREFIX) &&
+        entry.name.endsWith('.toml'))
+        .map((entry) => entry.name)
+        .sort();
+}
 function createCapSkillSummary(status, skillPath) {
     switch (status) {
         case 'matching_install':
@@ -58,6 +75,20 @@ function createCapSkillSummary(status, skillPath) {
         case 'unreadable_install':
         default:
             return `Codex skill $cap at ${skillPath} could not be inspected reliably.`;
+    }
+}
+function createCustomAgentSummary(status, directoryPath, agentNames, fileCount, details) {
+    const namesSummary = agentNames.length > 0 ? ` (${agentNames.join(', ')})` : '';
+    switch (status) {
+        case 'matching_install':
+            return `Codex custom agent roster is installed at ${directoryPath} with ${fileCount} packaged files${namesSummary}.`;
+        case 'missing_install':
+            return `Codex custom agent roster is missing packaged files at ${directoryPath}. Re-run codex-foreman setup, then restart Codex CLI.${details?.missingFiles?.length ? ` Missing: ${details.missingFiles.join(', ')}.` : ''}`;
+        case 'outdated_install':
+            return `Codex custom agent roster at ${directoryPath} does not match the packaged Foreman agent files. Re-run codex-foreman setup, then restart Codex CLI.${details?.outdatedFiles?.length ? ` Outdated: ${details.outdatedFiles.join(', ')}.` : ''}${details?.missingFiles?.length ? ` Missing: ${details.missingFiles.join(', ')}.` : ''}`;
+        case 'unreadable_install':
+        default:
+            return `Codex custom agent roster at ${directoryPath} could not be inspected reliably.`;
     }
 }
 async function installPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
@@ -79,6 +110,37 @@ async function installPackagedForemanCapSkill(packageRoot = defaultPackageRoot()
         skillName: FOREMAN_CAP_SKILL_NAME,
         skillPath: destinationSkillDir,
         status: installedContent === null ? 'installed' : 'updated',
+    };
+}
+async function installPackagedForemanCustomAgents(packageRoot = defaultPackageRoot()) {
+    const sourceAgentsDir = resolvePackagedForemanAgentsDirectoryPath(packageRoot);
+    const destinationAgentsDir = resolveCodexAgentsDirectoryPath();
+    const agentFiles = await listPackagedForemanCustomAgentFiles(packageRoot);
+    let installedCount = 0;
+    let updatedCount = 0;
+    await (0, promises_1.mkdir)(destinationAgentsDir, { recursive: true });
+    for (const fileName of agentFiles) {
+        const sourceFile = node_path_1.default.join(sourceAgentsDir, fileName);
+        const destinationFile = node_path_1.default.join(destinationAgentsDir, fileName);
+        const packagedContent = await (0, promises_1.readFile)(sourceFile, 'utf8');
+        const installedContent = await readTextIfExists(destinationFile);
+        if (installedContent === packagedContent) {
+            continue;
+        }
+        await (0, promises_1.cp)(sourceFile, destinationFile, { force: true });
+        if (installedContent === null) {
+            installedCount += 1;
+        }
+        else {
+            updatedCount += 1;
+        }
+    }
+    const status = updatedCount > 0 ? 'updated' : installedCount > 0 ? 'installed' : 'already_installed';
+    return {
+        directoryPath: destinationAgentsDir,
+        status,
+        agentNames: agentFiles.map((fileName) => node_path_1.default.basename(fileName, '.toml')),
+        fileCount: agentFiles.length,
     };
 }
 async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
@@ -105,6 +167,53 @@ async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()
             skillPath,
             status: 'unreadable_install',
             summary: `${createCapSkillSummary('unreadable_install', skillPath)} ${message}`,
+        };
+    }
+}
+async function inspectPackagedForemanCustomAgents(packageRoot = defaultPackageRoot()) {
+    const directoryPath = resolveCodexAgentsDirectoryPath();
+    const sourceAgentsDir = resolvePackagedForemanAgentsDirectoryPath(packageRoot);
+    try {
+        const agentFiles = await listPackagedForemanCustomAgentFiles(packageRoot);
+        const missingFiles = [];
+        const outdatedFiles = [];
+        for (const fileName of agentFiles) {
+            const [packagedContent, installedContent] = await Promise.all([
+                (0, promises_1.readFile)(node_path_1.default.join(sourceAgentsDir, fileName), 'utf8'),
+                readTextIfExists(node_path_1.default.join(directoryPath, fileName)),
+            ]);
+            if (installedContent === null) {
+                missingFiles.push(fileName);
+                continue;
+            }
+            if (installedContent !== packagedContent) {
+                outdatedFiles.push(fileName);
+            }
+        }
+        const status = outdatedFiles.length > 0
+            ? 'outdated_install'
+            : missingFiles.length > 0
+                ? 'missing_install'
+                : 'matching_install';
+        return {
+            directoryPath,
+            status,
+            summary: createCustomAgentSummary(status, directoryPath, agentFiles.map((fileName) => node_path_1.default.basename(fileName, '.toml')), agentFiles.length, {
+                missingFiles,
+                outdatedFiles,
+            }),
+            agentNames: agentFiles.map((fileName) => node_path_1.default.basename(fileName, '.toml')),
+            fileCount: agentFiles.length,
+        };
+    }
+    catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown filesystem error.';
+        return {
+            directoryPath,
+            status: 'unreadable_install',
+            summary: `${createCustomAgentSummary('unreadable_install', directoryPath, [], 0)} ${message}`,
+            agentNames: [],
+            fileCount: 0,
         };
     }
 }
@@ -407,10 +516,12 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         registryInspectionSummary = `${registryInspectionSummary} ${formatCommandFailure(options.codexPath, listArgs, listResult)}`;
     }
     const capSkill = await inspectPackagedForemanCapSkill(dependencies.packageRoot);
+    const customAgents = await inspectPackagedForemanCustomAgents(dependencies.packageRoot);
     const status = registrationStatus === 'matching_registration' &&
         configExists &&
         registryInspectionStatus === 'listed' &&
-        capSkill.status === 'matching_install'
+        capSkill.status === 'matching_install' &&
+        customAgents.status === 'matching_install'
         ? 'ok'
         : 'warning';
     return {
@@ -434,6 +545,11 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         capSkillPath: capSkill.skillPath,
         capSkillStatus: capSkill.status,
         capSkillSummary: capSkill.summary,
+        customAgentDirectoryPath: customAgents.directoryPath,
+        customAgentNames: customAgents.agentNames,
+        customAgentFileCount: customAgents.fileCount,
+        customAgentStatus: customAgents.status,
+        customAgentSummary: customAgents.summary,
     };
 }
 async function setupCodexMcp(options, dependencies = {}) {
@@ -456,6 +572,7 @@ async function setupCodexMcp(options, dependencies = {}) {
         if (await hasMatchingRegistration(existingRegistration, launchTarget.command, launchTarget.args)) {
             const configResult = await (0, runtime_1.ensureForemanConfig)(options.cwd);
             const capSkill = await installPackagedForemanCapSkill(dependencies.packageRoot);
+            const customAgents = await installPackagedForemanCustomAgents(dependencies.packageRoot);
             return {
                 status: 'already_registered',
                 serverName: options.serverName,
@@ -466,7 +583,11 @@ async function setupCodexMcp(options, dependencies = {}) {
                 capSkillName: capSkill.skillName,
                 capSkillPath: capSkill.skillPath,
                 capSkillStatus: capSkill.status,
-                restartRequired: capSkill.status !== 'already_installed',
+                customAgentDirectoryPath: customAgents.directoryPath,
+                customAgentNames: customAgents.agentNames,
+                customAgentFileCount: customAgents.fileCount,
+                customAgentStatus: customAgents.status,
+                restartRequired: capSkill.status !== 'already_installed' || customAgents.status !== 'already_installed',
             };
         }
         throw new CodexMcpSetupConflictError([
@@ -483,6 +604,7 @@ async function setupCodexMcp(options, dependencies = {}) {
     }
     const configResult = await (0, runtime_1.ensureForemanConfig)(options.cwd);
     const capSkill = await installPackagedForemanCapSkill(dependencies.packageRoot);
+    const customAgents = await installPackagedForemanCustomAgents(dependencies.packageRoot);
     return {
         status: 'registered',
         serverName: options.serverName,
@@ -493,6 +615,10 @@ async function setupCodexMcp(options, dependencies = {}) {
         capSkillName: capSkill.skillName,
         capSkillPath: capSkill.skillPath,
         capSkillStatus: capSkill.status,
+        customAgentDirectoryPath: customAgents.directoryPath,
+        customAgentNames: customAgents.agentNames,
+        customAgentFileCount: customAgents.fileCount,
+        customAgentStatus: customAgents.status,
         restartRequired: true,
     };
 }

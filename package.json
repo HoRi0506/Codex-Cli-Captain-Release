@@ -1,6 +1,6 @@
 {
   "name": "codex-foreman",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": false,
   "description": "Captain-led Foreman harness for Codex CLI",
   "main": "dist/index.js",
@@ -13,6 +13,9 @@
     "dist",
     "schemas",
     "skills",
+    "agents",
+    ".codex-plugin",
+    ".mcp.json",
     "scripts/bootstrap-foreman-config.cjs",
     "README.md",
     "docs/install.md",

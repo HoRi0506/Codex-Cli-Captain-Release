@@ -41,9 +41,9 @@ function usage() {
         '  codex-foreman resolve --run-id <id> --outcome <passed|needs_work|blocked> --summary <text> [--cwd <path>]',
         '    Resolve a verification-pending run explicitly through the verifier/operator path.',
         '  codex-foreman setup [--codex-bin <path>] [--server-name <name>]',
-        '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill under the local Codex skills directory, and add the MCP only when no conflicting registration exists.',
+        '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill and custom-agent roster under the local Codex home, and add the MCP only when no conflicting registration exists.',
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
-        '    Inspect Foreman MCP registration health, shared config presence, $cap skill install state, and other installed Codex MCP servers without mutating Codex config.',
+        '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
         '    Convenience wrapper: start + advance.',
     ].join('\n');
@@ -1514,6 +1514,7 @@ async function runCli(argv) {
             process.stdout.write(`${action} MCP server ${result.serverName} -> ${[result.launchCommand, ...result.launchArgs].join(' ')}; ${suffix}\n`);
             process.stdout.write(`${result.configCreated ? 'Created' : 'Using'} shared config ${result.configPath}.\n`);
             process.stdout.write(`${skillAction} Codex skill $${result.capSkillName} at ${result.capSkillPath}.\n`);
+            process.stdout.write(`${result.customAgentStatus === 'installed' ? 'Installed' : result.customAgentStatus === 'updated' ? 'Updated' : 'Using existing'} Codex custom agents (${result.customAgentFileCount}) at ${result.customAgentDirectoryPath}.\n`);
             if (result.restartRequired) {
                 process.stdout.write('Restart Codex CLI to pick up the new Foreman skill or refreshed MCP session.\n');
             }
@@ -1521,11 +1522,12 @@ async function runCli(argv) {
         }
         if (parsed.command === 'check-install') {
             const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
-            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
             process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
             process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
             process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);
             process.stdout.write(`Codex skill $${result.capSkillName}: ${result.capSkillSummary}\n`);
+            process.stdout.write(`Codex custom agents: ${result.customAgentSummary}\n`);
             process.stdout.write(`Registry summary: ${result.registryInspectionSummary}\n`);
             for (const server of result.otherInstalledMcpServers) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} hint=${server.usageHint}\n`);
