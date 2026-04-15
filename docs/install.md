@@ -6,14 +6,14 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 
 If Codex is assisting with installation, point it at this file and tell it:
 
-> Read this install guide, install codex-foreman 0.1.0 on this machine, verify the install, and finish with: Please restart Codex CLI.
+> Read this install guide, install codex-foreman 0.2.0 on this machine, verify the install, and finish with: Please restart Codex CLI.
 
 ## Preferred install path
 
 Install from the published package:
 
 ```bash
-npm install -g codex-foreman@0.1.0
+npm install -g codex-foreman@0.2.0
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -33,7 +33,7 @@ codex-foreman check-install
 If you are installing from a released tarball instead of the npm registry, use:
 
 ```bash
-npm install -g /absolute/path/to/codex-foreman-0.1.0.tgz
+npm install -g /absolute/path/to/codex-foreman-0.2.0.tgz
 codex-foreman setup
 codex-foreman check-install
 ```

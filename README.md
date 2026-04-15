@@ -1,6 +1,6 @@
 # codex-foreman
 
-Install-only release surface for Codex-Foreman 0.1.0.
+Install-only release surface for Codex-Foreman 0.2.0.
 
 This repository is generated from the source-of-truth development repository and intentionally ships only the install boundary.
 
