@@ -70,8 +70,12 @@ function createTaskOwnershipChain(input) {
     const reviewerAgentIds = Array.from(new Set(reviewerDelegations
         .map((delegation) => delegation.child_agent.agent_id)
         .filter((agentId) => typeof agentId === 'string' && agentId.length > 0)));
+    const stableAssignedAgentId = input.taskCard.owner_role === 'verifier' && input.taskCard.assigned_role !== 'verifier'
+        ? (0, runtime_1.getAgentIdForRole)(input.taskCard.assigned_role) ?? input.taskCard.assigned_agent_id
+        : input.taskCard.assigned_agent_id;
     const inferredReviewerAgentId = reviewerAgentIds.at(-1) ??
-        ((input.taskCard.completed_by_agent_id === (0, runtime_1.getAgentIdForRole)('verifier') ||
+        ((input.taskCard.owner_role === 'verifier' ||
+            input.taskCard.completed_by_agent_id === (0, runtime_1.getAgentIdForRole)('verifier') ||
             input.taskCard.verification_state !== 'pending')
             ? (0, runtime_1.getAgentIdForRole)('verifier')
             : null);
@@ -83,12 +87,12 @@ function createTaskOwnershipChain(input) {
             : null
         : input.taskCard.thread_ids.length > 0 || input.taskCard.latest_model_launch !== null
             ? 'host_session_visible_execution'
-            : input.taskCard.assigned_agent_id !== null
+            : stableAssignedAgentId !== null
                 ? 'no_visible_worker_linkage'
                 : 'missing_assignment';
     let state = 'missing';
     if (executionOwnerMode === 'host_session_fallback') {
-        state = input.taskCard.assigned_agent_id === null ? 'missing' : 'host_session_fallback';
+        state = stableAssignedAgentId === null ? 'missing' : 'host_session_fallback';
     }
     else if (reviewerLinkState === 'actual') {
         state = 'review_linked';
@@ -102,14 +106,14 @@ function createTaskOwnershipChain(input) {
     else if (latestWorkerDelegation !== null) {
         state = 'launched';
     }
-    else if (input.taskCard.assigned_agent_id !== null) {
+    else if (stableAssignedAgentId !== null) {
         state = 'assigned_only';
     }
     const chain = {
         state,
         assigned_role: input.taskCard.assigned_role,
-        assigned_agent_id: input.taskCard.assigned_agent_id,
-        selected_agent_id: input.taskCard.assigned_agent_id,
+        assigned_agent_id: stableAssignedAgentId,
+        selected_agent_id: stableAssignedAgentId,
         worker_count: workerDelegations.length,
         launched_worker_id: latestWorkerDelegation?.child_agent.agent_id ?? null,
         observed_worker_id: workerObservedThreadIds.at(-1) ?? hostObservedThreadIds.at(-1) ?? null,
@@ -345,7 +349,7 @@ function createTaskAssignmentFraming(taskCard) {
         catalog_source: source,
         target_role: taskCard.assigned_role,
         target_agent_id: targetAgentId,
-        summary: `${targetAgentId ?? taskCard.assigned_role} framing emphasizes ${strengths} for "${taskCard.title}".`,
+        summary: `Framer helper projection emphasizes ${strengths} for ${targetAgentId ?? taskCard.assigned_role} on "${taskCard.title}".`,
         prompt_prefix: promptPrefix,
     };
 }
@@ -384,12 +388,12 @@ function createTaskOwnershipGuard(input) {
         reasons.push(`concrete_worker_id=${input.concreteWorkerId}`);
     }
     const summary = verdict === 'foreman_managed'
-        ? 'Sentinel sees a Foreman-managed execution path.'
+        ? 'Sentinel helper projection sees a Foreman-managed execution path.'
         : verdict === 'mixed_visibility'
-            ? 'Sentinel sees Foreman-owned execution with host-session UI trace visibility still mixed in.'
+            ? 'Sentinel helper projection sees Foreman-owned execution with host-session UI trace visibility still mixed in.'
             : verdict === 'host_session_fallback'
-                ? 'Sentinel sees the task routed by Foreman but still carried by the host Codex session.'
-                : 'Sentinel cannot prove a stable ownership picture for the current task.';
+                ? 'Sentinel helper projection sees the task routed by Foreman but still carried by the host Codex session.'
+                : 'Sentinel helper projection cannot prove a stable ownership picture for the current task.';
     return {
         helper_agent_id: 'sentinel',
         helper_model: sentinelEntry.default_model,

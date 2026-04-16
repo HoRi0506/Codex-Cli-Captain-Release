@@ -67,6 +67,8 @@ const validation_1 = require("./validation");
 const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
 const MAX_CONTINUE_MAX_STEPS = 4;
+const WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES = 4000;
+const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules']);
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -230,6 +232,109 @@ function createExploreArtifactFromDelegationResults(run, taskCard, delegations) 
 }
 function hasExplicitOption(value, key) {
     return Object.prototype.hasOwnProperty.call(value, key);
+}
+function requiresWorkspaceMutationEvidence(taskCard) {
+    if (taskCard.task_kind !== 'execution' ||
+        taskCard.assigned_role !== 'code specialist' ||
+        taskCard.owner_role === 'verifier') {
+        return false;
+    }
+    return taskCard.acceptance_checks.length > 0;
+}
+async function captureCommandOutput(cwd, command, args) {
+    const child = (0, node_child_process_1.spawn)(command, args, {
+        cwd,
+        env: process.env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const stdoutChunks = [];
+    const stderrChunks = [];
+    let spawnError = null;
+    child.stdout.on('data', (chunk) => {
+        stdoutChunks.push(chunk.toString());
+    });
+    child.stderr.on('data', (chunk) => {
+        stderrChunks.push(chunk.toString());
+    });
+    child.on('error', (error) => {
+        spawnError = error.message;
+    });
+    const closeResult = await new Promise((resolve) => {
+        child.on('close', (code, signal) => {
+            resolve({ code, signal });
+        });
+    });
+    return {
+        code: closeResult.code,
+        signal: closeResult.signal,
+        stdout: stdoutChunks.join(''),
+        stderr: stderrChunks.join(''),
+        spawnError,
+    };
+}
+async function captureGitWorkspaceMutationFingerprint(cwd) {
+    const result = await captureCommandOutput(cwd, 'git', ['status', '--porcelain', '--untracked-files=all']);
+    if (result.spawnError || result.signal || result.code !== 0) {
+        return null;
+    }
+    return result.stdout
+        .split('\n')
+        .map((line) => line.trimEnd())
+        .filter((line) => line.length > 0 && !line.includes('.foreman/'))
+        .sort()
+        .join('\n');
+}
+async function collectFilesystemMutationFingerprint(root, currentDir, entries) {
+    const directoryEntries = await (0, promises_1.readdir)(currentDir, { withFileTypes: true });
+    directoryEntries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of directoryEntries) {
+        if (WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS.has(entry.name)) {
+            continue;
+        }
+        const fullPath = node_path_1.default.join(currentDir, entry.name);
+        const relativePath = node_path_1.default.relative(root, fullPath);
+        if (entry.isDirectory()) {
+            const completed = await collectFilesystemMutationFingerprint(root, fullPath, entries);
+            if (!completed) {
+                return false;
+            }
+            continue;
+        }
+        if (!entry.isFile()) {
+            continue;
+        }
+        const fileStat = await (0, promises_1.stat)(fullPath);
+        entries.push(`${relativePath}:${fileStat.size}:${fileStat.mtimeMs}`);
+        if (entries.length >= WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES) {
+            return false;
+        }
+    }
+    return true;
+}
+async function captureFilesystemWorkspaceMutationFingerprint(cwd) {
+    const entries = [];
+    const completed = await collectFilesystemMutationFingerprint(cwd, cwd, entries);
+    return completed ? entries.join('\n') : null;
+}
+async function captureWorkspaceMutationFingerprint(cwd) {
+    return (await captureGitWorkspaceMutationFingerprint(cwd)) ?? captureFilesystemWorkspaceMutationFingerprint(cwd);
+}
+async function enforceWorkspaceMutationEvidence(input) {
+    if (input.outcome.kind !== 'completed' ||
+        input.initialFingerprint === null ||
+        !requiresWorkspaceMutationEvidence(input.taskCard)) {
+        return input.outcome;
+    }
+    const finalFingerprint = await captureWorkspaceMutationFingerprint(input.cwd);
+    if (finalFingerprint === null || finalFingerprint !== input.initialFingerprint) {
+        return input.outcome;
+    }
+    return {
+        kind: 'execution_failed',
+        threadId: input.outcome.threadId,
+        rawEventsFile: input.outcome.rawEventsFile,
+        summary: `Codex reported completion for "${input.taskCard.title}", but Foreman could not observe any workspace mutation outside .foreman for this mutation-required task.`,
+    };
 }
 function resolveRequestSettings(options, roleDefaults) {
     return {
@@ -2674,6 +2779,9 @@ async function finalizeRawEventsFile(pendingPath, rawStream, threadId) {
     return null;
 }
 async function executeCodex(options, executionRequest, runPaths, run, taskCards, taskCard, latestHandoff, orchestratorDecision, persistExecutionThread = true) {
+    const initialMutationFingerprint = requiresWorkspaceMutationEvidence(taskCard)
+        ? await captureWorkspaceMutationFingerprint(options.cwd)
+        : null;
     const codexArgs = buildCodexArgs(executionRequest);
     const pendingRawEventsPath = node_path_1.default.join(runPaths.rawEventsDir, 'pending.jsonl');
     const rawStream = (0, node_fs_1.createWriteStream)(pendingRawEventsPath, { flags: 'a' });
@@ -2812,12 +2920,17 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
             };
         }
         if (closeResult.code === 0 && closeResult.signal === null) {
-            return {
-                kind: 'completed',
-                threadId,
-                rawEventsFile,
-                summary: terminalSummary,
-            };
+            return enforceWorkspaceMutationEvidence({
+                cwd: options.cwd,
+                taskCard,
+                initialFingerprint: initialMutationFingerprint,
+                outcome: {
+                    kind: 'completed',
+                    threadId,
+                    rawEventsFile,
+                    summary: terminalSummary,
+                },
+            });
         }
     }
     if (terminalEvent === 'failed' || terminalEvent === 'error') {
