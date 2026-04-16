@@ -3,15 +3,29 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS = exports.SPECIALIST_ROLES = void 0;
 exports.summarizeTaskOwnershipChain = summarizeTaskOwnershipChain;
 exports.createTaskOwnershipChain = createTaskOwnershipChain;
 exports.createOwnershipChainProvenanceHeader = createOwnershipChainProvenanceHeader;
 exports.createTaskAssignmentFraming = createTaskAssignmentFraming;
 exports.buildFramedTaskPrompt = buildFramedTaskPrompt;
 exports.createTaskOwnershipGuard = createTaskOwnershipGuard;
+exports.getSpecialistRolePlaybookContract = getSpecialistRolePlaybookContract;
+exports.maybeGetSpecialistRolePlaybookContract = maybeGetSpecialistRolePlaybookContract;
+exports.listSpecialistRolePlaybookContracts = listSpecialistRolePlaybookContracts;
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
+exports.SPECIALIST_ROLES = ['planner', 'explorer', 'code specialist', 'verifier'];
+exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS = [
+    'summary',
+    'findings',
+    'changed_files',
+    'evidence_paths',
+    'open_questions',
+    'recommended_next_action',
+    'acceptance_status',
+];
 function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     const modelTierIntent = taskCard.model_tier_intent ?? 'standard';
     if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
@@ -209,65 +223,107 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
         captain: {
             kind: 'primary',
             canonical_role: 'orchestrator',
+            codex_custom_agent: 'foreman_captain',
             purpose: 'Own the run, decide the next role, and keep the workflow coherent.',
             strengths: ['routing', 'workflow supervision', 'final synthesis'],
             framing_seed: 'Keep the workflow bounded, inspectable, and aligned with the next best specialist move.',
             default_model: 'gpt-5.4',
             default_reasoning_effort: 'high',
+            playbook_bundle: [],
+            wrapper_doc_path: null,
+            wrapper_summary: null,
+            result_contract_fields: [],
+            result_contract_summary: null,
         },
         tactician: {
             kind: 'primary',
             canonical_role: 'planner',
+            codex_custom_agent: 'foreman_tactician',
             purpose: 'Shape the next bounded move and keep scope explicit.',
             strengths: ['task scoping', 'bounded planning', 'handoff clarity'],
             framing_seed: 'Act as a planning specialist who turns ambiguous work into the next bounded, inspectable move.',
             default_model: 'gpt-5.4',
             default_reasoning_effort: 'medium',
+            playbook_bundle: ['spec-driven-development', 'planning-and-task-breakdown'],
+            wrapper_doc_path: 'skills/foreman-planner.md',
+            wrapper_summary: 'Planner wrapper keeps ambiguous work inside one bounded scoping pass and returns the shared Foreman specialist result contract.',
+            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_summary: 'Return a bounded planning contract with summary, findings, evidence, open questions, and the next recommended action.',
         },
         scout: {
             kind: 'primary',
             canonical_role: 'explorer',
+            codex_custom_agent: 'foreman_scout',
             purpose: 'Inspect state and gather only the evidence needed for the active task.',
             strengths: ['repository inspection', 'evidence gathering', 'surface mapping'],
             framing_seed: 'Act as an investigation specialist who gathers bounded evidence without drifting into implementation.',
             default_model: 'gpt-5.4-mini',
             default_reasoning_effort: 'medium',
+            playbook_bundle: ['context-engineering', 'source-driven-development'],
+            wrapper_doc_path: 'skills/foreman-explorer.md',
+            wrapper_summary: 'Explorer wrapper keeps repository inspection read-heavy, bounded, and evidence-oriented before work returns to Codex.',
+            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_summary: 'Return repository findings, evidence paths, open questions, and a bounded recommendation instead of drifting into implementation.',
         },
         raider: {
             kind: 'primary',
             canonical_role: 'code specialist',
+            codex_custom_agent: 'foreman_raider',
             purpose: 'Execute the scoped implementation task.',
             strengths: ['implementation', 'patching', 'focused validation'],
             framing_seed: 'Act as an implementation specialist who delivers the scoped change without widening the task.',
             default_model: 'gpt-5.4-mini',
             default_reasoning_effort: 'medium',
+            playbook_bundle: ['incremental-implementation', 'test-driven-development', 'api-and-interface-design'],
+            wrapper_doc_path: 'skills/foreman-code-specialist.md',
+            wrapper_summary: 'Code-specialist wrapper keeps implementation incremental, scoped, and ready for verification with the shared Foreman result contract.',
+            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_summary: 'Return implementation findings, changed files, evidence, remaining questions, and a clear recommendation for verification or follow-up.',
         },
         arbiter: {
             kind: 'primary',
             canonical_role: 'verifier',
+            codex_custom_agent: 'foreman_arbiter',
             purpose: 'Review the result and decide whether it is ready to move on.',
             strengths: ['verification', 'acceptance checking', 'repair signaling'],
             framing_seed: 'Act as a review specialist who checks the result against scope and acceptance before it returns upstream.',
             default_model: 'gpt-5.4',
             default_reasoning_effort: 'high',
+            playbook_bundle: ['debugging-and-error-recovery', 'code-review-and-quality', 'security-and-hardening'],
+            wrapper_doc_path: 'skills/foreman-verifier.md',
+            wrapper_summary: 'Verifier wrapper keeps review explicit, acceptance-oriented, and honest about pass, repair, or hold outcomes.',
+            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_summary: 'Return verification findings, supporting evidence, acceptance status, and the next recommended repair or completion action.',
         },
         framer: {
             kind: 'helper',
             canonical_role: null,
+            codex_custom_agent: null,
             purpose: 'Write compact expert framing for the specialist already chosen by captain.',
             strengths: ['handoff sharpening', 'role framing', 'scope emphasis'],
             framing_seed: 'Do not choose the role; sharpen the role that captain already selected.',
             default_model: 'gpt-5.4-mini',
             default_reasoning_effort: 'medium',
+            playbook_bundle: [],
+            wrapper_doc_path: null,
+            wrapper_summary: null,
+            result_contract_fields: [],
+            result_contract_summary: null,
         },
         sentinel: {
             kind: 'helper',
             canonical_role: null,
+            codex_custom_agent: 'foreman_sentinel',
             purpose: 'Classify whether Foreman-managed work has drifted back toward host-session execution visibility.',
             strengths: ['ownership drift detection', 'trace classification', 'operator warnings'],
             framing_seed: 'Do not reroute work; report whether the current ownership and trace picture still looks Foreman-managed.',
             default_model: 'gpt-5.4-mini',
             default_reasoning_effort: 'medium',
+            playbook_bundle: [],
+            wrapper_doc_path: null,
+            wrapper_summary: null,
+            result_contract_fields: [],
+            result_contract_summary: null,
         },
     },
 };
@@ -281,6 +337,12 @@ function isReasoningVariant(value) {
 function isRole(value) {
     return value === 'orchestrator' || value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'verifier';
 }
+function isSpecialistRole(value) {
+    return value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'verifier';
+}
+function isResultContractField(value) {
+    return typeof value === 'string' && exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS.includes(value);
+}
 function normalizeAgentRoleCatalogEntry(value) {
     if (!value || typeof value !== 'object') {
         return null;
@@ -288,6 +350,7 @@ function normalizeAgentRoleCatalogEntry(value) {
     const candidate = value;
     const kind = candidate.kind === 'primary' || candidate.kind === 'helper' ? candidate.kind : null;
     const canonicalRole = candidate.canonical_role === null || isRole(candidate.canonical_role) ? candidate.canonical_role : undefined;
+    const codexCustomAgent = typeof candidate.codex_custom_agent === 'string' || candidate.codex_custom_agent === null ? candidate.codex_custom_agent : undefined;
     const purpose = typeof candidate.purpose === 'string' ? candidate.purpose : null;
     const strengths = Array.isArray(candidate.strengths) && candidate.strengths.every((entry) => typeof entry === 'string')
         ? candidate.strengths
@@ -297,23 +360,46 @@ function normalizeAgentRoleCatalogEntry(value) {
     const defaultReasoningEffort = isReasoningVariant(candidate.default_reasoning_effort)
         ? candidate.default_reasoning_effort
         : undefined;
+    const playbookBundle = Array.isArray(candidate.playbook_bundle) && candidate.playbook_bundle.every((entry) => typeof entry === 'string')
+        ? candidate.playbook_bundle
+        : undefined;
+    const wrapperDocPath = typeof candidate.wrapper_doc_path === 'string' || candidate.wrapper_doc_path === null ? candidate.wrapper_doc_path : undefined;
+    const wrapperSummary = typeof candidate.wrapper_summary === 'string' || candidate.wrapper_summary === null ? candidate.wrapper_summary : undefined;
+    const resultContractFields = Array.isArray(candidate.result_contract_fields) && candidate.result_contract_fields.every((entry) => isResultContractField(entry))
+        ? candidate.result_contract_fields
+        : undefined;
+    const resultContractSummary = typeof candidate.result_contract_summary === 'string' || candidate.result_contract_summary === null
+        ? candidate.result_contract_summary
+        : undefined;
     if (kind === null ||
         canonicalRole === undefined ||
+        codexCustomAgent === undefined ||
         purpose === null ||
         strengths === null ||
         framingSeed === null ||
         defaultModel === undefined ||
-        defaultReasoningEffort === undefined) {
+        defaultReasoningEffort === undefined ||
+        playbookBundle === undefined ||
+        wrapperDocPath === undefined ||
+        wrapperSummary === undefined ||
+        resultContractFields === undefined ||
+        resultContractSummary === undefined) {
         return null;
     }
     return {
         kind,
         canonical_role: canonicalRole,
+        codex_custom_agent: codexCustomAgent,
         purpose,
         strengths,
         framing_seed: framingSeed,
         default_model: defaultModel,
         default_reasoning_effort: defaultReasoningEffort,
+        playbook_bundle: playbookBundle,
+        wrapper_doc_path: wrapperDocPath,
+        wrapper_summary: wrapperSummary,
+        result_contract_fields: resultContractFields,
+        result_contract_summary: resultContractSummary,
     };
 }
 function loadCatalog() {
@@ -474,5 +560,37 @@ function createTaskOwnershipGuard(input) {
         summary,
         reasons,
     };
+}
+function getSpecialistRolePlaybookContract(role, agentId) {
+    const { source } = loadCatalog();
+    const specialistEntry = getCatalogEntryForAgent(agentId ?? null, role);
+    const rosterName = agentId ?? (0, runtime_1.getAgentIdForRole)(role) ?? role;
+    return {
+        catalog_source: source,
+        role,
+        roster_name: rosterName,
+        codex_custom_agent: specialistEntry.codex_custom_agent,
+        purpose: specialistEntry.purpose,
+        strengths: [...specialistEntry.strengths],
+        default_model: specialistEntry.default_model,
+        default_reasoning_effort: specialistEntry.default_reasoning_effort,
+        playbook_source: 'agent-skills',
+        playbook_bundle: [...specialistEntry.playbook_bundle],
+        wrapper_doc_path: specialistEntry.wrapper_doc_path,
+        wrapper_summary: specialistEntry.wrapper_summary,
+        result_contract_fields: [...specialistEntry.result_contract_fields],
+        result_contract_summary: specialistEntry.result_contract_summary,
+        adapter_layer: 'thin_foreman_wrapper',
+        upstream_interception_claim: 'not_claimed',
+    };
+}
+function maybeGetSpecialistRolePlaybookContract(role, agentId) {
+    if (!isSpecialistRole(role)) {
+        return null;
+    }
+    return getSpecialistRolePlaybookContract(role, agentId);
+}
+function listSpecialistRolePlaybookContracts() {
+    return exports.SPECIALIST_ROLES.map((role) => getSpecialistRolePlaybookContract(role, (0, runtime_1.getAgentIdForRole)(role)));
 }
 //# sourceMappingURL=helper-agents.js.map

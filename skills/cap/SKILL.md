@@ -16,6 +16,8 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - when the packaged custom-agent roster is available, treat `foreman_captain` as the first Codex-native receiver for the `$cap` request
 - keep the public entry surface narrow: the operator uses `$cap`, while worker-to-worker progression stays internal to Foreman
 - prefer persisted Foreman state, status, orchestration, and delegation visibility over ad hoc host-session improvisation
+- treat Codex as the orchestrator that decides when to stay local, when to inspect Foreman state, when to call a specialist role, and when to verify before replying
+- treat Foreman as the bounded toolbox that exposes role, model, playbook, wrapper, result-contract, run, delegation, and evidence metadata
 
 ## Required workflow
 
@@ -31,6 +33,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
    - `foreman_raider` for implementation
    - `foreman_arbiter` for review
    - `foreman_sentinel` for ownership classification
+8. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
 
 ## Captain-directed loop
 
@@ -42,5 +45,8 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 
 - `$cap` depends on the installed `codex-foreman` MCP and the packaged local skill directory
 - the packaged install surface may also ship matching Codex custom-agent files for internal harness routing, but `$cap` remains the only public operator entrypoint
+- those custom agents or subagents are bounded specialist executors that Codex chooses deliberately; they are not hidden always-on workers
+- packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, code specialist, and verifier; those are internal specialist contracts, not public operator commands
+- upstream lifecycle commands such as `/spec`, `/plan`, `/build`, `/test`, `/review`, and `/ship` are playbook inspiration only here, not the public Codex-Foreman operator surface
 - if the packaged custom-agent roster is unavailable, stay on the persisted Foreman MCP path rather than inventing a public worker command surface
 - new or updated skill content requires a fresh Codex session before the change is available

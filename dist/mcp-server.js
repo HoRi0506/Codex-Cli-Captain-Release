@@ -1311,6 +1311,70 @@ function createTaskCardAgentConfigSummary(role, foremanConfig) {
         config_entries: [...agentConfig.config_entries],
     };
 }
+function createRolePlaybookContractView(role, agentConfigSummary, preferredAgentId) {
+    const contract = (0, helper_agents_1.maybeGetSpecialistRolePlaybookContract)(role, preferredAgentId ?? agentConfigSummary?.roster_name ?? null);
+    if (contract === null) {
+        return null;
+    }
+    return {
+        catalog_source: contract.catalog_source,
+        role: contract.role,
+        roster_name: agentConfigSummary?.roster_name ?? contract.roster_name,
+        configured_model: agentConfigSummary?.model ?? contract.default_model,
+        configured_variant: agentConfigSummary?.variant ?? contract.default_reasoning_effort,
+        codex_custom_agent: contract.codex_custom_agent,
+        purpose: contract.purpose,
+        strengths: [...contract.strengths],
+        playbook_source: contract.playbook_source,
+        playbook_bundle: [...contract.playbook_bundle],
+        wrapper_doc_path: contract.wrapper_doc_path,
+        wrapper_summary: contract.wrapper_summary,
+        result_contract_fields: [...contract.result_contract_fields],
+        result_contract_summary: contract.result_contract_summary,
+        adapter_layer: contract.adapter_layer,
+        upstream_interception_claim: contract.upstream_interception_claim,
+    };
+}
+function createSpecialistRoleRosterView(foremanConfig) {
+    return (0, helper_agents_1.listSpecialistRolePlaybookContracts)().map((contract) => createRolePlaybookContractView(contract.role, createTaskCardAgentConfigSummary(contract.role, foremanConfig), contract.roster_name)).filter((entry) => entry !== null);
+}
+function createSpecialistContractSummary(input) {
+    const contract = input.taskCard.owner_role === 'verifier' ? input.ownerRolePlaybook ?? input.assignedRolePlaybook : input.assignedRolePlaybook;
+    if (contract === null) {
+        return null;
+    }
+    const playbooks = contract.playbook_bundle.length > 0 ? contract.playbook_bundle.join(', ') : 'none';
+    const reviewState = input.taskCard.owner_role === 'verifier' ? input.taskCard.verification_state : 'pending_or_not_started';
+    return `role=${contract.role} roster=${contract.roster_name} model=${contract.configured_model ?? 'none'}/${contract.configured_variant ?? 'none'} playbooks=${playbooks} execution=${input.executionProof.proof_state} review=${reviewState} adapter=${contract.adapter_layer}`;
+}
+function describeOperatorExecutionMode(currentTaskCard) {
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    if (proofState === 'foreman_worker_visible') {
+        return 'delegated_worker';
+    }
+    if (proofState === 'captain_read_only_fallback') {
+        return 'captain_read_only_fallback';
+    }
+    if (proofState === 'host_session_fallback') {
+        return 'local_host_fallback';
+    }
+    return 'planned_assignment_only';
+}
+function createOperatorSummary(currentTaskCard, guidanceSource) {
+    if (currentTaskCard === null) {
+        return null;
+    }
+    const role = resolveOperatorDisplayRole(currentTaskCard);
+    const agent = resolveOperatorDisplayAgentName(currentTaskCard);
+    const model = resolveCurrentTaskModel(currentTaskCard);
+    const variant = resolveCurrentTaskVariant(currentTaskCard);
+    const playbookBundle = currentTaskCard.assigned_role_playbook?.playbook_bundle.length
+        ? currentTaskCard.assigned_role_playbook.playbook_bundle
+        : currentTaskCard.owner_role_playbook?.playbook_bundle ?? [];
+    const playbooks = playbookBundle.length > 0 ? playbookBundle.join(', ') : 'none';
+    const review = describeOperatorReviewState(currentTaskCard, guidanceSource);
+    return `acting=${agent} role=${role} model=${model}/${variant} execution=${describeOperatorExecutionMode(currentTaskCard)} playbooks=${playbooks} review=${review}`;
+}
 function createOrchestratorRequestSettingsPreview(foremanConfig) {
     const agentConfig = foremanConfig.agents.orchestrator;
     const requestSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)(agentConfig);
@@ -1477,6 +1541,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
     const actualModelLaunch = selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations);
     const ownerAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
     const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.assigned_role ?? taskCard.owner_role, foremanConfig);
+    const ownerRolePlaybook = createRolePlaybookContractView(taskCard.owner_role, ownerAgentConfigSummary, taskCard.assigned_agent_id);
+    const assignedRolePlaybook = createRolePlaybookContractView(taskCard.assigned_role ?? taskCard.owner_role, assignedAgentConfigSummary, taskCard.assigned_agent_id);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
     const assignmentFraming = (0, helper_agents_1.createTaskAssignmentFraming)(taskCard.owner_role === 'verifier'
         ? {
@@ -1519,6 +1585,12 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         readOnlyFallbackAllowed,
         hostExecutionEvidenceVisible,
     });
+    const specialistContractSummary = createSpecialistContractSummary({
+        taskCard,
+        ownerRolePlaybook,
+        assignedRolePlaybook,
+        executionProof,
+    });
     return {
         task_card_id: taskCard.task_card_id,
         title: taskCard.title,
@@ -1538,6 +1610,9 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         agent_config_summary: ownerAgentConfigSummary,
         owner_agent_config_summary: ownerAgentConfigSummary,
         assigned_agent_config_summary: assignedAgentConfigSummary,
+        owner_role_playbook: ownerRolePlaybook,
+        assigned_role_playbook: assignedRolePlaybook,
+        specialist_contract_summary: specialistContractSummary,
         resolved_request_settings: resolvedRequestSettings,
         execution_proof: executionProof,
         ownership_chain: ownershipChain,
@@ -2023,6 +2098,13 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         nextStep: visibility.orchestrator.next_step,
     });
     const runLocator = createResolvedForemanRunLocator(cwd, visibility.run_id);
+    const specialistRoleRoster = createSpecialistRoleRosterView(foremanConfig);
+    const operatorSummary = createOperatorSummary(currentTaskCard, {
+        latest_response: sanitizeLatestSummaryRecord(run.latest_response),
+        latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
+        stage: visibility.stage,
+        active_role: visibility.active_role,
+    });
     return {
         cwd,
         run_id: visibility.run_id,
@@ -2059,6 +2141,8 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         server_identity: serverIdentity,
         task_graph_summary: taskGraphSummary,
         current_task_card: currentTaskCard,
+        specialist_role_roster: specialistRoleRoster,
+        operator_summary: operatorSummary,
         orchestrator_agent_config_summary: createTaskCardAgentConfigSummary('orchestrator', foremanConfig),
         orchestrator_request_settings_preview: createOrchestratorRequestSettingsPreview(foremanConfig),
         orchestrator_scope: ORCHESTRATOR_SCOPE,
@@ -2143,6 +2227,8 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         server_identity: serverIdentity,
         task_graph_summary: EMPTY_TASK_GRAPH_SUMMARY,
         current_task_card: null,
+        specialist_role_roster: [],
+        operator_summary: null,
         orchestrator_agent_config_summary: null,
         orchestrator_request_settings_preview: null,
         orchestrator_scope: ORCHESTRATOR_SCOPE,
@@ -2230,6 +2316,8 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         server_identity: serverIdentity,
         task_graph_summary: EMPTY_TASK_GRAPH_SUMMARY,
         current_task_card: null,
+        specialist_role_roster: [],
+        operator_summary: null,
         orchestrator_agent_config_summary: null,
         orchestrator_request_settings_preview: null,
         orchestrator_scope: ORCHESTRATOR_SCOPE,
@@ -2383,6 +2471,8 @@ function createForemanActivityResult(input) {
         server_identity: input.status.server_identity,
         task_graph_summary: input.status.task_graph_summary,
         current_task_card: input.status.current_task_card,
+        specialist_role_roster: input.status.specialist_role_roster,
+        operator_summary: input.status.operator_summary ?? null,
         orchestrator_agent_config_summary: input.status.orchestrator_agent_config_summary,
         orchestrator_request_settings_preview: input.status.orchestrator_request_settings_preview,
         orchestrator_scope: input.status.orchestrator_scope,
@@ -2815,7 +2905,14 @@ function createTaskOperatorVisibilitySummary(currentTaskCard) {
     const configDriftRole = currentTaskCard.shared_config_drift?.role ?? 'none';
     const guardVerdict = currentTaskCard.ownership_guard?.verdict ?? 'ownership_unclear';
     const framingTarget = currentTaskCard.assignment_framing?.target_agent_id ?? 'none';
-    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
+    const playbookBundle = currentTaskCard.assigned_role_playbook?.playbook_bundle.length
+        ? currentTaskCard.assigned_role_playbook.playbook_bundle.join(',')
+        : 'none';
+    const wrapperDoc = currentTaskCard.assigned_role_playbook?.wrapper_doc_path ?? 'none';
+    const resultContract = currentTaskCard.assigned_role_playbook?.result_contract_fields.length
+        ? currentTaskCard.assigned_role_playbook.result_contract_fields.join(',')
+        : 'none';
+    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
 }
 function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
