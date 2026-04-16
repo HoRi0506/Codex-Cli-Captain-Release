@@ -7,7 +7,7 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.2.0/codex-foreman-1.2.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.3.0/codex-foreman-1.3.0.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
@@ -19,7 +19,7 @@ Codex should execute these steps for the preferred install path:
 Install from the exact release tarball:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.2.0/codex-foreman-1.2.0.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.3.0/codex-foreman-1.3.0.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
