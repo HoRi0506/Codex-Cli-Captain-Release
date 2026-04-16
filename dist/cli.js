@@ -771,10 +771,17 @@ function formatCompactWatchStatusLine(status) {
         status.current_task_card?.agent_config_summary?.roster_name);
     const role = compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role);
     const executionSummary = compactWatchText(status.current_task_card?.execution_proof?.summary);
+    const provenance = compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header);
+    const reviewState = formatWatchReviewState(status);
+    const latestHandoff = formatWatchHandoff(status);
     return [
+        `Provenance: ${provenance}`,
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
+        `Task: ${status.current_task_card?.title ?? 'none'}`,
         `Model: ${model} / ${variant}`,
         `Execution: ${executionSummary}`,
+        `Review: ${reviewState}`,
+        `Handoff: ${latestHandoff}`,
         `Routing: ${formatWatchRoutingSummary(status)}`,
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
@@ -799,6 +806,47 @@ function formatQuietWatchStatusLine(status) {
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
     ].join('\n');
+}
+function formatWatchReviewState(status) {
+    const reviewOutcome = status.latest_response?.review_outcome ?? status.latest_orchestrator_synthesis?.review_outcome ?? null;
+    if (reviewOutcome === 'pass') {
+        return 'arbiter passed';
+    }
+    if (reviewOutcome === 'repair') {
+        return 'arbiter returned rework';
+    }
+    if (reviewOutcome === 'hold') {
+        return 'arbiter blocked';
+    }
+    if (reviewOutcome === 'pending') {
+        return 'arbiter pending';
+    }
+    if (status.current_task_card?.verification_state === 'passed') {
+        return 'arbiter passed';
+    }
+    if (status.current_task_card?.verification_state === 'needs_work') {
+        return 'arbiter returned rework';
+    }
+    if (status.current_task_card?.verification_state === 'blocked') {
+        return 'arbiter blocked';
+    }
+    const reviewStageActive = status.stage === 'verification' ||
+        status.active_role === 'verifier' ||
+        status.current_task_card?.owner_role === 'verifier' ||
+        status.current_task_card?.assigned_role === 'verifier';
+    if (reviewStageActive) {
+        return (status.worker_visibility?.running_worker_count ?? 0) > 0 ? 'arbiter running' : 'arbiter pending';
+    }
+    return 'arbiter pending';
+}
+function formatWatchHandoff(status) {
+    if (status.continuity?.latest_handoff_summary) {
+        return status.continuity.latest_handoff_summary.replace(/^Latest handoff:\s*/i, '');
+    }
+    if (status.latest_handoff) {
+        return `${status.latest_handoff.from_role} -> ${status.latest_handoff.to_role}`;
+    }
+    return 'none recorded';
 }
 function formatWatchStatusLine(status, verbosity) {
     if (verbosity === 'quiet') {
@@ -933,6 +981,7 @@ function createWatchSnapshot(status, activity) {
         active_agent: compactWatchText(status.active_agent_id),
         task_card_id: compactWatchText(status.current_task_card?.task_card_id),
         task_title: compactWatchText(status.current_task_card?.title),
+        task_summary: compactWatchText(status.current_task_card?.title),
         task_kind: compactWatchText(status.current_task_card?.task_kind),
         task_assigned_role: compactWatchText(status.current_task_card?.assigned_role),
         task_model_tier: compactWatchText(status.current_task_card?.model_tier_intent),
@@ -994,6 +1043,9 @@ function createWatchSnapshot(status, activity) {
         synthesis_action: compactWatchText(status.latest_orchestrator_synthesis?.recommended_action),
         synthesis_class: compactWatchText(status.latest_orchestrator_synthesis?.decision_class),
         synthesis_review: compactWatchText(status.latest_orchestrator_synthesis?.review_outcome),
+        review_state: compactWatchText(formatWatchReviewState(status)),
+        latest_handoff: compactWatchText(formatWatchHandoff(status)),
+        provenance: compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header),
         always_on: compactWatchText(status.always_on_mode.status),
         always_on_phase: compactWatchText(status.always_on_operator_state.phase),
         always_on_next: compactWatchText(status.always_on_operator_state.recommended_operator_action),

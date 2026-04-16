@@ -25,6 +25,7 @@ const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
 const constants_1 = require("./constants");
 const entry_policy_1 = require("./entry-policy");
 const helper_agents_1 = require("./helper-agents");
+const package_metadata_1 = require("./package-metadata");
 const orchestration_loop_1 = require("./orchestration-loop");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
@@ -35,7 +36,7 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SUPPORTED_MCP_PROTOCOL_VERSIONS = new Set([MCP_PROTOCOL_VERSION]);
 const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
-    version: '1.0.0',
+    version: package_metadata_1.FOREMAN_PACKAGE_VERSION,
 };
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
@@ -2477,16 +2478,73 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflo
         `Next: ${workflowNext !== 'none' ? workflowNext : nextStep}`,
     ].join('\n');
 }
+function describeOperatorProvenance(guidanceSource) {
+    if (guidanceSource === null) {
+        return 'none recorded';
+    }
+    if (guidanceSource.latest_response?.provenance_header) {
+        return guidanceSource.latest_response.provenance_header;
+    }
+    if (guidanceSource.latest_orchestrator_synthesis?.provenance_header) {
+        return guidanceSource.latest_orchestrator_synthesis.provenance_header;
+    }
+    if (guidanceSource.provenance_header) {
+        return guidanceSource.provenance_header;
+    }
+    return 'none recorded';
+}
+function describeOperatorReviewState(currentTaskCard, guidanceSource) {
+    const reviewOutcome = guidanceSource?.latest_response?.review_outcome ?? guidanceSource?.latest_orchestrator_synthesis?.review_outcome ?? null;
+    if (reviewOutcome === 'pass') {
+        return 'arbiter passed';
+    }
+    if (reviewOutcome === 'repair') {
+        return 'arbiter returned rework';
+    }
+    if (reviewOutcome === 'hold') {
+        return 'arbiter blocked';
+    }
+    if (reviewOutcome === 'pending') {
+        return 'arbiter pending';
+    }
+    if (currentTaskCard?.verification_state === 'passed') {
+        return 'arbiter passed';
+    }
+    if (currentTaskCard?.verification_state === 'needs_work') {
+        return 'arbiter returned rework';
+    }
+    if (currentTaskCard?.verification_state === 'blocked') {
+        return 'arbiter blocked';
+    }
+    const reviewStageActive = guidanceSource?.stage === 'verification' ||
+        currentTaskCard?.owner_role === 'verifier' ||
+        currentTaskCard?.assigned_role === 'verifier' ||
+        guidanceSource?.active_role === 'verifier';
+    if (reviewStageActive) {
+        const runningCount = guidanceSource?.worker_visibility?.running_worker_count ?? 0;
+        return runningCount > 0 ? 'arbiter running' : 'arbiter pending';
+    }
+    return 'arbiter pending';
+}
+function describeOperatorLatestHandoff(guidanceSource) {
+    if (guidanceSource?.continuity?.latest_handoff_summary) {
+        return guidanceSource.continuity.latest_handoff_summary.replace(/^Latest handoff:\s*/i, '');
+    }
+    if (guidanceSource?.latest_handoff) {
+        return `${guidanceSource.latest_handoff.from_role} -> ${guidanceSource.latest_handoff.to_role}`;
+    }
+    return 'none recorded';
+}
 function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState, taskGraphSummary, guidanceSource) {
     let guidance = null;
     const routingTrace = extractRoutingTraceFromGuidanceSource(guidanceSource);
-    if (guidanceSource && 'user_message' in guidanceSource) {
+    if (guidanceSource?.user_message) {
         guidance = guidanceSource.user_message ?? null;
     }
-    else if (guidanceSource && 'latest_response' in guidanceSource) {
+    else if (guidanceSource?.latest_response) {
         guidance = guidanceSource.latest_response?.user_message ?? guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
     }
-    else if (guidanceSource && 'latest_orchestrator_synthesis' in guidanceSource) {
+    else if (guidanceSource?.latest_orchestrator_synthesis) {
         guidance = guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
     }
     const graphSummary = [
@@ -2495,8 +2553,15 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, nextStep, workf
         `queued=${taskGraphSummary.queued_task_cards}`,
     ].join(' ');
     return [
-        createQuietOperatorVisibilitySummary(currentTaskCard, nextStep, workflowOperatorState),
+        `Provenance: ${describeOperatorProvenance(guidanceSource ?? null)}`,
+        `Agent: ${resolveCurrentAgentName(currentTaskCard)}${resolveCurrentTaskRole(currentTaskCard) !== 'none' ? ` (${resolveCurrentTaskRole(currentTaskCard)})` : ''}`,
+        `Task: ${currentTaskCard?.title ?? 'none'}`,
+        `Model: ${resolveCurrentTaskModel(currentTaskCard)} / ${resolveCurrentTaskVariant(currentTaskCard)}`,
         `Execution: ${describeCurrentTaskExecutionProof(currentTaskCard)}`,
+        `Review: ${describeOperatorReviewState(currentTaskCard, guidanceSource ?? null)}`,
+        `Handoff: ${describeOperatorLatestHandoff(guidanceSource ?? null)}`,
+        `Phase: ${workflowOperatorState?.phase ?? 'none'}`,
+        `Next: ${(workflowOperatorState?.recommended_operator_action ?? 'none') !== 'none' ? workflowOperatorState?.recommended_operator_action : nextStep}`,
         `Routing: ${describeCurrentTaskRouting(currentTaskCard, routingTrace)}`,
         `Graph: ${graphSummary}`,
         ...(guidance ? [`Guidance: ${guidance}`] : []),
