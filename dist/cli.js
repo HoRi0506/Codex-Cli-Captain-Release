@@ -774,12 +774,31 @@ function formatCompactWatchStatusLine(status) {
     const provenance = compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header);
     const reviewState = formatWatchReviewState(status);
     const latestHandoff = formatWatchHandoff(status);
+    const ownership = compactWatchText(status.current_task_card?.ownership_chain?.summary ?? status.current_task_card?.ownership_summary);
+    const modelEvidence = compactWatchText(status.current_task_card === null
+        ? 'none'
+        : [
+            `cfg=${compactWatchText(status.current_task_card.resolved_request_settings?.model ??
+                status.current_task_card.role_config_snapshot?.model ??
+                status.current_task_card.agent_config_summary?.model)}/${compactWatchText(status.current_task_card.resolved_request_settings?.variant ??
+                status.current_task_card.role_config_snapshot?.variant ??
+                status.current_task_card.agent_config_summary?.variant)}`,
+            `dispatch=${compactWatchText(status.current_task_card.dispatched_model_launch?.dispatched_model ??
+                status.current_task_card.actual_model_launch?.dispatched_model ??
+                status.current_task_card.actual_model_launch?.actual_model)}/${compactWatchText(status.current_task_card.dispatched_model_launch?.dispatched_variant ??
+                status.current_task_card.actual_model_launch?.dispatched_variant ??
+                status.current_task_card.actual_model_launch?.actual_variant)}`,
+            `observed=${compactWatchText(status.current_task_card.observed_model ?? status.current_task_card.actual_model_launch?.observed_model)}/${compactWatchText(status.current_task_card.observed_variant ?? status.current_task_card.actual_model_launch?.observed_variant)}`,
+            `state=${compactWatchText(status.current_task_card.model_enforcement_state)}`,
+        ].join(' '));
     return [
         `Provenance: ${provenance}`,
         `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
         `Task: ${status.current_task_card?.title ?? 'none'}`,
         `Model: ${model} / ${variant}`,
+        `Model Evidence: ${modelEvidence}`,
         `Execution: ${executionSummary}`,
+        `Ownership: ${ownership}`,
         `Review: ${reviewState}`,
         `Handoff: ${latestHandoff}`,
         `Routing: ${formatWatchRoutingSummary(status)}`,

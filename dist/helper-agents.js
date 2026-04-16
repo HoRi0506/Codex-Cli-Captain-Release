@@ -3,12 +3,142 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.summarizeTaskOwnershipChain = summarizeTaskOwnershipChain;
+exports.createTaskOwnershipChain = createTaskOwnershipChain;
+exports.createOwnershipChainProvenanceHeader = createOwnershipChainProvenanceHeader;
 exports.createTaskAssignmentFraming = createTaskAssignmentFraming;
 exports.buildFramedTaskPrompt = buildFramedTaskPrompt;
 exports.createTaskOwnershipGuard = createTaskOwnershipGuard;
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
+function pickLatestDelegation(delegations) {
+    return delegations.slice().sort((left, right) => right.updated_at.localeCompare(left.updated_at)).at(0) ?? null;
+}
+function describeOwnershipReviewer(reviewerAgentId, reviewerLinkState, reviewerCount) {
+    if (reviewerAgentId === null) {
+        return 'none';
+    }
+    const countPrefix = reviewerCount > 1 ? `${reviewerCount} reviewers; latest=` : '';
+    if (reviewerLinkState === 'actual') {
+        return `${countPrefix}${reviewerAgentId}`;
+    }
+    return `${countPrefix}${reviewerAgentId} (inferred)`;
+}
+function describeOwnershipObservation(input) {
+    if (input.observedWorkerId !== null) {
+        return input.observedWorkerId;
+    }
+    if (input.launchEvidence?.observation_status === 'observed') {
+        return `${input.launchEvidence.observed_source ?? 'observed'}:${input.launchEvidence.observed_model ?? 'unknown'}`;
+    }
+    if (input.launchEvidence?.observation_status === 'unavailable') {
+        return `missing(${input.launchEvidence.observation_unavailable_reason ?? 'unknown'})`;
+    }
+    return 'none';
+}
+function summarizeTaskOwnershipChain(chain) {
+    const reviewerSummary = describeOwnershipReviewer(chain.reviewer_agent_id, chain.reviewer_link_state, chain.reviewer_count);
+    if (chain.execution_owner_mode === 'host_session_fallback') {
+        return `assigned=${chain.assigned_agent_id ?? 'unassigned'} -> host_session fallback (${chain.fallback_reason ?? 'unknown'}) -> review=${reviewerSummary} -> ${chain.captain_agent_id} [downgraded:${chain.state}]`;
+    }
+    const launchedSummary = chain.worker_count > 1
+        ? `${chain.worker_count} workers; latest=${chain.launched_worker_id ?? 'none'}`
+        : chain.launched_worker_id ?? 'none';
+    return `assigned=${chain.assigned_agent_id ?? 'unassigned'} -> launched=${launchedSummary} -> observed=${describeOwnershipObservation({
+        observedWorkerId: chain.observed_worker_id,
+        launchEvidence: {
+            observation_status: chain.observed_evidence_state ?? 'not_started',
+            observed_source: chain.observed_source,
+            observed_model: chain.observed_model,
+            observation_unavailable_reason: chain.fallback_reason,
+        },
+    })} -> review=${reviewerSummary} -> ${chain.captain_agent_id} [${chain.state}]`;
+}
+function createTaskOwnershipChain(input) {
+    const taskLinkedDelegations = input.taskDelegations.filter((delegation) => delegation.task_card_id === input.taskCard.task_card_id);
+    const workerDelegations = taskLinkedDelegations.filter((delegation) => delegation.child_agent.role !== 'verifier');
+    const reviewerDelegations = taskLinkedDelegations.filter((delegation) => delegation.child_agent.role === 'verifier');
+    const latestWorkerDelegation = pickLatestDelegation(workerDelegations);
+    const latestReviewerDelegation = pickLatestDelegation(reviewerDelegations);
+    const launchEvidence = latestWorkerDelegation?.worker_launch_evidence ?? input.taskCard.latest_model_launch ?? null;
+    const workerObservedThreadIds = Array.from(new Set(workerDelegations
+        .map((delegation) => delegation.worker_result?.thread_id ?? null)
+        .filter((threadId) => typeof threadId === 'string' && threadId.length > 0)));
+    const hostObservedThreadIds = Array.from(new Set(input.taskCard.thread_ids.filter((threadId) => typeof threadId === 'string' && threadId.length > 0)));
+    const observedWorkerIds = [...workerObservedThreadIds, ...hostObservedThreadIds.filter((threadId) => !workerObservedThreadIds.includes(threadId))];
+    const reviewerAgentIds = Array.from(new Set(reviewerDelegations
+        .map((delegation) => delegation.child_agent.agent_id)
+        .filter((agentId) => typeof agentId === 'string' && agentId.length > 0)));
+    const inferredReviewerAgentId = reviewerAgentIds.at(-1) ??
+        ((input.taskCard.completed_by_agent_id === (0, runtime_1.getAgentIdForRole)('verifier') ||
+            input.taskCard.verification_state !== 'pending')
+            ? (0, runtime_1.getAgentIdForRole)('verifier')
+            : null);
+    const reviewerLinkState = reviewerAgentIds.length > 0 ? 'actual' : inferredReviewerAgentId !== null ? 'inferred' : 'missing';
+    const executionOwnerMode = workerDelegations.length > 0 ? 'foreman_worker' : 'host_session_fallback';
+    const fallbackReason = executionOwnerMode === 'foreman_worker'
+        ? launchEvidence?.observation_status === 'unavailable'
+            ? launchEvidence.observation_unavailable_reason ?? 'observed_evidence_missing'
+            : null
+        : input.taskCard.thread_ids.length > 0 || input.taskCard.latest_model_launch !== null
+            ? 'host_session_visible_execution'
+            : input.taskCard.assigned_agent_id !== null
+                ? 'no_visible_worker_linkage'
+                : 'missing_assignment';
+    let state = 'missing';
+    if (executionOwnerMode === 'host_session_fallback') {
+        state = input.taskCard.assigned_agent_id === null ? 'missing' : 'host_session_fallback';
+    }
+    else if (reviewerLinkState === 'actual') {
+        state = 'review_linked';
+    }
+    else if (observedWorkerIds.length > 0 || launchEvidence?.observation_status === 'observed') {
+        state = 'observed';
+    }
+    else if (launchEvidence?.observation_status === 'unavailable') {
+        state = 'partial';
+    }
+    else if (latestWorkerDelegation !== null) {
+        state = 'launched';
+    }
+    else if (input.taskCard.assigned_agent_id !== null) {
+        state = 'assigned_only';
+    }
+    const chain = {
+        state,
+        assigned_role: input.taskCard.assigned_role,
+        assigned_agent_id: input.taskCard.assigned_agent_id,
+        selected_agent_id: input.taskCard.assigned_agent_id,
+        worker_count: workerDelegations.length,
+        launched_worker_id: latestWorkerDelegation?.child_agent.agent_id ?? null,
+        observed_worker_id: workerObservedThreadIds.at(-1) ?? hostObservedThreadIds.at(-1) ?? null,
+        observed_evidence_state: launchEvidence?.observation_status ?? null,
+        observed_model: launchEvidence?.observed_model ?? null,
+        observed_variant: launchEvidence?.observed_variant ?? null,
+        observed_source: launchEvidence?.observed_source ?? null,
+        observed_confidence: launchEvidence?.observed_confidence ?? null,
+        reviewer_count: reviewerAgentIds.length,
+        reviewer_agent_id: inferredReviewerAgentId,
+        reviewer_link_state: reviewerLinkState,
+        captain_agent_id: (0, runtime_1.getAgentIdForRole)('orchestrator') ?? 'captain',
+        execution_owner_mode: executionOwnerMode,
+        fallback_reason: fallbackReason,
+        summary: '',
+        recorded_at: new Date().toISOString(),
+    };
+    chain.summary = summarizeTaskOwnershipChain(chain);
+    return chain;
+}
+function createOwnershipChainProvenanceHeader(chain) {
+    const executionOwner = chain.execution_owner_mode === 'host_session_fallback' ? 'host_session' : 'foreman_worker';
+    const baseHeader = `[Foreman captain | assigned=${chain.assigned_agent_id ?? 'unassigned'} | execution=${executionOwner}:${chain.launched_worker_id ?? chain.assigned_agent_id ?? 'unassigned'} | review=${chain.reviewer_agent_id ?? (0, runtime_1.getAgentIdForRole)('verifier') ?? 'arbiter'}]`;
+    const observedSummary = chain.observed_worker_id ??
+        (chain.observed_evidence_state === 'observed'
+            ? `${chain.observed_source ?? 'observed'}:${chain.observed_model ?? 'unknown'}`
+            : 'none');
+    return `${baseHeader} [ownership=${chain.state}${chain.fallback_reason ? `:${chain.fallback_reason}` : ''} launched=${chain.launched_worker_id ?? 'none'} observed=${observedSummary} review_link=${chain.reviewer_link_state} captain=${chain.captain_agent_id}]`;
+}
 const EMBEDDED_AGENT_ROLE_CATALOG = {
     version: 1,
     agents: {

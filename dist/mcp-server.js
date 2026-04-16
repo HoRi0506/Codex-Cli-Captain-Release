@@ -1469,6 +1469,10 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         provenanceHeader: run.latest_orchestrator_synthesis?.provenance_header ?? run.latest_response?.provenance_header ?? null,
         concreteWorkerId,
     });
+    const ownershipChain = taskCard.ownership_chain ?? (0, helper_agents_1.createTaskOwnershipChain)({
+        taskCard,
+        taskDelegations,
+    });
     const executionProof = createCurrentTaskExecutionProof({
         taskCard,
         executionOwner,
@@ -1498,6 +1502,7 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         assigned_agent_config_summary: assignedAgentConfigSummary,
         resolved_request_settings: resolvedRequestSettings,
         execution_proof: executionProof,
+        ownership_chain: ownershipChain,
         execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard),
         execution_source: executionOwner === 'foreman_worker' ? 'foreman_worker' : 'codex_session',
         execution_owner: executionOwner,
@@ -2507,6 +2512,17 @@ function describeCurrentTaskModelEvidence(currentTaskCard) {
             return 'none';
     }
 }
+function describeCurrentTaskModelEvidenceSummary(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    return [
+        `cfg=${resolveCurrentTaskModel(currentTaskCard)}/${resolveCurrentTaskVariant(currentTaskCard)}`,
+        `dispatch=${resolveCurrentTaskDispatchedModel(currentTaskCard)}/${resolveCurrentTaskDispatchedVariant(currentTaskCard)}`,
+        `observed=${resolveCurrentTaskObservedModel(currentTaskCard)}/${resolveCurrentTaskObservedVariant(currentTaskCard)}`,
+        `state=${describeCurrentTaskModelEvidence(currentTaskCard)}`,
+    ].join(' ');
+}
 function resolveCurrentAgentName(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
@@ -2521,6 +2537,12 @@ function describeCurrentTaskExecutionProof(currentTaskCard) {
         return 'none';
     }
     return currentTaskCard.execution_proof?.summary ?? 'none';
+}
+function describeCurrentTaskOwnershipChain(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    return currentTaskCard.ownership_chain?.summary ?? currentTaskCard.ownership_summary ?? 'none';
 }
 function compactRoutingReason(reason) {
     const compacted = reason?.replace(/\s+/g, ' ').trim();
@@ -2695,8 +2717,10 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, runLifecycle, n
         `Agent: ${resolveCurrentAgentName(currentTaskCard)}${resolveCurrentTaskRole(currentTaskCard) !== 'none' ? ` (${resolveCurrentTaskRole(currentTaskCard)})` : ''}`,
         `Task: ${currentTaskCard?.title ?? 'none'}`,
         `Model: ${resolveCurrentTaskModel(currentTaskCard)} / ${resolveCurrentTaskVariant(currentTaskCard)}`,
+        `Model Evidence: ${describeCurrentTaskModelEvidenceSummary(currentTaskCard)}`,
         `Lifecycle: ${describeRunLifecycle(runLifecycle)}`,
         `Execution: ${describeCurrentTaskExecutionProof(currentTaskCard)}`,
+        `Ownership: ${describeCurrentTaskOwnershipChain(currentTaskCard)}`,
         `Review: ${describeOperatorReviewState(currentTaskCard, guidanceSource ?? null)}`,
         `Handoff: ${describeOperatorLatestHandoff(guidanceSource ?? null)}`,
         `Phase: ${workflowOperatorState?.phase ?? 'none'}`,

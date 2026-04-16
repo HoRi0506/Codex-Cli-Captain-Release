@@ -421,6 +421,52 @@ function normalizeLoadedWorkerResult(candidate) {
             : null,
     };
 }
+function normalizeLoadedOwnershipChain(candidate) {
+    if (candidate === null || candidate === undefined) {
+        return null;
+    }
+    if (!isRecord(candidate)) {
+        return candidate;
+    }
+    return {
+        ...candidate,
+        selected_agent_id: Object.prototype.hasOwnProperty.call(candidate, 'selected_agent_id')
+            ? candidate.selected_agent_id
+            : Object.prototype.hasOwnProperty.call(candidate, 'assigned_agent_id')
+                ? candidate.assigned_agent_id
+                : null,
+        worker_count: Object.prototype.hasOwnProperty.call(candidate, 'worker_count') ? candidate.worker_count : 0,
+        launched_worker_id: Object.prototype.hasOwnProperty.call(candidate, 'launched_worker_id')
+            ? candidate.launched_worker_id
+            : null,
+        observed_worker_id: Object.prototype.hasOwnProperty.call(candidate, 'observed_worker_id')
+            ? candidate.observed_worker_id
+            : null,
+        observed_evidence_state: Object.prototype.hasOwnProperty.call(candidate, 'observed_evidence_state')
+            ? candidate.observed_evidence_state
+            : null,
+        observed_model: Object.prototype.hasOwnProperty.call(candidate, 'observed_model') ? candidate.observed_model : null,
+        observed_variant: Object.prototype.hasOwnProperty.call(candidate, 'observed_variant') ? candidate.observed_variant : null,
+        observed_source: Object.prototype.hasOwnProperty.call(candidate, 'observed_source') ? candidate.observed_source : null,
+        observed_confidence: Object.prototype.hasOwnProperty.call(candidate, 'observed_confidence')
+            ? candidate.observed_confidence
+            : null,
+        reviewer_count: Object.prototype.hasOwnProperty.call(candidate, 'reviewer_count') ? candidate.reviewer_count : 0,
+        reviewer_agent_id: Object.prototype.hasOwnProperty.call(candidate, 'reviewer_agent_id')
+            ? candidate.reviewer_agent_id
+            : null,
+        reviewer_link_state: Object.prototype.hasOwnProperty.call(candidate, 'reviewer_link_state')
+            ? candidate.reviewer_link_state
+            : 'missing',
+        captain_agent_id: Object.prototype.hasOwnProperty.call(candidate, 'captain_agent_id')
+            ? candidate.captain_agent_id
+            : 'captain',
+        execution_owner_mode: Object.prototype.hasOwnProperty.call(candidate, 'execution_owner_mode')
+            ? candidate.execution_owner_mode
+            : 'host_session_fallback',
+        fallback_reason: Object.prototype.hasOwnProperty.call(candidate, 'fallback_reason') ? candidate.fallback_reason : null,
+    };
+}
 function normalizeLoadedWorkerRequest(candidate) {
     if (candidate === null || candidate === undefined) {
         return null;
@@ -1515,6 +1561,7 @@ function createInitialTaskCardRecord(input) {
         review_pass_count: 0,
         latest_failure: null,
         latest_model_launch: null,
+        ownership_chain: null,
         thread_ids: [],
         completed_by_agent_id: null,
         created_at: timestamp,
@@ -2252,6 +2299,9 @@ function normalizeLoadedTaskCardRecord(candidate) {
         const normalizedCurrentCandidate = {
             ...candidate,
             latest_model_launch: normalizeLoadedRoleModelLaunchEvidence(candidate.latest_model_launch),
+            ownership_chain: Object.prototype.hasOwnProperty.call(candidate, 'ownership_chain')
+                ? normalizeLoadedOwnershipChain(candidate.ownership_chain)
+                : null,
         };
         (0, validation_1.assertValidTaskCardRecord)(normalizedCurrentCandidate);
         return normalizedCurrentCandidate;
@@ -2296,6 +2346,9 @@ function normalizeLoadedTaskCardRecord(candidate) {
             : deriveTaskOrchestratorReviewGate(nodeKind, fanInFromTaskCardIds),
         latest_model_launch: Object.prototype.hasOwnProperty.call(candidate, 'latest_model_launch')
             ? normalizeLoadedRoleModelLaunchEvidence(candidate.latest_model_launch)
+            : null,
+        ownership_chain: Object.prototype.hasOwnProperty.call(candidate, 'ownership_chain')
+            ? normalizeLoadedOwnershipChain(candidate.ownership_chain)
             : null,
         completed_by_agent_id: Object.prototype.hasOwnProperty.call(candidate, 'completed_by_agent_id')
             ? candidate.completed_by_agent_id

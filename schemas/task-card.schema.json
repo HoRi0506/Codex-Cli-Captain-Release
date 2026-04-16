@@ -33,6 +33,7 @@
     "review_pass_count",
     "latest_failure",
     "latest_model_launch",
+    "ownership_chain",
     "thread_ids",
     "completed_by_agent_id",
     "created_at",
@@ -211,6 +212,16 @@
         }
       ]
     },
+    "ownership_chain": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ownershipChain"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "thread_ids": {
       "type": "array",
       "items": {
@@ -256,6 +267,114 @@
             "verification_failed",
             "unknown"
           ]
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "ownershipChain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "assigned_role",
+        "assigned_agent_id",
+        "selected_agent_id",
+        "worker_count",
+        "launched_worker_id",
+        "observed_worker_id",
+        "observed_evidence_state",
+        "observed_model",
+        "observed_variant",
+        "observed_source",
+        "observed_confidence",
+        "reviewer_count",
+        "reviewer_agent_id",
+        "reviewer_link_state",
+        "captain_agent_id",
+        "execution_owner_mode",
+        "fallback_reason",
+        "summary",
+        "recorded_at"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["assigned_only", "launched", "observed", "review_linked", "host_session_fallback", "partial", "missing"]
+        },
+        "assigned_role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "assigned_agent_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "selected_agent_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "worker_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "launched_worker_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "observed_worker_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "observed_evidence_state": {
+          "type": ["string", "null"],
+          "enum": ["not_started", "observed", "unavailable", null]
+        },
+        "observed_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "observed_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "observed_source": {
+          "type": ["string", "null"],
+          "enum": ["codex_state_db", "provider_surface", null]
+        },
+        "observed_confidence": {
+          "type": ["string", "null"],
+          "enum": ["best_effort_local", "provider_confirmed", null]
+        },
+        "reviewer_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reviewer_agent_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "reviewer_link_state": {
+          "type": "string",
+          "enum": ["actual", "inferred", "missing"]
+        },
+        "captain_agent_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "execution_owner_mode": {
+          "type": "string",
+          "enum": ["foreman_worker", "host_session_fallback"]
+        },
+        "fallback_reason": {
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "summary": {
           "type": "string",
