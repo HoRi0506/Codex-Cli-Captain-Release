@@ -68,7 +68,8 @@ const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
 const MAX_CONTINUE_MAX_STEPS = 4;
 const WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES = 4000;
-const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules']);
+const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules', '.sisyphus']);
+const WORKSPACE_MUTATION_EVIDENCE_EXCLUDE_FILES = new Set(['codex-args.json']);
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -245,7 +246,10 @@ function requiresWorkspaceMutationEvidence(taskCard) {
         taskCard.owner_role === 'verifier') {
         return false;
     }
-    return taskCard.acceptance_checks.length > 0;
+    if (taskCard.acceptance_checks.length > 0) {
+        return true;
+    }
+    return taskLooksLikeExplicitFileMutation([taskCard.title, taskCard.scope, taskCard.acceptance, taskCard.execution_prompt].join('\n'));
 }
 async function captureCommandOutput(cwd, command, args) {
     const child = (0, node_child_process_1.spawn)(command, args, {
@@ -325,6 +329,42 @@ async function captureFilesystemWorkspaceMutationFingerprint(cwd) {
 async function captureWorkspaceMutationFingerprint(cwd) {
     return (await captureGitWorkspaceMutationFingerprint(cwd)) ?? captureFilesystemWorkspaceMutationFingerprint(cwd);
 }
+function parseMutationFingerprintEntries(fingerprint) {
+    const entries = new Map();
+    for (const rawLine of fingerprint.split('\n')) {
+        const line = rawLine.trimEnd();
+        if (!line) {
+            continue;
+        }
+        const gitMatch = line.match(/^[ MADRCU?!]{1,2}\s+(.*)$/u);
+        const candidatePath = gitMatch
+            ? gitMatch[1]?.split(' -> ').at(-1)?.trim() ?? null
+            : line.includes(':')
+                ? line.slice(0, line.indexOf(':'))
+                : line;
+        if (!candidatePath || WORKSPACE_MUTATION_EVIDENCE_EXCLUDE_FILES.has(candidatePath)) {
+            continue;
+        }
+        entries.set(candidatePath, line);
+    }
+    return entries;
+}
+function extractChangedPathsFromMutationFingerprints(initialFingerprint, finalFingerprint) {
+    const initialEntries = parseMutationFingerprintEntries(initialFingerprint);
+    const finalEntries = parseMutationFingerprintEntries(finalFingerprint);
+    const changedPaths = new Set();
+    for (const [candidatePath, candidateLine] of finalEntries.entries()) {
+        if (initialEntries.get(candidatePath) !== candidateLine) {
+            changedPaths.add(candidatePath);
+        }
+    }
+    for (const candidatePath of initialEntries.keys()) {
+        if (!finalEntries.has(candidatePath)) {
+            changedPaths.add(candidatePath);
+        }
+    }
+    return [...changedPaths].sort((left, right) => left.localeCompare(right));
+}
 async function enforceWorkspaceMutationEvidence(input) {
     if (input.outcome.kind !== 'completed' ||
         input.initialFingerprint === null ||
@@ -333,7 +373,12 @@ async function enforceWorkspaceMutationEvidence(input) {
     }
     const finalFingerprint = await captureWorkspaceMutationFingerprint(input.cwd);
     if (finalFingerprint === null || finalFingerprint !== input.initialFingerprint) {
-        return input.outcome;
+        return finalFingerprint === null
+            ? input.outcome
+            : {
+                ...input.outcome,
+                changedPaths: extractChangedPathsFromMutationFingerprints(input.initialFingerprint, finalFingerprint),
+            };
     }
     return {
         kind: 'execution_failed',
@@ -402,6 +447,76 @@ function trimAutoEntryTitle(request) {
     }
     return `${normalized.slice(0, AUTO_ENTRY_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
+const AUTO_ENTRY_MUTATION_VERBS = [
+    'fix',
+    'write',
+    'create',
+    'edit',
+    'update',
+    'modify',
+    'patch',
+    'implement',
+    'change',
+    'rename',
+    'remove',
+    'delete',
+];
+const AUTO_ENTRY_MUTATION_TARGET_HINTS = [
+    'readme',
+    '.md',
+    '.ts',
+    '.tsx',
+    '.js',
+    '.jsx',
+    '.json',
+    '.yaml',
+    '.yml',
+    '.toml',
+    '.css',
+    '.html',
+    '.py',
+    '.go',
+    '.rs',
+    '.java',
+    '.swift',
+];
+const EXPLICIT_MUTATION_EVIDENCE_VERBS = [
+    'write',
+    'create',
+    'edit',
+    'update',
+    'modify',
+    'patch',
+    'rename',
+    'remove',
+    'delete',
+    'append',
+];
+function requestLooksLikeMutationTask(normalizedRequest) {
+    const lowerRequest = normalizedRequest.toLowerCase();
+    const hasMutationVerb = AUTO_ENTRY_MUTATION_VERBS.some((verb) => lowerRequest.includes(verb));
+    const hasMutationTargetHint = AUTO_ENTRY_MUTATION_TARGET_HINTS.some((hint) => lowerRequest.includes(hint)) ||
+        /(?:^|[\s`'"])(?:src|docs|tests|README)[/A-Za-z0-9_.-]*/u.test(normalizedRequest) ||
+        /\b[a-z0-9_.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|go|rs|java|swift)\b/iu.test(normalizedRequest);
+    return hasMutationVerb && hasMutationTargetHint;
+}
+function requestLooksLikeExploreTask(lowerRequest) {
+    return (lowerRequest.includes('inspect') ||
+        lowerRequest.includes('trace') ||
+        lowerRequest.includes('map') ||
+        lowerRequest.includes('locate') ||
+        lowerRequest.includes('find') ||
+        lowerRequest.includes('summarize') ||
+        lowerRequest.includes('explain'));
+}
+function taskLooksLikeExplicitFileMutation(text) {
+    const lowerText = text.toLowerCase();
+    const hasMutationVerb = EXPLICIT_MUTATION_EVIDENCE_VERBS.some((verb) => lowerText.includes(verb));
+    const hasMutationTargetHint = AUTO_ENTRY_MUTATION_TARGET_HINTS.some((hint) => lowerText.includes(hint)) ||
+        /(?:^|[\s`'"])(?:src|docs|tests|readme)[/a-z0-9_.-]*/u.test(lowerText) ||
+        /\b[a-z0-9_.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|go|rs|java|swift)\b/u.test(lowerText);
+    return hasMutationVerb && hasMutationTargetHint;
+}
 function createAutoEntryStartOptions(options, recommendation) {
     const normalizedRequest = normalizeInlinePromptText(options.request);
     const title = trimAutoEntryTitle(normalizedRequest);
@@ -413,15 +528,11 @@ function createAutoEntryStartOptions(options, recommendation) {
             lowerRequest.includes('validation') ||
             lowerRequest.includes('regression')
             ? 'review'
-            : lowerRequest.includes('inspect') ||
-                lowerRequest.includes('trace') ||
-                lowerRequest.includes('map') ||
-                lowerRequest.includes('locate') ||
-                lowerRequest.includes('find') ||
-                lowerRequest.includes('summarize') ||
-                lowerRequest.includes('explain')
-                ? 'explore'
-                : 'execution';
+            : requestLooksLikeMutationTask(normalizedRequest)
+                ? 'execution'
+                : requestLooksLikeExploreTask(lowerRequest)
+                    ? 'explore'
+                    : 'execution';
     return {
         cwd: options.cwd,
         goal: normalizedRequest,
@@ -2566,7 +2677,10 @@ function buildDelegationTerminalLifecycleInput(delegationId, outcome, workerLaun
         partition_strategy: workerRequest?.partition_strategy ?? null,
         coverage_focus: [...(workerRequest?.coverage_focus ?? [])],
         key_findings: [outcome.summary],
-        evidence_paths: outcome.rawEventsFile ? [outcome.rawEventsFile] : [],
+        evidence_paths: [
+            ...(outcome.rawEventsFile ? [outcome.rawEventsFile] : []),
+            ...((outcome.changedPaths ?? []).filter((candidate) => candidate.length > 0)),
+        ],
         confidence: null,
         uncertainty_summary: outcome.kind === 'completed' ? null : outcome.summary,
         summary: outcome.summary,

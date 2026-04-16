@@ -12,7 +12,7 @@ const node_util_1 = require("node:util");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const RELEASE_REPO_MANIFEST_FILE = 'release-repo-manifest.json';
 const RELEASE_REPO_GITIGNORE_FILE = '.gitignore';
-const RELEASE_REPO_GITIGNORE_CONTENT = 'node_modules/\n.DS_Store\n*.tgz\n';
+const RELEASE_REPO_GITIGNORE_CONTENT = 'node_modules/\n.DS_Store\n*.tgz\nforeman-smoke-*/\nforeman-sweep-*/\n';
 const RELEASE_REPO_URL = 'https://github.com/HoRi0506/Codex-Foreman-release';
 const RELEASES_URL = `${RELEASE_REPO_URL}/releases`;
 function toPosixRelativePath(filePath) {

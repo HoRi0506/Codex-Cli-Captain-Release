@@ -758,70 +758,85 @@ function formatWatchRoutingSummary(status) {
         : undefined;
     return `target=${targetRole} tier=${modelTier} route=${route} category=${category} skills=${compactWatchText(skills)} reason=${compactWatchRoutingReason(routingTrace?.selected_route_reason)}`;
 }
-function formatCompactWatchStatusLine(status) {
+function resolveWatchProofState(status) {
+    return (status.current_task_card?.execution_proof?.proof_state ??
+        'planned_assignment_only');
+}
+function resolveWatchAgentAndRole(status) {
+    const proofState = resolveWatchProofState(status);
+    const assignedAgent = compactWatchText(status.current_task_card?.assigned_agent_id ??
+        status.current_task_card?.assigned_agent_config_summary?.roster_name ??
+        status.active_agent_id ??
+        status.current_task_card?.agent_config_summary?.roster_name);
+    const ownerAgent = compactWatchText(status.current_task_card?.owner_agent_config_summary?.roster_name ??
+        status.current_task_card?.agent_config_summary?.roster_name ??
+        status.active_agent_id);
+    if (proofState === 'foreman_worker_visible') {
+        return {
+            agent: compactWatchText(status.current_task_card?.concrete_worker_id ?? assignedAgent),
+            role: compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role),
+        };
+    }
+    if (proofState === 'captain_read_only_fallback') {
+        return {
+            agent: ownerAgent,
+            role: compactWatchText(status.current_task_card?.owner_role ?? status.active_role),
+        };
+    }
+    if (proofState === 'host_session_fallback' &&
+        (status.current_task_card?.resolved_request_settings?.request_kind === 'verification' ||
+            status.current_task_card?.owner_role === 'verifier')) {
+        return {
+            agent: ownerAgent,
+            role: compactWatchText(status.current_task_card?.owner_role ?? status.active_role),
+        };
+    }
+    return {
+        agent: assignedAgent,
+        role: compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role),
+    };
+}
+function formatWatchAgentLine(status) {
+    const proofState = resolveWatchProofState(status);
+    const { agent, role } = resolveWatchAgentAndRole(status);
+    const suffix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? '; captain fallback'
+            : proofState === 'host_session_fallback'
+                ? '; host fallback'
+                : '; planned';
+    return `Agent: ${agent}${role !== 'none' ? ` (${role}${suffix})` : ''}`;
+}
+function formatWatchModelLine(status) {
     const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
         status.current_task_card?.role_config_snapshot?.model ??
         status.current_task_card?.agent_config_summary?.model);
     const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
         status.current_task_card?.role_config_snapshot?.variant ??
         status.current_task_card?.agent_config_summary?.variant);
-    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
-        status.current_task_card?.assigned_agent_id ??
-        status.active_agent_id ??
-        status.current_task_card?.agent_config_summary?.roster_name);
-    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role);
-    const executionSummary = compactWatchText(status.current_task_card?.execution_proof?.summary);
-    const provenance = compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header);
-    const reviewState = formatWatchReviewState(status);
-    const latestHandoff = formatWatchHandoff(status);
-    const ownership = compactWatchText(status.current_task_card?.ownership_chain?.summary ?? status.current_task_card?.ownership_summary);
-    const modelEvidence = compactWatchText(status.current_task_card === null
-        ? 'none'
-        : [
-            `cfg=${compactWatchText(status.current_task_card.resolved_request_settings?.model ??
-                status.current_task_card.role_config_snapshot?.model ??
-                status.current_task_card.agent_config_summary?.model)}/${compactWatchText(status.current_task_card.resolved_request_settings?.variant ??
-                status.current_task_card.role_config_snapshot?.variant ??
-                status.current_task_card.agent_config_summary?.variant)}`,
-            `dispatch=${compactWatchText(status.current_task_card.dispatched_model_launch?.dispatched_model ??
-                status.current_task_card.actual_model_launch?.dispatched_model ??
-                status.current_task_card.actual_model_launch?.actual_model)}/${compactWatchText(status.current_task_card.dispatched_model_launch?.dispatched_variant ??
-                status.current_task_card.actual_model_launch?.dispatched_variant ??
-                status.current_task_card.actual_model_launch?.actual_variant)}`,
-            `observed=${compactWatchText(status.current_task_card.observed_model ?? status.current_task_card.actual_model_launch?.observed_model)}/${compactWatchText(status.current_task_card.observed_variant ?? status.current_task_card.actual_model_launch?.observed_variant)}`,
-            `state=${compactWatchText(status.current_task_card.model_enforcement_state)}`,
-        ].join(' '));
+    const proofState = resolveWatchProofState(status);
+    const prefix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? 'captain fallback '
+            : proofState === 'host_session_fallback'
+                ? 'host fallback '
+                : 'planned ';
+    return `Model: ${prefix}${model} / ${variant}`;
+}
+function formatCompactWatchStatusLine(status) {
     return [
-        `Provenance: ${provenance}`,
-        `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
+        formatWatchAgentLine(status),
         `Task: ${status.current_task_card?.title ?? 'none'}`,
-        `Model: ${model} / ${variant}`,
-        `Model Evidence: ${modelEvidence}`,
-        `Execution: ${executionSummary}`,
-        `Ownership: ${ownership}`,
-        `Review: ${reviewState}`,
-        `Handoff: ${latestHandoff}`,
-        `Routing: ${formatWatchRoutingSummary(status)}`,
-        `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
-        `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
+        formatWatchModelLine(status),
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
     ].join('\n');
 }
 function formatQuietWatchStatusLine(status) {
-    const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
-        status.current_task_card?.role_config_snapshot?.model ??
-        status.current_task_card?.agent_config_summary?.model);
-    const variant = compactWatchText(status.current_task_card?.resolved_request_settings?.variant ??
-        status.current_task_card?.role_config_snapshot?.variant ??
-        status.current_task_card?.agent_config_summary?.variant);
-    const agent = compactWatchText(status.current_task_card?.concrete_worker_id ??
-        status.current_task_card?.assigned_agent_id ??
-        status.active_agent_id ??
-        status.current_task_card?.agent_config_summary?.roster_name);
-    const role = compactWatchText(status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role ?? status.active_role);
     return [
-        `Agent: ${agent}${role !== 'none' ? ` (${role})` : ''}`,
-        `Model: ${model} / ${variant}`,
+        formatWatchAgentLine(status),
+        formatWatchModelLine(status),
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
     ].join('\n');

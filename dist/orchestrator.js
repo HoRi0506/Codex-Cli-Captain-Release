@@ -457,6 +457,7 @@ function createAwaitFanInDecision(taskCard, counts, phase = 'execution') {
     };
 }
 function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
+    const isRoutingTargetRole = (role) => role === 'planner' || role === 'explorer' || role === 'code specialist' || role === 'verifier';
     const normalizedDecision = normalizeOrchestratorDecision(decision);
     const { recommendedCategory, recommendedSkills } = deriveOmORecommendations({
         run,
@@ -464,9 +465,11 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
         decision: normalizedDecision,
     });
     const routeTargetRole = normalizedDecision.next_step === 'execute_task'
-        ? isExecutionOwnerRole(taskCard.owner_role)
-            ? taskCard.owner_role
-            : 'code specialist'
+        ? isRoutingTargetRole(taskCard.assigned_role)
+            ? taskCard.assigned_role
+            : isRoutingTargetRole(taskCard.owner_role)
+                ? taskCard.owner_role
+                : 'code specialist'
         : normalizedDecision.next_step === 'verify_task'
             ? 'verifier'
             : null;

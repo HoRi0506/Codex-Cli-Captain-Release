@@ -2174,6 +2174,102 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         allowed_next_commands: [],
     };
 }
+function isTerminalPlanningRunWithoutTaskCard(run) {
+    return (run.stage === 'planning' &&
+        run.planning_clarification_request === null &&
+        run.active_task_card_id === null &&
+        run.task_card_ids.length === 0 &&
+        (run.status === 'failed' || run.status === 'cancelled'));
+}
+function createPlanningTerminalContinuityProjection(run) {
+    return {
+        summary: `planner_attempt_id=none; planning_terminal_status=${run.status}; ` +
+            `latest_verified_checkpoint_recorded=${run.latest_verified_checkpoint === null ? 'no' : 'yes'}; ` +
+            'planning_terminal_details=recorded_in_persisted_state',
+        planner_attempt_id: null,
+        review_pass_count: null,
+        latest_handoff_summary: null,
+        latest_verified_checkpoint_summary: run.latest_verified_checkpoint === null
+            ? null
+            : `Verified checkpoint recorded for task_card_id=${run.latest_verified_checkpoint.task_card_id} at ${run.latest_verified_checkpoint.recorded_at}; details remain in persisted state.`,
+        session_handoff_notes: [
+            `planning_terminal_status=${run.status}`,
+            `latest_failure_reason=${run.latest_failure?.reason ?? 'none'}`,
+            `latest_verified_checkpoint=${run.latest_verified_checkpoint?.task_card_id ?? 'none'}`,
+            'planning_terminal_details=recorded_in_persisted_state',
+        ],
+    };
+}
+async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+    const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
+    const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
+        (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
+    const nextStep = run.status === 'cancelled' ? 'halt_cancelled' : 'halt_failed';
+    const runLocator = createResolvedForemanRunLocator(cwd, run.run_id);
+    return {
+        cwd,
+        run_id: run.run_id,
+        run_directory: runLocator.run_directory,
+        run_ref: runLocator.run_ref,
+        goal: run.goal,
+        run_lifecycle: runLifecycle,
+        readable_context: null,
+        orchestration_policy: null,
+        status: run.status,
+        stage: run.stage,
+        completed: null,
+        in_progress: null,
+        remaining: null,
+        resume_from: null,
+        active_role: run.active_role,
+        active_agent_id: run.active_agent_id,
+        active_thread_id: run.active_thread_id,
+        child_agents: run.child_agents,
+        specialist_executors: run.specialist_executors,
+        worker_visibility: null,
+        server_identity: serverIdentity,
+        task_graph_summary: EMPTY_TASK_GRAPH_SUMMARY,
+        current_task_card: null,
+        orchestrator_agent_config_summary: null,
+        orchestrator_request_settings_preview: null,
+        orchestrator_scope: ORCHESTRATOR_SCOPE,
+        orchestrator_scope_summary: ORCHESTRATOR_SCOPE_SUMMARY,
+        latest_handoff: null,
+        latest_verification: sanitizeLatestSummaryRecord(run.latest_verification),
+        latest_failure: sanitizeLatestSummaryRecord(run.latest_failure),
+        latest_verified_checkpoint: sanitizeLatestSummaryRecord(run.latest_verified_checkpoint),
+        latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
+        latest_response: sanitizeLatestSummaryRecord(run.latest_response),
+        hydration: null,
+        always_on_mode: alwaysOnMode,
+        always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, nextStep, false),
+        workflow_operator_state: {
+            phase: 'plan',
+            summary: 'Foreman ended during bounded planning before any task-card was created. ' +
+                'Inspect the persisted planner artifacts and recorded failure before retrying.',
+            recommended_operator_action: 'none',
+            explore_evidence_state: 'not_applicable',
+            latest_explore_artifact_file: null,
+            plan_update_available: false,
+            latest_plan_update_file: null,
+        },
+        mcp_mutation_lease: mcpMutationLease,
+        continuity: createPlanningTerminalContinuityProjection(run),
+        planning_clarification_request: null,
+        next_step: nextStep,
+        can_advance: false,
+        decision_summary: sanitizeLatestSummaryRecord(run.latest_failure)?.summary ?? null,
+        mutation_guardrails_summary: null,
+        mutation_guardrails_trace: null,
+        routing_summary: null,
+        routing_trace: null,
+        review_summary: null,
+        review_trace: null,
+        research_summary: null,
+        research_trace: null,
+        allowed_next_commands: [],
+    };
+}
 function requireCurrentTaskCard(status) {
     const currentTaskCard = status.current_task_card;
     if (currentTaskCard === null) {
@@ -2364,6 +2460,15 @@ function createForemanActivityResult(input) {
 }
 async function createClarificationHoldActivityResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
     const status = await createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity);
+    return {
+        ...status,
+        latest_orchestration_attempt: null,
+        active_task_delegations: null,
+        task_delegations: [],
+    };
+}
+async function createPlanningTerminalActivityResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+    const status = await createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity);
     return {
         ...status,
         latest_orchestration_attempt: null,
@@ -2572,6 +2677,75 @@ function resolveCurrentAgentName(currentTaskCard) {
         currentTaskCard.agent_config_summary?.roster_name ??
         'none');
 }
+function resolveOperatorDisplayProofState(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'planned_assignment_only';
+    }
+    return (currentTaskCard.execution_proof?.proof_state ?? 'planned_assignment_only');
+}
+function resolveOperatorDisplayAgentName(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    const assignedName = currentTaskCard.assigned_agent_id ??
+        currentTaskCard.assigned_agent_config_summary?.roster_name ??
+        currentTaskCard.agent_config_summary?.roster_name ??
+        'none';
+    const ownerName = currentTaskCard.owner_agent_config_summary?.roster_name ??
+        currentTaskCard.agent_config_summary?.roster_name ??
+        assignedName;
+    if (proofState === 'foreman_worker_visible') {
+        return currentTaskCard.concrete_worker_id ?? assignedName;
+    }
+    if (proofState === 'captain_read_only_fallback') {
+        return ownerName;
+    }
+    if (proofState === 'host_session_fallback' &&
+        (currentTaskCard.resolved_request_settings?.request_kind === 'verification' ||
+            currentTaskCard.owner_role === 'verifier')) {
+        return ownerName;
+    }
+    return assignedName;
+}
+function resolveOperatorDisplayRole(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    if (proofState === 'captain_read_only_fallback' ||
+        (proofState === 'host_session_fallback' &&
+            (currentTaskCard.resolved_request_settings?.request_kind === 'verification' ||
+                currentTaskCard.owner_role === 'verifier'))) {
+        return currentTaskCard.owner_role;
+    }
+    return currentTaskCard.assigned_role ?? currentTaskCard.owner_role;
+}
+function createOperatorDisplayAgentLine(currentTaskCard) {
+    const role = resolveOperatorDisplayRole(currentTaskCard);
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    const suffix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? '; captain fallback'
+            : proofState === 'host_session_fallback'
+                ? '; host fallback'
+                : '; planned';
+    return `Agent: ${resolveOperatorDisplayAgentName(currentTaskCard)}${role !== 'none' ? ` (${role}${suffix})` : ''}`;
+}
+function createOperatorDisplayModelLine(currentTaskCard) {
+    const model = resolveCurrentTaskModel(currentTaskCard);
+    const variant = resolveCurrentTaskVariant(currentTaskCard);
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    const prefix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? 'captain fallback '
+            : proofState === 'host_session_fallback'
+                ? 'host fallback '
+                : 'planned ';
+    return `Model: ${prefix}${model} / ${variant}`;
+}
 function describeCurrentTaskExecutionProof(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'none';
@@ -2669,10 +2843,9 @@ function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, n
 function createQuietOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
     const workflowNext = workflowOperatorState?.recommended_operator_action ?? 'none';
-    const role = resolveCurrentTaskRole(currentTaskCard);
     return [
-        `Agent: ${resolveCurrentAgentName(currentTaskCard)}${role !== 'none' ? ` (${role})` : ''}`,
-        `Model: ${resolveCurrentTaskModel(currentTaskCard)} / ${resolveCurrentTaskVariant(currentTaskCard)}`,
+        createOperatorDisplayAgentLine(currentTaskCard),
+        createOperatorDisplayModelLine(currentTaskCard),
         `Lifecycle: ${describeRunLifecycle(runLifecycle)}`,
         `Phase: ${phase}`,
         `Next: ${workflowNext !== 'none' ? workflowNext : nextStep}`,
@@ -2735,39 +2908,17 @@ function describeOperatorLatestHandoff(guidanceSource) {
     }
     return 'none recorded';
 }
-function createDefaultOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, workflowOperatorState, taskGraphSummary, guidanceSource) {
-    let guidance = null;
-    const routingTrace = extractRoutingTraceFromGuidanceSource(guidanceSource);
-    if (guidanceSource?.user_message) {
-        guidance = guidanceSource.user_message ?? null;
-    }
-    else if (guidanceSource?.latest_response) {
-        guidance = guidanceSource.latest_response?.user_message ?? guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
-    }
-    else if (guidanceSource?.latest_orchestrator_synthesis) {
-        guidance = guidanceSource.latest_orchestrator_synthesis?.user_message ?? null;
-    }
+function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, _workflowOperatorState, taskGraphSummary, _guidanceSource) {
     const graphSummary = [
         `total=${taskGraphSummary.total_task_cards}`,
         `ready=${taskGraphSummary.ready_execution_tasks}`,
         `queued=${taskGraphSummary.queued_task_cards}`,
     ].join(' ');
     return [
-        `Provenance: ${describeOperatorProvenance(guidanceSource ?? null)}`,
-        `Agent: ${resolveCurrentAgentName(currentTaskCard)}${resolveCurrentTaskRole(currentTaskCard) !== 'none' ? ` (${resolveCurrentTaskRole(currentTaskCard)})` : ''}`,
+        createOperatorDisplayAgentLine(currentTaskCard),
         `Task: ${currentTaskCard?.title ?? 'none'}`,
-        `Model: ${resolveCurrentTaskModel(currentTaskCard)} / ${resolveCurrentTaskVariant(currentTaskCard)}`,
-        `Model Evidence: ${describeCurrentTaskModelEvidenceSummary(currentTaskCard)}`,
-        `Lifecycle: ${describeRunLifecycle(runLifecycle)}`,
-        `Execution: ${describeCurrentTaskExecutionProof(currentTaskCard)}`,
-        `Ownership: ${describeCurrentTaskOwnershipChain(currentTaskCard)}`,
-        `Review: ${describeOperatorReviewState(currentTaskCard, guidanceSource ?? null)}`,
-        `Handoff: ${describeOperatorLatestHandoff(guidanceSource ?? null)}`,
-        `Phase: ${workflowOperatorState?.phase ?? 'none'}`,
-        `Next: ${(workflowOperatorState?.recommended_operator_action ?? 'none') !== 'none' ? workflowOperatorState?.recommended_operator_action : nextStep}`,
-        `Routing: ${describeCurrentTaskRouting(currentTaskCard, routingTrace)}`,
+        createOperatorDisplayModelLine(currentTaskCard),
         `Graph: ${graphSummary}`,
-        ...(guidance ? [`Guidance: ${guidance}`] : []),
     ].join('\n');
 }
 function createOrchestratorOperatorVisibilitySummary(input) {
@@ -2987,13 +3138,19 @@ function createForemanUpdateDelegationResult(cwd, delegation) {
     };
 }
 function createForemanOrchestrateResult(status, detail) {
-    const currentTaskCard = requireCurrentTaskCard(status);
+    const recoveredTaskCardId = status.current_task_card?.task_card_id ??
+        status.readable_context?.task.task_card_id ??
+        status.latest_orchestrator_synthesis?.task_card_id ??
+        null;
+    if (!recoveredTaskCardId) {
+        throw new Error(`Could not recover task_card_id for foreman_orchestrate result on run ${status.run_id} after ${detail.orchestration_status}.`);
+    }
     return {
         cwd: status.cwd,
         run_id: status.run_id,
         run_directory: status.run_directory,
         run_ref: status.run_ref,
-        task_card_id: currentTaskCard.task_card_id,
+        task_card_id: recoveredTaskCardId,
         readable_context: status.readable_context,
         status: status.status,
         stage: status.stage,
@@ -3164,6 +3321,9 @@ async function getForemanStatus(input, sessionContext = DEFAULT_MCP_SESSION_CONT
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
         return createClarificationHoldStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
     }
+    if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
+        return createPlanningTerminalStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+    }
     const { run, taskCard, latestHandoff, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const taskDelegationSummary = await (0, runtime_1.loadTaskDelegationSummary)(runPaths, taskCard.task_card_id);
     const currentStageDelegationSummary = (0, runtime_1.summarizeTaskDelegations)(taskCard.task_card_id, selectCurrentStageDelegations(run, taskCard, taskDelegationSummary.delegations));
@@ -3190,6 +3350,9 @@ async function getForemanActivity(input, sessionContext = DEFAULT_MCP_SESSION_CO
     const serverIdentity = createForemanServerIdentityView(sessionContext);
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
         return createClarificationHoldActivityResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+    }
+    if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
+        return createPlanningTerminalActivityResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
     }
     const status = await getForemanStatus({
         run_dir: locator.run_directory,
@@ -3234,6 +3397,9 @@ async function getForemanDelegations(input, sessionContext = DEFAULT_MCP_SESSION
     const serverIdentity = createForemanServerIdentityView(sessionContext);
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
         return createForemanDelegationsResult(await createClarificationHoldStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity), createDelegationCounts([]), []);
+    }
+    if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
+        return createForemanDelegationsResult(await createPlanningTerminalStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity), createDelegationCounts([]), []);
     }
     const { run, taskCard, latestHandoff, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const taskDelegationSummary = await (0, runtime_1.loadTaskDelegationSummary)(runPaths, taskCard.task_card_id);

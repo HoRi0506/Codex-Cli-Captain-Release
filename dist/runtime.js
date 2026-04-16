@@ -2168,8 +2168,22 @@ function normalizeLoadedOrchestrationAttemptRoutingTrace(candidate) {
     if (!isRecord(candidate)) {
         return candidate;
     }
+    const routeTargetRole = candidate.route_target_role === 'planner' ||
+        candidate.route_target_role === 'explorer' ||
+        candidate.route_target_role === 'code specialist' ||
+        candidate.route_target_role === 'verifier' ||
+        candidate.route_target_role === null
+        ? candidate.route_target_role
+        : null;
+    const routeTargetStep = candidate.route_target_step === 'execute_task' ||
+        candidate.route_target_step === 'verify_task' ||
+        candidate.route_target_step === null
+        ? candidate.route_target_step
+        : null;
     return {
         ...candidate,
+        route_target_role: routeTargetRole,
+        route_target_step: routeTargetStep,
         selected_route: Object.prototype.hasOwnProperty.call(candidate, 'selected_route')
             ? candidate.selected_route
             : 'explicit_fallback',
