@@ -1414,6 +1414,7 @@ async function runCli(argv) {
             process.stdout.write(`Entry boundary: ${result.entry_boundary} (${result.entry_boundary_summary})\n`);
             process.stdout.write(`Upstream binary intercept supported: ${result.upstream_codex_binary_intercept_supported} (${result.upstream_codex_binary_intercept_summary})\n`);
             process.stdout.write(`Active run inspection: inspected=${result.inspected_active_run_count} fresh=${result.fresh_active_run_count} stale=${result.stale_active_run_count}\n`);
+            process.stdout.write(`Run decision: ${result.run_decision_reason}\n`);
             process.stdout.write(`Summary: ${result.summary}\n`);
             if (result.run_id) {
                 process.stdout.write(`Run ${result.run_id} selection=${result.run_selection} entrypoint=${result.entrypoint_used ?? 'reused'} scoping_source=${result.scoping_source} status=${result.status} stage=${result.stage} next_step=${result.next_step} in ${result.run_directory}\n`);
@@ -1574,15 +1575,16 @@ async function runCli(argv) {
         }
         if (parsed.command === 'check-install') {
             const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
-            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} package_surface=${result.packagedHarnessSurfaceStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
             process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
             process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
             process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);
             process.stdout.write(`Codex skill $${result.capSkillName}: ${result.capSkillSummary}\n`);
             process.stdout.write(`Codex custom agents: ${result.customAgentSummary}\n`);
+            process.stdout.write(`Packaged harness surface: ${result.packagedHarnessSurfaceSummary}\n`);
             process.stdout.write(`Registry summary: ${result.registryInspectionSummary}\n`);
             for (const server of result.otherInstalledMcpServers) {
-                process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} hint=${server.usageHint}\n`);
+                process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} approval=${server.approvalExpectation} scope=${server.recommendationScope} hint=${server.usageHint}\n`);
             }
             return result.status === 'ok' ? 0 : 1;
         }

@@ -79,6 +79,7 @@ function buildLauncherPrompt(result, request) {
     return [
         firstLine,
         'Continue through the persisted Foreman workflow for that run instead of re-scoping the request from scratch.',
+        `Run decision: ${result.run_decision_reason}`,
         `Auto-entry summary: ${result.summary}`,
         `Original operator request: ${request}`,
     ].join('\n');

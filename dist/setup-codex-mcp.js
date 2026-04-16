@@ -366,26 +366,36 @@ function classifyCompanionMcpServer(name) {
         case 'context7':
             return {
                 compatibility: 'recommended_companion',
+                approvalExpectation: 'none',
+                recommendationScope: 'docs_and_reference',
                 usageHint: 'Use for current library and framework documentation lookups before planning or implementation.',
             };
         case 'fetch':
             return {
                 compatibility: 'recommended_companion',
+                approvalExpectation: 'operator_confirmation_recommended',
+                recommendationScope: 'remote_artifacts',
                 usageHint: 'Use for bounded URL fetches when release work needs authoritative remote artifacts or docs.',
             };
         case 'filesystem':
             return {
                 compatibility: 'recommended_companion',
+                approvalExpectation: 'none',
+                recommendationScope: 'workspace_repository',
                 usageHint: 'Use for repository and workspace file inspection when the client exposes filesystem MCP tools.',
             };
         case 'git':
             return {
                 compatibility: 'recommended_companion',
+                approvalExpectation: 'external_side_effect_review',
+                recommendationScope: 'release_provenance',
                 usageHint: 'Use for release provenance, branch state, diffs, and regression-oriented history checks.',
             };
         default:
             return {
                 compatibility: 'generic_companion',
+                approvalExpectation: 'operator_confirmation_recommended',
+                recommendationScope: 'general_support',
                 usageHint: 'Registered alongside Foreman as a separate MCP surface that can be used for bounded supporting work.',
             };
     }
@@ -413,6 +423,70 @@ function createRegistrationSummary(status, serverName) {
         default:
             return `Codex MCP registration ${JSON.stringify(serverName)} could not be inspected reliably.`;
     }
+}
+async function inspectPackagedHarnessSurface(packageRoot = defaultPackageRoot()) {
+    const components = [
+        {
+            component: 'docs_install',
+            path: node_path_1.default.join(packageRoot, 'docs', 'install.md'),
+            status: 'missing',
+            summary: 'Packaged install guide is missing.',
+        },
+        {
+            component: 'cap_skill',
+            path: resolvePackagedForemanCapSkillPath(packageRoot),
+            status: 'missing',
+            summary: 'Packaged $cap skill is missing.',
+        },
+        {
+            component: 'plugin_manifest',
+            path: node_path_1.default.join(packageRoot, '.codex-plugin', 'plugin.json'),
+            status: 'missing',
+            summary: 'Packaged Codex plugin manifest is missing.',
+        },
+        {
+            component: 'mcp_manifest',
+            path: node_path_1.default.join(packageRoot, '.mcp.json'),
+            status: 'missing',
+            summary: 'Packaged MCP manifest is missing.',
+        },
+    ];
+    const presentAgentFiles = await listPackagedForemanCustomAgentFiles(packageRoot).catch(() => []);
+    components.push({
+        component: 'custom_agents',
+        path: resolvePackagedForemanAgentsDirectoryPath(packageRoot),
+        status: presentAgentFiles.length > 0 ? 'present' : 'missing',
+        summary: presentAgentFiles.length > 0
+            ? `Packaged custom-agent roster includes ${presentAgentFiles.length} Foreman agent file${presentAgentFiles.length === 1 ? '' : 's'}.`
+            : 'Packaged custom-agent roster is missing.',
+    });
+    for (const component of components) {
+        if (component.component === 'custom_agents') {
+            continue;
+        }
+        component.status = (await pathExists(component.path)) ? 'present' : 'missing';
+        component.summary =
+            component.status === 'present'
+                ? {
+                    docs_install: 'Packaged install guide is present.',
+                    cap_skill: 'Packaged $cap skill is present.',
+                    plugin_manifest: 'Packaged Codex plugin manifest is present.',
+                    mcp_manifest: 'Packaged MCP manifest is present.',
+                    custom_agents: component.summary,
+                }[component.component]
+                : component.summary;
+    }
+    const status = components.every((component) => component.status === 'present')
+        ? 'coherent_surface'
+        : 'incomplete_surface';
+    const missingComponents = components.filter((component) => component.status === 'missing').map((component) => component.component);
+    return {
+        status,
+        summary: status === 'coherent_surface'
+            ? 'Packaged harness surface is coherent: install guide, $cap skill, custom agents, plugin manifest, and MCP manifest are all present.'
+            : `Packaged harness surface is incomplete. Missing: ${missingComponents.join(', ')}.`,
+        components,
+    };
 }
 async function resolveInstalledCodexForemanMcpLaunchTarget(packageRoot = defaultPackageRoot()) {
     const entrypointPath = node_path_1.default.join(packageRoot, 'dist', 'mcp-main.js');
@@ -501,6 +575,8 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
                         args,
                         authStatus: normalizeOptionalString(record.auth_status),
                         compatibility: classification.compatibility,
+                        approvalExpectation: classification.approvalExpectation,
+                        recommendationScope: classification.recommendationScope,
                         usageHint: classification.usageHint,
                     };
                 })
@@ -517,9 +593,11 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     }
     const capSkill = await inspectPackagedForemanCapSkill(dependencies.packageRoot);
     const customAgents = await inspectPackagedForemanCustomAgents(dependencies.packageRoot);
+    const packagedHarnessSurface = await inspectPackagedHarnessSurface(dependencies.packageRoot);
     const status = registrationStatus === 'matching_registration' &&
         configExists &&
         registryInspectionStatus === 'listed' &&
+        packagedHarnessSurface.status === 'coherent_surface' &&
         capSkill.status === 'matching_install' &&
         customAgents.status === 'matching_install'
         ? 'ok'
@@ -541,6 +619,9 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         registryInspectionSummary,
         otherInstalledMcpServers,
         companionMcpUsageSummary: summarizeCompanionMcpServers(otherInstalledMcpServers),
+        packagedHarnessSurfaceStatus: packagedHarnessSurface.status,
+        packagedHarnessSurfaceSummary: packagedHarnessSurface.summary,
+        packagedHarnessSurface: packagedHarnessSurface.components,
         capSkillName: capSkill.skillName,
         capSkillPath: capSkill.skillPath,
         capSkillStatus: capSkill.status,

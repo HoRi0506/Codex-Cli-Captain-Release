@@ -59,6 +59,7 @@ const promises_2 = require("node:stream/promises");
 const promises_3 = require("node:timers/promises");
 const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
+const run_lifecycle_1 = require("./run-lifecycle");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
 const helper_agents_1 = require("./helper-agents");
@@ -3238,57 +3239,25 @@ async function startForemanRun(options) {
         canAdvance: initialDecision.can_advance,
     };
 }
-const AUTO_ENTRY_STALE_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000;
-function classifyAutoEntryRunFreshness(updatedAt, now = Date.now()) {
-    const updatedAtMs = Date.parse(updatedAt);
-    if (!Number.isFinite(updatedAtMs)) {
-        return 'stale';
-    }
-    return now - updatedAtMs <= AUTO_ENTRY_STALE_RUN_THRESHOLD_MS ? 'fresh' : 'stale';
-}
 async function inspectPersistedActiveRunsForAutoEntry(cwd) {
-    const runsDirectory = (0, runtime_1.createRunPaths)(cwd, 'placeholder').runsDir;
-    let runIds = [];
-    try {
-        runIds = await (0, promises_1.readdir)(runsDirectory);
-    }
-    catch (error) {
-        if (typeof error === 'object' &&
-            error !== null &&
-            'code' in error &&
-            error.code === 'ENOENT') {
-            return { fresh: [], stale: [] };
-        }
-        throw error;
-    }
+    const lifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const candidates = [];
-    for (const runId of runIds.sort((left, right) => left.localeCompare(right))) {
-        const runPaths = (0, runtime_1.createRunPaths)(cwd, runId);
-        let run;
+    for (const lifecycle of lifecycleViews) {
         try {
-            run = await (0, runtime_1.loadRunRecord)(runPaths);
-        }
-        catch {
-            continue;
-        }
-        if (run.status !== 'active') {
-            continue;
-        }
-        try {
-            const snapshot = await loadContinueRunSnapshot({ cwd, runId });
+            const snapshot = await loadContinueRunSnapshot({ cwd, runId: lifecycle.run_id });
             candidates.push({
                 snapshot,
-                updatedAt: run.updated_at,
+                lifecycle,
             });
         }
         catch {
             continue;
         }
     }
-    candidates.sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
+    candidates.sort((left, right) => Date.parse(right.lifecycle.updated_at) - Date.parse(left.lifecycle.updated_at));
     return {
-        fresh: candidates.filter((candidate) => classifyAutoEntryRunFreshness(candidate.updatedAt) === 'fresh'),
-        stale: candidates.filter((candidate) => classifyAutoEntryRunFreshness(candidate.updatedAt) === 'stale'),
+        fresh: candidates.filter((candidate) => candidate.lifecycle.freshness === 'fresh'),
+        stale: candidates.filter((candidate) => candidate.lifecycle.freshness === 'stale'),
     };
 }
 function summarizeNewAutoEntryRunCreation(input) {
@@ -3312,6 +3281,7 @@ async function autoEnterForeman(options) {
         ? await inspectPersistedActiveRunsForAutoEntry(options.cwd)
         : { fresh: [], stale: [] };
     const inspectedActiveRunCount = activeRunInspection.fresh.length + activeRunInspection.stale.length;
+    const activeRunCandidates = [...activeRunInspection.fresh, ...activeRunInspection.stale].map((candidate) => candidate.lifecycle);
     const reusableRun = recommendation.automatic_entry_supported && activeRunInspection.fresh.length === 1 ? activeRunInspection.fresh[0] : null;
     if (!recommendation.automatic_entry_supported) {
         return {
@@ -3330,6 +3300,9 @@ async function autoEnterForeman(options) {
             stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: null,
             scoping_source: null,
+            run_decision_reason: 'automatic entry disabled by shared entry policy',
+            active_run_candidates: activeRunCandidates,
+            selected_run_lifecycle: null,
             run_id: null,
             task_card_id: null,
             run_directory: null,
@@ -3358,6 +3331,9 @@ async function autoEnterForeman(options) {
             stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: null,
             scoping_source: 'persisted_active_run_reuse',
+            run_decision_reason: reusableRun.lifecycle.decision_reason,
+            active_run_candidates: activeRunCandidates,
+            selected_run_lifecycle: reusableRun.lifecycle,
             run_id: reusableRun.snapshot.runId,
             task_card_id: reusableRun.snapshot.taskCardId,
             run_directory: reusableRun.snapshot.runDirectory,
@@ -3394,6 +3370,13 @@ async function autoEnterForeman(options) {
             stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: 'plan',
             scoping_source: 'planner_scoping',
+            run_decision_reason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
+                : activeRunInspection.fresh.length > 1
+                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                    : 'no reusable active run was available, so Foreman created a new planner-scoped run',
+            active_run_candidates: activeRunCandidates,
+            selected_run_lifecycle: null,
             run_id: result.runId,
             task_card_id: result.taskCardId,
             run_directory: result.runDirectory,
@@ -3428,6 +3411,13 @@ async function autoEnterForeman(options) {
         stale_active_run_count: activeRunInspection.stale.length,
         entrypoint_used: 'start',
         scoping_source: 'bounded_request_defaults',
+        run_decision_reason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+            ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
+            : activeRunInspection.fresh.length > 1
+                ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
+        active_run_candidates: activeRunCandidates,
+        selected_run_lifecycle: null,
         run_id: startResult.runId,
         task_card_id: startResult.taskCardId,
         run_directory: startResult.runDirectory,
