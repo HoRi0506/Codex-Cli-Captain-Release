@@ -9,12 +9,20 @@ const promises_1 = require("node:fs/promises");
 const node_path_1 = __importDefault(require("node:path"));
 const node_child_process_1 = require("node:child_process");
 const node_util_1 = require("node:util");
+const public_surface_1 = require("./public-surface");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const RELEASE_REPO_MANIFEST_FILE = 'release-repo-manifest.json';
 const RELEASE_REPO_GITIGNORE_FILE = '.gitignore';
 const RELEASE_REPO_GITIGNORE_CONTENT = 'node_modules/\n.DS_Store\n*.tgz\nforeman-smoke-*/\nforeman-sweep-*/\n';
-const RELEASE_REPO_URL = 'https://github.com/HoRi0506/Codex-Foreman-release';
+const RELEASE_REPO_URL = public_surface_1.FOREMAN_RELEASE_REPO_URL;
 const RELEASES_URL = `${RELEASE_REPO_URL}/releases`;
+function createHealthyCheckInstallExample(packageVersion) {
+    return [
+        `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0`,
+        `Current package: codex-foreman@${packageVersion}`,
+        `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
+    ].join('\n');
+}
 function toPosixRelativePath(filePath) {
     return filePath.split(node_path_1.default.sep).join('/');
 }
@@ -52,7 +60,7 @@ async function resolveSourceGitCommit(sourceRoot) {
 }
 function createReleaseInstallGuide(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`$cap\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
@@ -83,7 +91,7 @@ Then register or refresh the MCP entrypoint:
 codex-foreman setup
 \`\`\`
 
-That step also installs or refreshes the packaged \`$cap\` skill under your local Codex skills directory and the packaged Foreman custom-agent roster under your local Codex agents directory.
+That step also installs or refreshes the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill under your local Codex skills directory and the packaged Foreman custom-agent roster under your local Codex agents directory.
 
 Verify the install:
 
@@ -109,31 +117,38 @@ The install is in the expected state when:
 
 - \`codex-foreman check-install\` reports \`status=ok\`
 - the registration summary says the installed MCP entrypoint matches
-- the skill summary says \`$cap\` matches the packaged Foreman skill content
+- the skill summary says \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` matches the packaged Foreman skill content
 - the custom-agent summary says the packaged Foreman agent roster matches
 - \`foreman_server_identity\` reports the expected MCP build after the next Codex session starts
-- after restarting Codex CLI, you can invoke \`$cap\` to enter the captain-first Foreman path
+- after restarting Codex CLI, you can invoke \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` to enter the captain-first Foreman path
+
+## Healthy output example
+
+\`\`\`text
+${createHealthyCheckInstallExample(input.packageVersion)}
+\`\`\`
 
 ## Notes
 
 - there is no separate \`mcp update\` command today
-- \`codex-foreman setup\` handles MCP registration, packaged \`$cap\` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
+- \`codex-foreman setup\` handles MCP registration, packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
 - Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
 - install from the GitHub release tarball when you want a no-clone setup
+- published release assets live under ${RELEASES_URL}
 
 Please restart Codex CLI.
 `;
 }
 function createReleaseReadme(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`$cap\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
 Captain-first Foreman toolbox for Codex CLI.
 
 Codex-Foreman is for requests that benefit from a more structured path than one opaque Codex turn. It adds a captain-first entry, visible run state, role-shaped specialist routing, and an explicit review lane without replacing Codex as the orchestrator.
 
-The public entrypoint is \`$cap\`. That entry hands the request to \`captain\` first.
+The public entrypoint is \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`. That entry hands the request to \`captain\` first.
 
 ## What It Is For
 
@@ -155,18 +170,18 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 
 ## How It Behaves
 
-- you send a request with \`$cap <request>\`
+- you send a request with \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <request>\`
 - \`captain\` reads the request and current Foreman state
 - Codex decides whether to answer locally or use a specialist role
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
-- when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`$cap\` work is \`foreman_captain\`
+- when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` work is \`foreman_captain\`
 - specialist results return through \`captain\`, which decides whether to continue, review, reroute, stop, or answer
 
 ## Public And Internal Boundary
 
 The public harness surface is:
 
-- \`$cap\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`
 
 The internal support surfaces are:
 
@@ -189,7 +204,7 @@ Reach for Codex-Foreman when:
 
 The packaged install surface ships:
 
-- the public \`$cap\` skill
+- the public \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill
 - a matching Foreman custom-agent roster for Codex-native harness work
 - the captain and specialist wrapper docs that define the internal contract
 - a plugin-era manifest skeleton and MCP placeholder that keep the package aligned with supported Codex extension surfaces
@@ -225,11 +240,13 @@ ${codexPrompt}
 
 After install and restart:
 
-- use \`$cap <your request>\` when you want the request to enter Foreman through \`captain\`
+- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <your request>\` when you want the request to enter Foreman through \`captain\`
 - use \`codex-foreman check-install\` when you want to confirm the install is healthy
 - restart Codex CLI after install or update so the latest MCP session and skill are loaded
 
 Codex remains the orchestrator and authentication stays on supported Codex login paths. Foreman does not proxy or scrape OAuth credentials.
+
+Published release assets live under ${RELEASES_URL}.
 
 ## Config
 
@@ -251,7 +268,7 @@ function createReleasePackageJson(rootPackage) {
         name: rootPackage.name,
         version: rootPackage.version,
         private: false,
-        description: rootPackage.description ?? 'Captain-led Foreman harness for Codex CLI.',
+        description: rootPackage.description ?? public_surface_1.FOREMAN_PACKAGE_DESCRIPTION,
         main: rootPackage.main ?? 'dist/index.js',
         bin: rootPackage.bin ?? {
             'codex-foreman': 'dist/cli-main.js',
@@ -315,7 +332,6 @@ async function buildInstallOnlyReleaseRepo(options) {
     const schemasPath = node_path_1.default.join(sourceRoot, 'schemas');
     const skillsPath = node_path_1.default.join(sourceRoot, 'skills');
     const agentsPath = node_path_1.default.join(sourceRoot, 'agents');
-    const pluginManifestDir = node_path_1.default.join(sourceRoot, '.codex-plugin');
     const pluginMcpPath = node_path_1.default.join(sourceRoot, '.mcp.json');
     const rootPackage = await readJsonDocument(packageJsonPath);
     const sourceGitCommit = await resolveSourceGitCommit(sourceRoot);
@@ -342,7 +358,8 @@ async function buildInstallOnlyReleaseRepo(options) {
     await copyDirectory(schemasPath, node_path_1.default.join(outputDir, 'schemas'));
     await copyDirectory(skillsPath, node_path_1.default.join(outputDir, 'skills'));
     await copyDirectory(agentsPath, node_path_1.default.join(outputDir, 'agents'));
-    await copyDirectory(pluginManifestDir, node_path_1.default.join(outputDir, '.codex-plugin'));
+    await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, '.codex-plugin'), { recursive: true });
+    await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, '.codex-plugin', 'plugin.json'), `${JSON.stringify((0, public_surface_1.createCodexPluginManifest)(rootPackage.name, rootPackage.version), null, 2)}\n`, 'utf8');
     await (0, promises_1.cp)(pluginMcpPath, node_path_1.default.join(outputDir, '.mcp.json'));
     await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'docs'), { recursive: true });
     await (0, promises_1.mkdir)(node_path_1.default.join(outputDir, 'scripts'), { recursive: true });
@@ -364,6 +381,8 @@ async function buildInstallOnlyReleaseRepo(options) {
         source_git_commit: sourceGitCommit,
         package_name: rootPackage.name,
         package_version: rootPackage.version,
+        public_entry_skill_name: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
+        public_entry_label: public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL,
         managed_paths: managedPaths.map((managedPath) => toPosixRelativePath(managedPath)),
     };
     await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, RELEASE_REPO_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');

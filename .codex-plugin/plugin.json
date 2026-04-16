@@ -1,6 +1,6 @@
 {
   "name": "codex-foreman",
-  "version": "1.4.0",
+  "version": "1.5.10",
   "description": "Captain-led Foreman harness entrypoint for Codex CLI.",
   "author": {
     "name": "HoRi0506"
@@ -8,7 +8,13 @@
   "homepage": "https://github.com/HoRi0506/Codex-Foreman-release",
   "repository": "https://github.com/HoRi0506/Codex-Foreman",
   "license": "UNLICENSED",
-  "keywords": ["codex", "foreman", "harness", "agents", "mcp"],
+  "keywords": [
+    "codex",
+    "foreman",
+    "harness",
+    "agents",
+    "mcp"
+  ],
   "skills": "./skills/",
   "mcpServers": "./.mcp.json",
   "interface": {
@@ -17,7 +23,10 @@
     "longDescription": "Enter a bounded captain-led Foreman workflow through $cap while keeping worker routing and review internal.",
     "developerName": "HoRi0506",
     "category": "Productivity",
-    "capabilities": ["Read", "Write"],
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
     "defaultPrompt": [
       "Use $cap to route this coding task through captain first.",
       "Use $cap when you want bounded worker routing and review.",

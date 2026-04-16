@@ -11,6 +11,7 @@ const node_child_process_1 = require("node:child_process");
 const promises_1 = require("node:fs/promises");
 const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
+const public_surface_1 = require("./public-surface");
 const runtime_1 = require("./runtime");
 class CodexMcpSetupConflictError extends Error {
     constructor(message) {
@@ -22,8 +23,6 @@ exports.CodexMcpSetupConflictError = CodexMcpSetupConflictError;
 function defaultPackageRoot() {
     return node_path_1.default.resolve(__dirname, '..');
 }
-const FOREMAN_CAP_SKILL_NAME = 'cap';
-const PACKAGED_FOREMAN_CUSTOM_AGENT_PREFIX = 'foreman-';
 function resolveCodexHome() {
     const configured = process.env.CODEX_HOME?.trim();
     if (configured && configured.length > 0) {
@@ -38,7 +37,7 @@ function resolveCodexAgentsDirectoryPath() {
     return node_path_1.default.join(resolveCodexHome(), 'agents');
 }
 function resolvePackagedForemanCapSkillPath(packageRoot = defaultPackageRoot()) {
-    return node_path_1.default.join(packageRoot, 'skills', FOREMAN_CAP_SKILL_NAME, 'SKILL.md');
+    return node_path_1.default.join(packageRoot, 'skills', public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME, 'SKILL.md');
 }
 function resolvePackagedForemanAgentsDirectoryPath(packageRoot = defaultPackageRoot()) {
     return node_path_1.default.join(packageRoot, 'agents');
@@ -57,24 +56,35 @@ async function readTextIfExists(filePath) {
 async function listPackagedForemanCustomAgentFiles(packageRoot = defaultPackageRoot()) {
     const agentsDir = resolvePackagedForemanAgentsDirectoryPath(packageRoot);
     const entries = await (0, promises_1.readdir)(agentsDir, { withFileTypes: true });
-    return entries
-        .filter((entry) => entry.isFile() &&
-        entry.name.startsWith(PACKAGED_FOREMAN_CUSTOM_AGENT_PREFIX) &&
-        entry.name.endsWith('.toml'))
-        .map((entry) => entry.name)
-        .sort();
+    const presentFiles = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
+    return public_surface_1.FOREMAN_PACKAGED_CUSTOM_AGENT_FILES.filter((fileName) => presentFiles.has(fileName));
+}
+async function readInstalledPackageManifest(packageRoot = defaultPackageRoot()) {
+    try {
+        const manifest = JSON.parse(await (0, promises_1.readFile)(node_path_1.default.join(packageRoot, 'package.json'), 'utf8'));
+        return {
+            name: typeof manifest.name === 'string' ? manifest.name : null,
+            version: typeof manifest.version === 'string' ? manifest.version : null,
+        };
+    }
+    catch {
+        return {
+            name: null,
+            version: null,
+        };
+    }
 }
 function createCapSkillSummary(status, skillPath) {
     switch (status) {
         case 'matching_install':
-            return `Codex skill $cap is installed at ${skillPath} and matches the packaged Foreman skill content.`;
+            return `Codex skill ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} is installed at ${skillPath} and matches the packaged Foreman skill content.`;
         case 'missing_install':
-            return `Codex skill $cap is missing at ${skillPath}. Run codex-foreman setup, then restart Codex CLI.`;
+            return `Codex skill ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} is missing at ${skillPath}. Run codex-foreman setup, then restart Codex CLI.`;
         case 'outdated_install':
-            return `Codex skill $cap exists at ${skillPath} but does not match the packaged Foreman skill content. Re-run codex-foreman setup, then restart Codex CLI.`;
+            return `Codex skill ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} exists at ${skillPath} but does not match the packaged Foreman skill content. Re-run codex-foreman setup, then restart Codex CLI.`;
         case 'unreadable_install':
         default:
-            return `Codex skill $cap at ${skillPath} could not be inspected reliably.`;
+            return `Codex skill ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} at ${skillPath} could not be inspected reliably.`;
     }
 }
 function createCustomAgentSummary(status, directoryPath, agentNames, fileCount, details) {
@@ -93,13 +103,13 @@ function createCustomAgentSummary(status, directoryPath, agentNames, fileCount, 
 }
 async function installPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
     const sourceSkillFile = resolvePackagedForemanCapSkillPath(packageRoot);
-    const destinationSkillDir = resolveCodexSkillPath(FOREMAN_CAP_SKILL_NAME);
+    const destinationSkillDir = resolveCodexSkillPath(public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME);
     const destinationSkillFile = node_path_1.default.join(destinationSkillDir, 'SKILL.md');
     const packagedContent = await (0, promises_1.readFile)(sourceSkillFile, 'utf8');
     const installedContent = await readTextIfExists(destinationSkillFile);
     if (installedContent === packagedContent) {
         return {
-            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillName: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
             skillPath: destinationSkillDir,
             status: 'already_installed',
         };
@@ -107,7 +117,7 @@ async function installPackagedForemanCapSkill(packageRoot = defaultPackageRoot()
     await (0, promises_1.mkdir)(destinationSkillDir, { recursive: true });
     await (0, promises_1.cp)(sourceSkillFile, destinationSkillFile, { force: true });
     return {
-        skillName: FOREMAN_CAP_SKILL_NAME,
+        skillName: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
         skillPath: destinationSkillDir,
         status: installedContent === null ? 'installed' : 'updated',
     };
@@ -144,7 +154,7 @@ async function installPackagedForemanCustomAgents(packageRoot = defaultPackageRo
     };
 }
 async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()) {
-    const skillPath = resolveCodexSkillPath(FOREMAN_CAP_SKILL_NAME);
+    const skillPath = resolveCodexSkillPath(public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME);
     const packagedSkillFile = resolvePackagedForemanCapSkillPath(packageRoot);
     const installedSkillFile = node_path_1.default.join(skillPath, 'SKILL.md');
     try {
@@ -154,7 +164,7 @@ async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()
         ]);
         const status = installedContent === null ? 'missing_install' : installedContent === packagedContent ? 'matching_install' : 'outdated_install';
         return {
-            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillName: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
             skillPath,
             status,
             summary: createCapSkillSummary(status, skillPath),
@@ -163,7 +173,7 @@ async function inspectPackagedForemanCapSkill(packageRoot = defaultPackageRoot()
     catch (error) {
         const message = error instanceof Error ? error.message : 'Unknown filesystem error.';
         return {
-            skillName: FOREMAN_CAP_SKILL_NAME,
+            skillName: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
             skillPath,
             status: 'unreadable_install',
             summary: `${createCapSkillSummary('unreadable_install', skillPath)} ${message}`,
@@ -425,6 +435,7 @@ function createRegistrationSummary(status, serverName) {
     }
 }
 async function inspectPackagedHarnessSurface(packageRoot = defaultPackageRoot()) {
+    const installedPackage = await readInstalledPackageManifest(packageRoot);
     const components = [
         {
             component: 'docs_install',
@@ -436,7 +447,7 @@ async function inspectPackagedHarnessSurface(packageRoot = defaultPackageRoot())
             component: 'cap_skill',
             path: resolvePackagedForemanCapSkillPath(packageRoot),
             status: 'missing',
-            summary: 'Packaged $cap skill is missing.',
+            summary: `Packaged ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} skill is missing.`,
         },
         {
             component: 'plugin_manifest',
@@ -452,13 +463,17 @@ async function inspectPackagedHarnessSurface(packageRoot = defaultPackageRoot())
         },
     ];
     const presentAgentFiles = await listPackagedForemanCustomAgentFiles(packageRoot).catch(() => []);
+    const expectedAgentFiles = [...public_surface_1.FOREMAN_PACKAGED_CUSTOM_AGENT_FILES];
+    const missingAgentFiles = expectedAgentFiles.filter((fileName) => !presentAgentFiles.includes(fileName));
     components.push({
         component: 'custom_agents',
         path: resolvePackagedForemanAgentsDirectoryPath(packageRoot),
-        status: presentAgentFiles.length > 0 ? 'present' : 'missing',
-        summary: presentAgentFiles.length > 0
-            ? `Packaged custom-agent roster includes ${presentAgentFiles.length} Foreman agent file${presentAgentFiles.length === 1 ? '' : 's'}.`
-            : 'Packaged custom-agent roster is missing.',
+        status: presentAgentFiles.length === 0 ? 'missing' : missingAgentFiles.length > 0 ? 'mismatched' : 'present',
+        summary: presentAgentFiles.length === 0
+            ? 'Packaged custom-agent roster is missing.'
+            : missingAgentFiles.length > 0
+                ? `Packaged custom-agent roster is drifted. Missing: ${missingAgentFiles.join(', ')}.`
+                : `Packaged custom-agent roster includes ${presentAgentFiles.length} Foreman agent file${presentAgentFiles.length === 1 ? '' : 's'} (${public_surface_1.FOREMAN_PACKAGED_CUSTOM_AGENT_NAMES.join(', ')}).`,
     });
     for (const component of components) {
         if (component.component === 'custom_agents') {
@@ -469,22 +484,46 @@ async function inspectPackagedHarnessSurface(packageRoot = defaultPackageRoot())
             component.status === 'present'
                 ? {
                     docs_install: 'Packaged install guide is present.',
-                    cap_skill: 'Packaged $cap skill is present.',
+                    cap_skill: `Packaged ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} skill is present.`,
                     plugin_manifest: 'Packaged Codex plugin manifest is present.',
                     mcp_manifest: 'Packaged MCP manifest is present.',
                     custom_agents: component.summary,
                 }[component.component]
                 : component.summary;
     }
-    const status = components.every((component) => component.status === 'present')
-        ? 'coherent_surface'
-        : 'incomplete_surface';
+    const pluginComponent = components.find((component) => component.component === 'plugin_manifest');
+    if (pluginComponent && pluginComponent.status === 'present') {
+        try {
+            const pluginManifest = JSON.parse(await (0, promises_1.readFile)(pluginComponent.path, 'utf8'));
+            const expectedPluginManifest = (0, public_surface_1.createCodexPluginManifest)(installedPackage.name ?? public_surface_1.FOREMAN_PACKAGE_NAME, installedPackage.version ?? 'unknown');
+            if (pluginManifest.name !== expectedPluginManifest.name || pluginManifest.version !== expectedPluginManifest.version) {
+                pluginComponent.status = 'mismatched';
+                pluginComponent.summary = `Packaged Codex plugin manifest drifted from package metadata. Expected name=${String(expectedPluginManifest.name)} version=${String(expectedPluginManifest.version)} but found name=${String(pluginManifest.name)} version=${String(pluginManifest.version)}.`;
+            }
+            else {
+                pluginComponent.summary = `Packaged Codex plugin manifest matches package metadata (${String(expectedPluginManifest.name)}@${String(expectedPluginManifest.version)}).`;
+            }
+        }
+        catch (error) {
+            const message = error instanceof Error ? error.message : 'Unknown plugin manifest parse error.';
+            pluginComponent.status = 'mismatched';
+            pluginComponent.summary = `Packaged Codex plugin manifest could not be verified. ${message}`;
+        }
+    }
     const missingComponents = components.filter((component) => component.status === 'missing').map((component) => component.component);
+    const mismatchedComponents = components.filter((component) => component.status === 'mismatched').map((component) => component.component);
+    const status = missingComponents.length > 0
+        ? 'incomplete_surface'
+        : mismatchedComponents.length > 0
+            ? 'drifted_surface'
+            : 'coherent_surface';
     return {
         status,
         summary: status === 'coherent_surface'
-            ? 'Packaged harness surface is coherent: install guide, $cap skill, custom agents, plugin manifest, and MCP manifest are all present.'
-            : `Packaged harness surface is incomplete. Missing: ${missingComponents.join(', ')}.`,
+            ? `Packaged harness surface is coherent: install guide, ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} skill, custom agents, plugin manifest, and MCP manifest are aligned.`
+            : status === 'drifted_surface'
+                ? `Packaged harness surface is drifted. Mismatched: ${mismatchedComponents.join(', ')}.`
+                : `Packaged harness surface is incomplete. Missing: ${missingComponents.join(', ')}.`,
         components,
     };
 }
@@ -504,6 +543,7 @@ async function resolveInstalledCodexForemanMcpLaunchTarget(packageRoot = default
 }
 async function checkCodexMcpInstall(options, dependencies = {}) {
     const runCommand = dependencies.runCommand ?? spawnCommand;
+    const installedPackage = await readInstalledPackageManifest(dependencies.packageRoot);
     const launchTarget = await resolveInstalledCodexForemanMcpLaunchTarget(dependencies.packageRoot);
     const expectedEntrypointPath = launchTarget.args[0] ?? null;
     const configPath = (0, runtime_1.resolveForemanConfigFilePath)();
@@ -604,6 +644,10 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         : 'warning';
     return {
         status,
+        packageName: installedPackage.name ?? public_surface_1.FOREMAN_PACKAGE_NAME,
+        packageVersion: installedPackage.version ?? 'unknown',
+        publicEntrySkillName: public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME,
+        publicEntryLabel: public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL,
         serverName: options.serverName,
         expectedLaunchCommand: launchTarget.command,
         expectedLaunchArgs: [...launchTarget.args],

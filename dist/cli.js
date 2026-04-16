@@ -1619,7 +1619,9 @@ async function runCli(argv) {
         }
         if (parsed.command === 'check-install') {
             const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
-            process.stdout.write(`Foreman install check: status=${result.status} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} package_surface=${result.packagedHarnessSurfaceStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Foreman install check: status=${result.status} version=${result.packageVersion} entry=${result.publicEntryLabel} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} package_surface=${result.packagedHarnessSurfaceStatus} companion_mcps=${result.otherInstalledMcpServers.length}\n`);
+            process.stdout.write(`Current package: ${result.packageName}@${result.packageVersion}\n`);
+            process.stdout.write(`Public entry: ${result.publicEntryLabel} (skill=${result.publicEntrySkillName})\n`);
             process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
             process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
             process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);

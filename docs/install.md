@@ -7,7 +7,7 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.9/codex-foreman-1.5.9.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.10/codex-foreman-1.5.10.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
@@ -19,7 +19,7 @@ Codex should execute these steps for the preferred install path:
 Install from the exact release tarball:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.9/codex-foreman-1.5.9.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.10/codex-foreman-1.5.10.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -59,11 +59,20 @@ The install is in the expected state when:
 - `foreman_server_identity` reports the expected MCP build after the next Codex session starts
 - after restarting Codex CLI, you can invoke `$cap` to enter the captain-first Foreman path
 
+## Healthy output example
+
+```text
+Foreman install check: status=ok version=1.5.10 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0
+Current package: codex-foreman@1.5.10
+Public entry: $cap (skill=cap)
+```
+
 ## Notes
 
 - there is no separate `mcp update` command today
 - `codex-foreman setup` handles MCP registration, packaged `$cap` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
 - Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
 - install from the GitHub release tarball when you want a no-clone setup
+- published release assets live under https://github.com/HoRi0506/Codex-Foreman-release/releases
 
 Please restart Codex CLI.
