@@ -1,0 +1,124 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://codex-foreman.dev/schemas/specialist-role-contracts.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "contracts"],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "contracts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["planner", "explorer", "code_specialist", "verifier"],
+      "properties": {
+        "planner": { "$ref": "#/$defs/contract" },
+        "explorer": { "$ref": "#/$defs/contract" },
+        "code_specialist": { "$ref": "#/$defs/contract" },
+        "verifier": { "$ref": "#/$defs/contract" }
+      }
+    }
+  },
+  "$defs": {
+    "taskKind": {
+      "type": "string",
+      "enum": ["execution", "review", "explore", "plan"]
+    },
+    "resultField": {
+      "type": "string",
+      "enum": [
+        "summary",
+        "findings",
+        "changed_files",
+        "evidence_paths",
+        "open_questions",
+        "recommended_next_action",
+        "acceptance_status"
+      ]
+    },
+    "inputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_task_kinds", "required_task_fields", "prompt_contract_sections"],
+      "properties": {
+        "allowed_task_kinds": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/taskKind" }
+        },
+        "required_task_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "enum": ["title", "scope", "acceptance", "execution_prompt"]
+          }
+        },
+        "prompt_contract_sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "outputContract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["required_fields", "acceptance_status_values"],
+      "properties": {
+        "required_fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/resultField" }
+        },
+        "acceptance_status_values": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "contract": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "wrapper_doc_path",
+        "playbook_source",
+        "playbook_bundle",
+        "input_contract",
+        "output_contract",
+        "contract_summary"
+      ],
+      "properties": {
+        "role": {
+          "type": "string",
+          "enum": ["planner", "explorer", "code specialist", "verifier"]
+        },
+        "wrapper_doc_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "playbook_source": {
+          "const": "agent-skills"
+        },
+        "playbook_bundle": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "input_contract": {
+          "$ref": "#/$defs/inputContract"
+        },
+        "output_contract": {
+          "$ref": "#/$defs/outputContract"
+        },
+        "contract_summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}

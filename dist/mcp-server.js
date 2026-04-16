@@ -1361,6 +1361,7 @@ function createRolePlaybookContractView(role, agentConfigSummary, preferredAgent
     }
     return {
         catalog_source: contract.catalog_source,
+        contract_source: contract.contract_source,
         role: contract.role,
         roster_name: agentConfigSummary?.roster_name ?? contract.roster_name,
         configured_model: agentConfigSummary?.model ?? contract.default_model,
@@ -1374,6 +1375,13 @@ function createRolePlaybookContractView(role, agentConfigSummary, preferredAgent
         wrapper_summary: contract.wrapper_summary,
         result_contract_fields: [...contract.result_contract_fields],
         result_contract_summary: contract.result_contract_summary,
+        input_task_kinds: [...contract.input_task_kinds],
+        input_required_fields: [...contract.input_required_fields],
+        prompt_contract_sections: [...contract.prompt_contract_sections],
+        acceptance_status_values: [...contract.acceptance_status_values],
+        contract_summary: contract.contract_summary,
+        contract_validation_state: contract.contract_validation_state,
+        contract_validation_summary: contract.contract_validation_summary,
         adapter_layer: contract.adapter_layer,
         upstream_interception_claim: contract.upstream_interception_claim,
     };
@@ -1388,7 +1396,7 @@ function createSpecialistContractSummary(input) {
     }
     const playbooks = contract.playbook_bundle.length > 0 ? contract.playbook_bundle.join(', ') : 'none';
     const reviewState = input.taskCard.owner_role === 'verifier' ? input.taskCard.verification_state : 'pending_or_not_started';
-    return `role=${contract.role} roster=${contract.roster_name} model=${contract.configured_model ?? 'none'}/${contract.configured_variant ?? 'none'} playbooks=${playbooks} execution=${input.executionProof.proof_state} review=${reviewState} adapter=${contract.adapter_layer}`;
+    return `role=${contract.role} roster=${contract.roster_name} model=${contract.configured_model ?? 'none'}/${contract.configured_variant ?? 'none'} playbooks=${playbooks} execution=${input.executionProof.proof_state} review=${reviewState} adapter=${contract.adapter_layer} contract_source=${contract.contract_source} contract_state=${contract.contract_validation_state}`;
 }
 function describeOperatorExecutionMode(currentTaskCard) {
     const proofState = resolveOperatorDisplayProofState(currentTaskCard);
@@ -2194,6 +2202,8 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         nextStep: visibility.orchestrator.next_step,
         taskCard: taskCard,
         hasPlanningClarification: run.planning_clarification_request !== null,
+        hasContractMismatch: currentTaskCard.assigned_role_playbook?.contract_validation_state === 'mismatch' ||
+            currentTaskCard.assigned_role_playbook?.contract_validation_state === 'unavailable',
     });
     return {
         cwd,
@@ -3022,7 +3032,9 @@ function createTaskOperatorVisibilitySummary(currentTaskCard) {
     const resultContract = currentTaskCard.assigned_role_playbook?.result_contract_fields.length
         ? currentTaskCard.assigned_role_playbook.result_contract_fields.join(',')
         : 'none';
-    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
+    const contractSource = currentTaskCard.assigned_role_playbook?.contract_source ?? 'none';
+    const contractState = currentTaskCard.assigned_role_playbook?.contract_validation_state ?? 'none';
+    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} contract_source=${contractSource} contract_state=${contractState} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
 }
 function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, loopState, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';

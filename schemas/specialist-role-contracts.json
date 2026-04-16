@@ -1,0 +1,69 @@
+{
+  "version": 1,
+  "contracts": {
+    "planner": {
+      "role": "planner",
+      "wrapper_doc_path": "skills/foreman-planner.md",
+      "playbook_source": "agent-skills",
+      "playbook_bundle": ["spec-driven-development", "planning-and-task-breakdown"],
+      "input_contract": {
+        "allowed_task_kinds": ["plan"],
+        "required_task_fields": ["title", "scope", "acceptance", "execution_prompt"],
+        "prompt_contract_sections": ["Role:", "Mode:", "Focus:", "Scope:", "Acceptance:", "Return fields:", "Acceptance status:"]
+      },
+      "output_contract": {
+        "required_fields": ["summary", "findings", "changed_files", "evidence_paths", "open_questions", "recommended_next_action", "acceptance_status"],
+        "acceptance_status_values": ["ready", "blocked", "needs_clarification"]
+      },
+      "contract_summary": "Planner protocol returns one bounded planning result with explicit blockers and the next recommended action."
+    },
+    "explorer": {
+      "role": "explorer",
+      "wrapper_doc_path": "skills/foreman-explorer.md",
+      "playbook_source": "agent-skills",
+      "playbook_bundle": ["context-engineering", "source-driven-development"],
+      "input_contract": {
+        "allowed_task_kinds": ["explore"],
+        "required_task_fields": ["title", "scope", "acceptance", "execution_prompt"],
+        "prompt_contract_sections": ["Role:", "Mode:", "Focus:", "Scope:", "Acceptance:", "Return fields:", "Acceptance status:"]
+      },
+      "output_contract": {
+        "required_fields": ["summary", "findings", "changed_files", "evidence_paths", "open_questions", "recommended_next_action", "acceptance_status"],
+        "acceptance_status_values": ["ready", "blocked", "needs_followup"]
+      },
+      "contract_summary": "Explorer protocol returns bounded evidence, open questions, and the next recommendation without drifting into implementation."
+    },
+    "code_specialist": {
+      "role": "code specialist",
+      "wrapper_doc_path": "skills/foreman-code-specialist.md",
+      "playbook_source": "agent-skills",
+      "playbook_bundle": ["incremental-implementation", "test-driven-development", "api-and-interface-design"],
+      "input_contract": {
+        "allowed_task_kinds": ["execution"],
+        "required_task_fields": ["title", "scope", "acceptance", "execution_prompt"],
+        "prompt_contract_sections": ["Role:", "Mode:", "Focus:", "Scope:", "Acceptance:", "Return fields:", "Acceptance status:"]
+      },
+      "output_contract": {
+        "required_fields": ["summary", "findings", "changed_files", "evidence_paths", "open_questions", "recommended_next_action", "acceptance_status"],
+        "acceptance_status_values": ["implemented", "blocked", "needs_review"]
+      },
+      "contract_summary": "Code-specialist protocol returns the scoped implementation result, evidence, and a verification-oriented next action."
+    },
+    "verifier": {
+      "role": "verifier",
+      "wrapper_doc_path": "skills/foreman-verifier.md",
+      "playbook_source": "agent-skills",
+      "playbook_bundle": ["debugging-and-error-recovery", "code-review-and-quality", "security-and-hardening"],
+      "input_contract": {
+        "allowed_task_kinds": ["review"],
+        "required_task_fields": ["title", "scope", "acceptance", "execution_prompt"],
+        "prompt_contract_sections": ["Role:", "Mode:", "Focus:", "Scope:", "Acceptance:", "Return fields:", "Acceptance status:"]
+      },
+      "output_contract": {
+        "required_fields": ["summary", "findings", "changed_files", "evidence_paths", "open_questions", "recommended_next_action", "acceptance_status"],
+        "acceptance_status_values": ["passed", "needs_work", "blocked"]
+      },
+      "contract_summary": "Verifier protocol returns explicit acceptance review findings and a repair-or-complete next action."
+    }
+  }
+}

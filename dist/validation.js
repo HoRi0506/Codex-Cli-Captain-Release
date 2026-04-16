@@ -17,6 +17,7 @@ exports.assertValidPlanningOutput = assertValidPlanningOutput;
 exports.assertValidResumeCheckpointRecord = assertValidResumeCheckpointRecord;
 exports.assertValidRoleDefaultsFile = assertValidRoleDefaultsFile;
 exports.assertValidTaskCardRecord = assertValidTaskCardRecord;
+exports.assertValidSpecialistRoleContractsFile = assertValidSpecialistRoleContractsFile;
 exports.assertValidVerificationAutomationOutput = assertValidVerificationAutomationOutput;
 const advisor_schema_json_1 = __importDefault(require("../schemas/advisor.schema.json"));
 const ajv_1 = __importDefault(require("ajv"));
@@ -32,6 +33,7 @@ const planning_schema_json_1 = __importDefault(require("../schemas/planning.sche
 const resume_checkpoint_schema_json_1 = __importDefault(require("../schemas/resume-checkpoint.schema.json"));
 const role_defaults_schema_json_1 = __importDefault(require("../schemas/role-defaults.schema.json"));
 const run_schema_json_1 = __importDefault(require("../schemas/run.schema.json"));
+const specialist_role_contracts_schema_json_1 = __importDefault(require("../schemas/specialist-role-contracts.schema.json"));
 const task_card_schema_json_1 = __importDefault(require("../schemas/task-card.schema.json"));
 const verification_schema_json_1 = __importDefault(require("../schemas/verification.schema.json"));
 const ajv = new ajv_1.default({ allErrors: true, strict: true });
@@ -48,6 +50,7 @@ const validatePlanningOutput = ajv.compile(planning_schema_json_1.default);
 const validateResumeCheckpointRecord = ajv.compile(resume_checkpoint_schema_json_1.default);
 const validateRoleDefaultsFile = ajv.compile(role_defaults_schema_json_1.default);
 const validateRunRecord = ajv.compile(run_schema_json_1.default);
+const validateSpecialistRoleContractsFile = ajv.compile(specialist_role_contracts_schema_json_1.default);
 const validateTaskCardRecord = ajv.compile(task_card_schema_json_1.default);
 const validateVerificationAutomationOutput = ajv.compile(verification_schema_json_1.default);
 function formatValidationErrors(errors) {
@@ -129,6 +132,11 @@ function assertValidRoleDefaultsFile(value) {
 function assertValidTaskCardRecord(value) {
     if (!validateTaskCardRecord(value)) {
         throw new Error(`Task-card record failed schema validation: ${formatValidationErrors(validateTaskCardRecord.errors)}`);
+    }
+}
+function assertValidSpecialistRoleContractsFile(value) {
+    if (!validateSpecialistRoleContractsFile(value)) {
+        throw new Error(`Specialist role contracts failed schema validation: ${formatValidationErrors(validateSpecialistRoleContractsFile.errors)}`);
     }
 }
 function assertValidVerificationAutomationOutput(value) {

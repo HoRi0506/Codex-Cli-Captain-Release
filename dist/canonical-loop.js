@@ -57,6 +57,9 @@ function deriveStage(input) {
     if (input.runStatus === 'completed') {
         return 'completed';
     }
+    if (input.hasContractMismatch) {
+        return 'degraded';
+    }
     if (input.runStatus === 'blocked' ||
         input.runStatus === 'failed' ||
         input.runStatus === 'cancelled' ||

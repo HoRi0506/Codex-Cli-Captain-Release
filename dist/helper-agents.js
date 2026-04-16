@@ -3,10 +3,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS = exports.SPECIALIST_ROLES = void 0;
+exports.SPECIALIST_ROLES = void 0;
 exports.summarizeTaskOwnershipChain = summarizeTaskOwnershipChain;
 exports.createTaskOwnershipChain = createTaskOwnershipChain;
 exports.createOwnershipChainProvenanceHeader = createOwnershipChainProvenanceHeader;
+exports.validateSpecialistWrapperContractContent = validateSpecialistWrapperContractContent;
 exports.createTaskAssignmentFraming = createTaskAssignmentFraming;
 exports.buildFramedTaskPrompt = buildFramedTaskPrompt;
 exports.createTaskOwnershipGuard = createTaskOwnershipGuard;
@@ -15,17 +16,10 @@ exports.maybeGetSpecialistRolePlaybookContract = maybeGetSpecialistRolePlaybookC
 exports.listSpecialistRolePlaybookContracts = listSpecialistRolePlaybookContracts;
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
+const constants_1 = require("./constants");
 const runtime_1 = require("./runtime");
+const validation_1 = require("./validation");
 exports.SPECIALIST_ROLES = ['planner', 'explorer', 'code specialist', 'verifier'];
-exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS = [
-    'summary',
-    'findings',
-    'changed_files',
-    'evidence_paths',
-    'open_questions',
-    'recommended_next_action',
-    'acceptance_status',
-];
 function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     const modelTierIntent = taskCard.model_tier_intent ?? 'standard';
     if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
@@ -247,7 +241,7 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
             playbook_bundle: ['spec-driven-development', 'planning-and-task-breakdown'],
             wrapper_doc_path: 'skills/foreman-planner.md',
             wrapper_summary: 'Planner wrapper keeps ambiguous work inside one bounded scoping pass and returns the shared Foreman specialist result contract.',
-            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
             result_contract_summary: 'Return a bounded planning contract with summary, findings, evidence, open questions, and the next recommended action.',
         },
         scout: {
@@ -262,7 +256,7 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
             playbook_bundle: ['context-engineering', 'source-driven-development'],
             wrapper_doc_path: 'skills/foreman-explorer.md',
             wrapper_summary: 'Explorer wrapper keeps repository inspection read-heavy, bounded, and evidence-oriented before work returns to Codex.',
-            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
             result_contract_summary: 'Return repository findings, evidence paths, open questions, and a bounded recommendation instead of drifting into implementation.',
         },
         raider: {
@@ -277,7 +271,7 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
             playbook_bundle: ['incremental-implementation', 'test-driven-development', 'api-and-interface-design'],
             wrapper_doc_path: 'skills/foreman-code-specialist.md',
             wrapper_summary: 'Code-specialist wrapper keeps implementation incremental, scoped, and ready for verification with the shared Foreman result contract.',
-            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
             result_contract_summary: 'Return implementation findings, changed files, evidence, remaining questions, and a clear recommendation for verification or follow-up.',
         },
         arbiter: {
@@ -292,7 +286,7 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
             playbook_bundle: ['debugging-and-error-recovery', 'code-review-and-quality', 'security-and-hardening'],
             wrapper_doc_path: 'skills/foreman-verifier.md',
             wrapper_summary: 'Verifier wrapper keeps review explicit, acceptance-oriented, and honest about pass, repair, or hold outcomes.',
-            result_contract_fields: [...exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
             result_contract_summary: 'Return verification findings, supporting evidence, acceptance status, and the next recommended repair or completion action.',
         },
         framer: {
@@ -327,9 +321,79 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
         },
     },
 };
+const EMBEDDED_SPECIALIST_ROLE_CONTRACTS = {
+    planner: {
+        role: 'planner',
+        wrapper_doc_path: 'skills/foreman-planner.md',
+        playbook_source: 'agent-skills',
+        playbook_bundle: ['spec-driven-development', 'planning-and-task-breakdown'],
+        input_contract: {
+            allowed_task_kinds: ['plan'],
+            required_task_fields: ['title', 'scope', 'acceptance', 'execution_prompt'],
+            prompt_contract_sections: ['Role:', 'Mode:', 'Focus:', 'Scope:', 'Acceptance:', 'Return fields:', 'Acceptance status:'],
+        },
+        output_contract: {
+            required_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            acceptance_status_values: ['ready', 'blocked', 'needs_clarification'],
+        },
+        contract_summary: 'Planner protocol returns one bounded planning result with explicit blockers and the next recommended action.',
+    },
+    explorer: {
+        role: 'explorer',
+        wrapper_doc_path: 'skills/foreman-explorer.md',
+        playbook_source: 'agent-skills',
+        playbook_bundle: ['context-engineering', 'source-driven-development'],
+        input_contract: {
+            allowed_task_kinds: ['explore'],
+            required_task_fields: ['title', 'scope', 'acceptance', 'execution_prompt'],
+            prompt_contract_sections: ['Role:', 'Mode:', 'Focus:', 'Scope:', 'Acceptance:', 'Return fields:', 'Acceptance status:'],
+        },
+        output_contract: {
+            required_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            acceptance_status_values: ['ready', 'blocked', 'needs_followup'],
+        },
+        contract_summary: 'Explorer protocol returns bounded evidence, open questions, and the next recommendation without drifting into implementation.',
+    },
+    'code specialist': {
+        role: 'code specialist',
+        wrapper_doc_path: 'skills/foreman-code-specialist.md',
+        playbook_source: 'agent-skills',
+        playbook_bundle: ['incremental-implementation', 'test-driven-development', 'api-and-interface-design'],
+        input_contract: {
+            allowed_task_kinds: ['execution'],
+            required_task_fields: ['title', 'scope', 'acceptance', 'execution_prompt'],
+            prompt_contract_sections: ['Role:', 'Mode:', 'Focus:', 'Scope:', 'Acceptance:', 'Return fields:', 'Acceptance status:'],
+        },
+        output_contract: {
+            required_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            acceptance_status_values: ['implemented', 'blocked', 'needs_review'],
+        },
+        contract_summary: 'Code-specialist protocol returns the scoped implementation result, evidence, and a verification-oriented next action.',
+    },
+    verifier: {
+        role: 'verifier',
+        wrapper_doc_path: 'skills/foreman-verifier.md',
+        playbook_source: 'agent-skills',
+        playbook_bundle: ['debugging-and-error-recovery', 'code-review-and-quality', 'security-and-hardening'],
+        input_contract: {
+            allowed_task_kinds: ['review'],
+            required_task_fields: ['title', 'scope', 'acceptance', 'execution_prompt'],
+            prompt_contract_sections: ['Role:', 'Mode:', 'Focus:', 'Scope:', 'Acceptance:', 'Return fields:', 'Acceptance status:'],
+        },
+        output_contract: {
+            required_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            acceptance_status_values: ['passed', 'needs_work', 'blocked'],
+        },
+        contract_summary: 'Verifier protocol returns explicit acceptance review findings and a repair-or-complete next action.',
+    },
+};
 let cachedCatalog = null;
+let cachedSpecialistContracts = null;
 function getCatalogPath() {
     return node_path_1.default.resolve(__dirname, '..', 'config', 'agent-role-catalog.json');
+}
+function getSpecialistContractsPath() {
+    return node_path_1.default.resolve(__dirname, '..', 'schemas', 'specialist-role-contracts.json');
 }
 function isReasoningVariant(value) {
     return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === null;
@@ -341,7 +405,7 @@ function isSpecialistRole(value) {
     return value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'verifier';
 }
 function isResultContractField(value) {
-    return typeof value === 'string' && exports.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS.includes(value);
+    return typeof value === 'string' && constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS.includes(value);
 }
 function normalizeAgentRoleCatalogEntry(value) {
     if (!value || typeof value !== 'object') {
@@ -438,6 +502,95 @@ function loadCatalog() {
     };
     return cachedCatalog;
 }
+function normalizeSpecialistContracts(value) {
+    const planner = value.contracts.planner;
+    const explorer = value.contracts.explorer;
+    const codeSpecialist = value.contracts.code_specialist;
+    const verifier = value.contracts.verifier;
+    if (!planner || !explorer || !codeSpecialist || !verifier) {
+        return null;
+    }
+    return {
+        planner,
+        explorer,
+        'code specialist': codeSpecialist,
+        verifier,
+    };
+}
+function loadSpecialistContracts() {
+    if (cachedSpecialistContracts !== null) {
+        return cachedSpecialistContracts;
+    }
+    try {
+        const parsed = JSON.parse((0, node_fs_1.readFileSync)(getSpecialistContractsPath(), 'utf8'));
+        (0, validation_1.assertValidSpecialistRoleContractsFile)(parsed);
+        const normalized = normalizeSpecialistContracts(parsed);
+        if (normalized !== null) {
+            cachedSpecialistContracts = {
+                source: 'packaged_contract_file',
+                contracts: normalized,
+            };
+            return cachedSpecialistContracts;
+        }
+    }
+    catch {
+        // fall through to embedded defaults
+    }
+    cachedSpecialistContracts = {
+        source: 'embedded_defaults',
+        contracts: EMBEDDED_SPECIALIST_ROLE_CONTRACTS,
+    };
+    return cachedSpecialistContracts;
+}
+function readWrapperContractContent(wrapperDocPath) {
+    try {
+        return (0, node_fs_1.readFileSync)(node_path_1.default.resolve(__dirname, '..', wrapperDocPath), 'utf8');
+    }
+    catch {
+        return null;
+    }
+}
+function validateSpecialistWrapperContractContent(contract, content) {
+    if (content === null) {
+        return {
+            state: 'unavailable',
+            summary: `Wrapper contract ${contract.wrapper_doc_path} is unavailable, so packaged contract validation could not complete.`,
+            reasons: [`wrapper_missing=${contract.wrapper_doc_path}`],
+        };
+    }
+    const reasons = [];
+    if (!content.includes('Role purpose:')) {
+        reasons.push('missing_role_purpose_section');
+    }
+    if (!content.includes('Mapped `agent-skills` bundle:')) {
+        reasons.push('missing_playbook_section');
+    }
+    if (!content.includes('Required Foreman result contract:')) {
+        reasons.push('missing_result_contract_section');
+    }
+    for (const playbook of contract.playbook_bundle) {
+        if (!content.includes(`- \`${playbook}\``)) {
+            reasons.push(`missing_playbook:${playbook}`);
+        }
+    }
+    for (const field of contract.output_contract.required_fields) {
+        if (!content.includes(`- \`${field}\``)) {
+            reasons.push(`missing_result_field:${field}`);
+        }
+    }
+    if (reasons.length > 0) {
+        return {
+            state: 'mismatch',
+            summary: `Wrapper contract ${contract.wrapper_doc_path} drifted from the declared specialist protocol.`,
+            reasons,
+        };
+    }
+    return {
+        state: 'validated',
+        summary: `Wrapper contract ${contract.wrapper_doc_path} matches the declared specialist protocol.`,
+        reasons: [],
+    };
+}
 function deriveTaskFocus(taskCard) {
     switch (taskCard.task_kind) {
         case 'plan':
@@ -487,8 +640,10 @@ function compactPromptField(value, maxChars) {
 }
 function createTaskAssignmentFraming(taskCard) {
     const { source } = loadCatalog();
+    const { contracts } = loadSpecialistContracts();
     const targetAgentId = deriveTargetAgentId(taskCard);
     const specialistEntry = getCatalogEntryForAgent(targetAgentId, taskCard.assigned_role);
+    const specialistContract = isSpecialistRole(taskCard.assigned_role) ? contracts[taskCard.assigned_role] : null;
     const framerEntry = getHelperEntry('framer');
     const focus = deriveTaskFocus(taskCard);
     const strengths = specialistEntry.strengths.slice(0, 2).join(' and ');
@@ -498,6 +653,8 @@ function createTaskAssignmentFraming(taskCard) {
         `Focus: ${compactPromptField(focus, FRAMING_FOCUS_MAX_CHARS)}`,
         `Scope: ${compactPromptField(taskCard.scope, FRAMING_SCOPE_MAX_CHARS)}`,
         `Acceptance: ${compactPromptField(taskCard.acceptance, FRAMING_ACCEPTANCE_MAX_CHARS)}`,
+        `Return fields: ${specialistContract?.output_contract.required_fields.join(', ') ?? 'summary'}`,
+        `Acceptance status: ${specialistContract?.output_contract.acceptance_status_values.join(', ') ?? 'n/a'}`,
     ].join('\n');
     return {
         helper_agent_id: 'framer',
@@ -561,10 +718,38 @@ function createTaskOwnershipGuard(input) {
         reasons,
     };
 }
+function getValidatedSpecialistContract(role) {
+    const loaded = loadSpecialistContracts();
+    const contract = loaded.contracts[role] ?? EMBEDDED_SPECIALIST_ROLE_CONTRACTS[role];
+    const validation = validateSpecialistWrapperContractContent(contract, readWrapperContractContent(contract.wrapper_doc_path));
+    return {
+        source: loaded.source,
+        contract,
+        validation,
+    };
+}
 function getSpecialistRolePlaybookContract(role, agentId) {
     const { source } = loadCatalog();
     const specialistEntry = getCatalogEntryForAgent(agentId ?? null, role);
     const rosterName = agentId ?? (0, runtime_1.getAgentIdForRole)(role) ?? role;
+    const specialistContract = getValidatedSpecialistContract(role);
+    const contractReasons = [...specialistContract.validation.reasons];
+    let contractValidationState = specialistContract.validation.state;
+    let contractValidationSummary = specialistContract.validation.summary;
+    if (specialistEntry.wrapper_doc_path !== specialistContract.contract.wrapper_doc_path) {
+        contractReasons.push('wrapper_path_catalog_mismatch');
+    }
+    if (specialistEntry.playbook_bundle.join('|') !== specialistContract.contract.playbook_bundle.join('|')) {
+        contractReasons.push('playbook_bundle_catalog_mismatch');
+    }
+    if (specialistEntry.result_contract_fields.join('|') !==
+        specialistContract.contract.output_contract.required_fields.join('|')) {
+        contractReasons.push('result_contract_catalog_mismatch');
+    }
+    if (contractReasons.length > 0 && contractValidationState === 'validated') {
+        contractValidationState = 'mismatch';
+        contractValidationSummary = 'Role catalog metadata drifted from the declared specialist protocol.';
+    }
     return {
         catalog_source: source,
         role,
@@ -580,6 +765,14 @@ function getSpecialistRolePlaybookContract(role, agentId) {
         wrapper_summary: specialistEntry.wrapper_summary,
         result_contract_fields: [...specialistEntry.result_contract_fields],
         result_contract_summary: specialistEntry.result_contract_summary,
+        contract_source: specialistContract.source,
+        input_task_kinds: [...specialistContract.contract.input_contract.allowed_task_kinds],
+        input_required_fields: [...specialistContract.contract.input_contract.required_task_fields],
+        prompt_contract_sections: [...specialistContract.contract.input_contract.prompt_contract_sections],
+        acceptance_status_values: [...specialistContract.contract.output_contract.acceptance_status_values],
+        contract_summary: specialistContract.contract.contract_summary,
+        contract_validation_state: contractValidationState,
+        contract_validation_summary: contractReasons.length > 0 ? `${contractValidationSummary} reasons=${contractReasons.join(',')}` : contractValidationSummary,
         adapter_layer: 'thin_foreman_wrapper',
         upstream_interception_claim: 'not_claimed',
     };
