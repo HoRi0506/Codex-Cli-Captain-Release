@@ -1385,13 +1385,15 @@ function createCurrentTaskWorkerLinkage(taskCard, taskDelegations) {
         worker_run_ids: workerRunIds,
     };
 }
-function createCurrentTaskExecutionAssignmentState(taskCard) {
+function createCurrentTaskExecutionAssignmentState(taskCard, ownershipChain) {
     switch (taskCard.status) {
         case 'queued':
             return 'planned';
         case 'active':
         case 'in_handoff':
-            return 'actively_running';
+            return ownershipChain?.state === 'planned_only' || ownershipChain?.state === 'assigned_only'
+                ? 'planned'
+                : 'actively_running';
         case 'completed':
             return 'completed_by';
         case 'blocked':
@@ -1428,17 +1430,21 @@ function createCurrentTaskExecutionProof(input) {
         ? input.concreteWorkerId ?? input.taskCard.assigned_agent_id ?? null
         : null;
     const modelSummary = `${model ?? 'none'} / ${variant ?? 'none'}`;
-    const proofState = input.executionOwner === 'foreman_worker'
-        ? 'foreman_worker_visible'
-        : input.hostExecutionEvidenceVisible
-            ? input.readOnlyFallbackAllowed
-                ? 'captain_read_only_fallback'
-                : 'host_session_fallback'
-            : 'planned_assignment_only';
+    const proofState = input.ownershipChain?.state === 'planned_only' || input.ownershipChain?.state === 'assigned_only'
+        ? 'planned_assignment_only'
+        : input.ownershipChain?.state === 'captain_read_only_fallback'
+            ? 'captain_read_only_fallback'
+            : input.executionOwner === 'foreman_worker'
+                ? 'foreman_worker_visible'
+                : input.hostExecutionEvidenceVisible
+                    ? input.readOnlyFallbackAllowed
+                        ? 'captain_read_only_fallback'
+                        : 'host_session_fallback'
+                    : 'planned_assignment_only';
     return {
         proof_state: proofState,
         assigned_agent_id: input.taskCard.assigned_agent_id,
-        actual_agent_id: actualAgentId,
+        actual_agent_id: proofState === 'foreman_worker_visible' ? actualAgentId : null,
         model,
         variant,
         summary: proofState === 'foreman_worker_visible'
@@ -1447,7 +1453,9 @@ function createCurrentTaskExecutionProof(input) {
                 ? `captain read-only fallback with ${input.taskCard.assigned_agent_id ?? 'unassigned'} still recorded as planned specialist using ${modelSummary}`
                 : proofState === 'host_session_fallback'
                     ? `host_session execution was visible, but ${input.taskCard.assigned_agent_id ?? 'unassigned'} still has no accepted worker launch proof using ${modelSummary}`
-                    : `planned specialist ${input.taskCard.assigned_agent_id ?? 'unassigned'} has no worker launch proof yet`,
+                    : input.ownershipChain?.state === 'assigned_only'
+                        ? `queued worker set for specialist ${input.taskCard.assigned_agent_id ?? 'unassigned'} has no accepted worker launch proof yet`
+                        : `planned specialist ${input.taskCard.assigned_agent_id ?? 'unassigned'} has no worker launch proof yet`,
     };
 }
 function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
@@ -1467,8 +1475,6 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
         .at(0) ?? null;
     const actualModelLaunch = selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations);
-    const executionOwner = taskLinkedDelegations.length > 0 ? 'foreman_worker' : 'host_session';
-    const concreteWorkerId = activeDelegation?.child_agent.agent_id ?? latestTaskDelegation?.child_agent.agent_id ?? null;
     const ownerAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
     const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.assigned_role ?? taskCard.owner_role, foremanConfig);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
@@ -1482,6 +1488,17 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
             acceptance: taskCard.acceptance,
         }
         : taskCard);
+    const ownershipChain = (0, helper_agents_1.createTaskOwnershipChain)({
+        taskCard,
+        taskDelegations,
+    });
+    const hasConcreteWorkerProof = ownershipChain.execution_owner_mode === 'foreman_worker' &&
+        ownershipChain.state !== 'planned_only' &&
+        ownershipChain.state !== 'assigned_only';
+    const executionOwner = hasConcreteWorkerProof ? 'foreman_worker' : 'host_session';
+    const concreteWorkerId = hasConcreteWorkerProof
+        ? activeDelegation?.child_agent.agent_id ?? latestTaskDelegation?.child_agent.agent_id ?? null
+        : null;
     const ownershipGuard = (0, helper_agents_1.createTaskOwnershipGuard)({
         assignedAgentId: assignmentFraming.target_agent_id,
         executionOwner,
@@ -1489,14 +1506,11 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         provenanceHeader: run.latest_orchestrator_synthesis?.provenance_header ?? run.latest_response?.provenance_header ?? null,
         concreteWorkerId,
     });
-    const ownershipChain = taskCard.ownership_chain ?? (0, helper_agents_1.createTaskOwnershipChain)({
-        taskCard,
-        taskDelegations,
-    });
     const readOnlyFallbackAllowed = isCaptainOwnedReadOnlyFallbackAllowed(taskCard);
     const hostExecutionEvidenceVisible = taskCard.thread_ids.length > 0 || actualModelLaunch !== null;
     const executionProof = createCurrentTaskExecutionProof({
         taskCard,
+        ownershipChain,
         executionOwner,
         concreteWorkerId,
         actualModelLaunch,
@@ -1527,13 +1541,15 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         resolved_request_settings: resolvedRequestSettings,
         execution_proof: executionProof,
         ownership_chain: ownershipChain,
-        execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard),
+        execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard, ownershipChain),
         execution_source: executionOwner === 'foreman_worker' ? 'foreman_worker' : 'codex_session',
         execution_owner: executionOwner,
         codex_ui_trace_owner: 'host_session',
-        ownership_summary: executionOwner === 'foreman_worker'
-            ? 'Execution is Foreman-owned, but Codex CLI Explored/Called trace remains host-session UI and is not rewritten by Foreman.'
-            : 'Work is currently being carried by the attached host Codex session, and Codex CLI Explored/Called trace belongs to that host session rather than a Foreman worker.',
+        ownership_summary: ownershipChain.state === 'planned_only' || ownershipChain.state === 'assigned_only'
+            ? 'Foreman has a planned specialist assignment, but no accepted worker launch proof is recorded yet.'
+            : executionOwner === 'foreman_worker'
+                ? 'Execution is Foreman-owned, but Codex CLI Explored/Called trace remains host-session UI and is not rewritten by Foreman.'
+                : 'Work is currently being carried by the attached host Codex session, and Codex CLI Explored/Called trace belongs to that host session rather than a Foreman worker.',
         assignment_framing: assignmentFraming,
         ownership_guard: ownershipGuard,
         shared_config_drift: createCurrentTaskSharedConfigDrift({

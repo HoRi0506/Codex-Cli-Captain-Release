@@ -104,6 +104,12 @@ function buildExecutionRequest(prompt, profile, configEntries) {
 function isExploreLikeTaskKind(taskKind) {
     return taskKind === 'explore' || taskKind === 'plan';
 }
+function requiresConcreteWorkerLaunch(taskCard) {
+    return (taskCard.task_kind === 'execution' &&
+        taskCard.assigned_role === 'code specialist' &&
+        taskCard.model_tier_intent !== 'low_cost' &&
+        taskCard.owner_role !== 'verifier');
+}
 function createEmptyTaskKindCounts() {
     return {
         execution: 0,
@@ -2178,11 +2184,7 @@ async function seedExploreInvestigationDelegationsIfEligible(input) {
 async function seedPrimaryExecutionDelegationIfEligible(input) {
     if (input.run.stage !== 'execution' ||
         input.taskCard.status !== 'active' ||
-        input.taskCard.task_kind !== 'execution' ||
-        input.taskCard.assigned_role !== 'code specialist' ||
-        input.taskCard.model_tier_intent === 'low_cost' ||
-        input.taskCard.acceptance_checks.length === 0 ||
-        input.taskCard.owner_role === 'verifier' ||
+        !requiresConcreteWorkerLaunch(input.taskCard) ||
         input.taskCard.owner_role !== input.taskCard.assigned_role) {
         return [];
     }
@@ -4085,9 +4087,7 @@ async function advanceForemanRun(options) {
     if (delegationAlreadyFinalized) {
         // already closed through the delegation lifecycle path above
     }
-    else if (!executionDelegation &&
-        routeSelection.route_id === 'delegated_execute' &&
-        !isReadOnlyFallbackAllowed(taskCard)) {
+    else if (!executionDelegation && requiresConcreteWorkerLaunch(taskCard) && !isReadOnlyFallbackAllowed(taskCard)) {
         outcome = createPolicyOverrideRequiredOutcome(taskCard);
     }
     else if (!executionDelegation && directExecutionLaunchEvidence.match_state === 'mismatch') {
@@ -4213,6 +4213,10 @@ async function advanceForemanRun(options) {
     }
     if (executionDelegation) {
         ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+        if (decision.next_step === 'await_fan_in' && decision.can_advance) {
+            currentLatestHandoff = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
+            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+        }
         (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
         await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
         await persistRunArtifactsAndProgress(runPaths, {

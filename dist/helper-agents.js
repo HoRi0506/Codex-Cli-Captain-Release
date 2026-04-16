@@ -25,6 +25,12 @@ function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
 function pickLatestDelegation(delegations) {
     return delegations.slice().sort((left, right) => right.updated_at.localeCompare(left.updated_at)).at(0) ?? null;
 }
+function hasWorkerLaunchCheckpoint(delegation) {
+    return (delegation.child_agent.status !== 'queued' ||
+        delegation.worker_launch_evidence !== null ||
+        delegation.worker_result !== null ||
+        delegation.worker_lifecycle?.launch_requested_at !== null);
+}
 function describeOwnershipReviewer(reviewerAgentId, reviewerLinkState, reviewerCount) {
     if (reviewerAgentId === null) {
         return 'none';
@@ -52,6 +58,9 @@ function summarizeTaskOwnershipChain(chain) {
     if (chain.state === 'planned_only') {
         return `planned=${chain.assigned_agent_id ?? 'unassigned'} -> launch=not_started -> review=${reviewerSummary} -> ${chain.captain_agent_id} [awaiting_worker_launch]`;
     }
+    if (chain.state === 'assigned_only') {
+        return `assigned=${chain.assigned_agent_id ?? 'unassigned'} -> queued=${chain.worker_count} worker${chain.worker_count === 1 ? '' : 's'} -> launch=not_started -> review=${reviewerSummary} -> ${chain.captain_agent_id} [awaiting_worker_launch]`;
+    }
     if (chain.state === 'captain_read_only_fallback') {
         return `planned=${chain.assigned_agent_id ?? 'unassigned'} -> captain read-only fallback (${chain.fallback_reason ?? 'allowed'}) -> review=${reviewerSummary} -> ${chain.captain_agent_id} [captain_read_only_fallback]`;
     }
@@ -75,7 +84,8 @@ function createTaskOwnershipChain(input) {
     const taskLinkedDelegations = input.taskDelegations.filter((delegation) => delegation.task_card_id === input.taskCard.task_card_id);
     const workerDelegations = taskLinkedDelegations.filter((delegation) => delegation.child_agent.role !== 'verifier');
     const reviewerDelegations = taskLinkedDelegations.filter((delegation) => delegation.child_agent.role === 'verifier');
-    const latestWorkerDelegation = pickLatestDelegation(workerDelegations);
+    const launchedWorkerDelegations = workerDelegations.filter((delegation) => hasWorkerLaunchCheckpoint(delegation));
+    const latestWorkerDelegation = pickLatestDelegation(launchedWorkerDelegations);
     const latestReviewerDelegation = pickLatestDelegation(reviewerDelegations);
     const launchEvidence = latestWorkerDelegation?.worker_launch_evidence ?? input.taskCard.latest_model_launch ?? null;
     const workerObservedThreadIds = Array.from(new Set(workerDelegations
@@ -105,9 +115,11 @@ function createTaskOwnershipChain(input) {
         model_tier_intent: input.taskCard.model_tier_intent ?? 'standard',
     });
     const fallbackReason = executionOwnerMode === 'foreman_worker'
-        ? launchEvidence?.observation_status === 'unavailable'
-            ? launchEvidence.observation_unavailable_reason ?? 'observed_evidence_missing'
-            : null
+        ? latestWorkerDelegation === null
+            ? 'worker_queued'
+            : launchEvidence?.observation_status === 'unavailable'
+                ? launchEvidence.observation_unavailable_reason ?? 'observed_evidence_missing'
+                : null
         : hostSessionEvidenceVisible
             ? readOnlyFallbackAllowed
                 ? 'captain_read_only_fallback'
@@ -142,6 +154,9 @@ function createTaskOwnershipChain(input) {
     else if (latestWorkerDelegation !== null) {
         state = 'launched';
     }
+    else if (workerDelegations.length > 0) {
+        state = 'assigned_only';
+    }
     else if (stableAssignedAgentId !== null) {
         state = 'assigned_only';
     }
@@ -171,12 +186,12 @@ function createTaskOwnershipChain(input) {
     return chain;
 }
 function createOwnershipChainProvenanceHeader(chain) {
-    const executionOwner = chain.state === 'planned_only'
+    const executionOwner = chain.state === 'planned_only' || chain.state === 'assigned_only'
         ? 'planned'
         : chain.execution_owner_mode === 'host_session_fallback'
             ? 'host_session'
             : 'foreman_worker';
-    const executionTarget = chain.state === 'planned_only'
+    const executionTarget = chain.state === 'planned_only' || chain.state === 'assigned_only'
         ? chain.assigned_agent_id ?? 'unassigned'
         : chain.state === 'captain_read_only_fallback'
             ? chain.captain_agent_id
@@ -373,6 +388,17 @@ function getHelperEntry(helperAgentId) {
     const { catalog } = loadCatalog();
     return catalog.agents[helperAgentId] ?? EMBEDDED_AGENT_ROLE_CATALOG.agents[helperAgentId];
 }
+const FRAMING_SEED_MAX_CHARS = 180;
+const FRAMING_FOCUS_MAX_CHARS = 180;
+const FRAMING_SCOPE_MAX_CHARS = 220;
+const FRAMING_ACCEPTANCE_MAX_CHARS = 220;
+function compactPromptField(value, maxChars) {
+    const normalized = value.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= maxChars) {
+        return normalized;
+    }
+    return `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
+}
 function createTaskAssignmentFraming(taskCard) {
     const { source } = loadCatalog();
     const targetAgentId = deriveTargetAgentId(taskCard);
@@ -381,11 +407,11 @@ function createTaskAssignmentFraming(taskCard) {
     const focus = deriveTaskFocus(taskCard);
     const strengths = specialistEntry.strengths.slice(0, 2).join(' and ');
     const promptPrefix = [
-        `You are ${targetAgentId ?? taskCard.assigned_role}, the ${taskCard.assigned_role} specialist for this Foreman task.`,
-        specialistEntry.framing_seed,
-        `Priority for this assignment: ${focus}.`,
-        `Keep the bounded scope on: ${taskCard.scope}.`,
-        `Acceptance target: ${taskCard.acceptance}.`,
+        `Role: ${targetAgentId ?? taskCard.assigned_role} (${taskCard.assigned_role}).`,
+        `Mode: ${compactPromptField(specialistEntry.framing_seed, FRAMING_SEED_MAX_CHARS)}`,
+        `Focus: ${compactPromptField(focus, FRAMING_FOCUS_MAX_CHARS)}`,
+        `Scope: ${compactPromptField(taskCard.scope, FRAMING_SCOPE_MAX_CHARS)}`,
+        `Acceptance: ${compactPromptField(taskCard.acceptance, FRAMING_ACCEPTANCE_MAX_CHARS)}`,
     ].join('\n');
     return {
         helper_agent_id: 'framer',
