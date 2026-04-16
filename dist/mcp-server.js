@@ -22,6 +22,7 @@ const node_crypto_1 = require("node:crypto");
 const promises_1 = require("node:fs/promises");
 const node_path_1 = __importDefault(require("node:path"));
 const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
+const canonical_loop_1 = require("./canonical-loop");
 const constants_1 = require("./constants");
 const entry_policy_1 = require("./entry-policy");
 const helper_agents_1 = require("./helper-agents");
@@ -2186,6 +2187,14 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         stage: visibility.stage,
         active_role: visibility.active_role,
     });
+    const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
+        runStatus: run.status,
+        workflowStage: run.stage,
+        activeRole: run.active_role,
+        nextStep: visibility.orchestrator.next_step,
+        taskCard: taskCard,
+        hasPlanningClarification: run.planning_clarification_request !== null,
+    });
     return {
         cwd,
         run_id: visibility.run_id,
@@ -2222,6 +2231,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         server_identity: serverIdentity,
         task_graph_summary: taskGraphSummary,
         current_task_card: currentTaskCard,
+        loop_state: loopState,
         specialist_role_roster: specialistRoleRoster,
         operator_summary: operatorSummary,
         orchestrator_agent_config_summary: createTaskCardAgentConfigSummary('orchestrator', foremanConfig),
@@ -2284,6 +2294,14 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         nextStep: 'await_clarification',
     });
     const runLocator = createResolvedForemanRunLocator(cwd, run.run_id);
+    const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
+        runStatus: run.status,
+        workflowStage: run.stage,
+        activeRole: run.active_role,
+        nextStep: 'await_clarification',
+        taskCard: null,
+        hasPlanningClarification: true,
+    });
     return {
         cwd,
         run_id: run.run_id,
@@ -2308,6 +2326,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         server_identity: serverIdentity,
         task_graph_summary: EMPTY_TASK_GRAPH_SUMMARY,
         current_task_card: null,
+        loop_state: loopState,
         specialist_role_roster: [],
         operator_summary: null,
         orchestrator_agent_config_summary: null,
@@ -2373,6 +2392,14 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
     const nextStep = run.status === 'cancelled' ? 'halt_cancelled' : 'halt_failed';
     const runLocator = createResolvedForemanRunLocator(cwd, run.run_id);
+    const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
+        runStatus: run.status,
+        workflowStage: run.stage,
+        activeRole: run.active_role,
+        nextStep,
+        taskCard: null,
+        hasPlanningClarification: false,
+    });
     return {
         cwd,
         run_id: run.run_id,
@@ -2397,6 +2424,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         server_identity: serverIdentity,
         task_graph_summary: EMPTY_TASK_GRAPH_SUMMARY,
         current_task_card: null,
+        loop_state: loopState,
         specialist_role_roster: [],
         operator_summary: null,
         orchestrator_agent_config_summary: null,
@@ -2552,6 +2580,7 @@ function createForemanActivityResult(input) {
         server_identity: input.status.server_identity,
         task_graph_summary: input.status.task_graph_summary,
         current_task_card: input.status.current_task_card,
+        loop_state: input.status.loop_state,
         specialist_role_roster: input.status.specialist_role_roster,
         operator_summary: input.status.operator_summary ?? null,
         orchestrator_agent_config_summary: input.status.orchestrator_agent_config_summary,
@@ -2995,13 +3024,15 @@ function createTaskOperatorVisibilitySummary(currentTaskCard) {
         : 'none';
     return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
 }
-function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, workflowOperatorState) {
+function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, loopState, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
     const workflowNext = workflowOperatorState?.recommended_operator_action ?? 'none';
     return [
         `phase=${phase}`,
         `next=${workflowNext !== 'none' ? workflowNext : nextStep}`,
         `lifecycle=${describeRunLifecycle(runLifecycle)}`,
+        `loop=${loopState?.current_stage ?? 'none'}`,
+        `path=${loopState?.path_variant ?? 'none'}`,
         `task_role=${resolveCurrentTaskRole(currentTaskCard)}`,
         `ownership=${resolveCurrentTaskExecutionOwner(currentTaskCard)}`,
         `trace_owner=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}`,
@@ -3018,13 +3049,14 @@ function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, n
         `evidence=${resolveCurrentTaskModelEvidenceSlug(currentTaskCard)}`,
     ].join(' ');
 }
-function createQuietOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, workflowOperatorState) {
+function createQuietOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, loopState, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
     const workflowNext = workflowOperatorState?.recommended_operator_action ?? 'none';
     return [
         createOperatorDisplayAgentLine(currentTaskCard),
         createOperatorDisplayModelLine(currentTaskCard),
         `Lifecycle: ${describeRunLifecycle(runLifecycle)}`,
+        `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `Phase: ${phase}`,
         `Next: ${workflowNext !== 'none' ? workflowNext : nextStep}`,
     ].join('\n');
@@ -3086,7 +3118,7 @@ function describeOperatorLatestHandoff(guidanceSource) {
     }
     return 'none recorded';
 }
-function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, _workflowOperatorState, taskGraphSummary, _guidanceSource) {
+function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, loopState, _workflowOperatorState, taskGraphSummary, _guidanceSource) {
     const graphSummary = [
         `total=${taskGraphSummary.total_task_cards}`,
         `ready=${taskGraphSummary.ready_execution_tasks}`,
@@ -3096,6 +3128,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, 
         createOperatorDisplayAgentLine(currentTaskCard),
         `Task: ${currentTaskCard?.title ?? 'none'}`,
         createOperatorDisplayModelLine(currentTaskCard),
+        `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `Graph: ${graphSummary}`,
     ].join('\n');
 }
@@ -3162,7 +3195,9 @@ function createCaptainLoopOperatorVisibilitySummary(input) {
     return [
         'captain_directed=true',
         'common_review_path=captain->assigned_agent->arbiter->captain',
-        `current_stage=${input.stage}`,
+        `workflow_stage=${input.stage}`,
+        `loop_stage=${input.loop_state.current_stage}`,
+        `path_variant=${input.loop_state.path_variant}`,
         `current_owner_role=${input.current_task_card.owner_role}`,
         `current_assigned_role=${input.current_task_card.assigned_role}`,
         `review_round=${input.current_task_card.review_pass_count}`,
@@ -3195,6 +3230,7 @@ function createForemanStartResult(cwd, result, status) {
         status: result.status,
         stage: result.stage,
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
         orchestrator_agent_config_summary: status.orchestrator_agent_config_summary,
@@ -3222,6 +3258,7 @@ function createForemanRunResult(cwd, result, status) {
         status: result.status,
         stage: result.stage,
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
         orchestrator_agent_config_summary: status.orchestrator_agent_config_summary,
@@ -3254,6 +3291,7 @@ function createForemanDelegationsResult(status, counts, delegations) {
         status: status.status,
         stage: status.stage,
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
         orchestrator_agent_config_summary: status.orchestrator_agent_config_summary,
@@ -3333,6 +3371,7 @@ function createForemanOrchestrateResult(status, detail) {
         status: status.status,
         stage: status.stage,
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         worker_visibility: status.worker_visibility,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
@@ -3933,6 +3972,7 @@ async function tickForemanAlwaysOnCompanion(input, sessionContext = DEFAULT_MCP_
         status: result.companionExecution.status,
         stage: result.companionExecution.stage,
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
         orchestrator_agent_config_summary: status.orchestrator_agent_config_summary,
@@ -3988,6 +4028,7 @@ async function runForemanAlwaysOnLoop(input, sessionContext = DEFAULT_MCP_SESSIO
         status: finalTick?.status ?? 'active',
         stage: finalTick?.stage ?? 'execution',
         current_task_card: status.current_task_card,
+        loop_state: status.loop_state,
         server_identity: status.server_identity,
         task_graph_summary: status.task_graph_summary,
         orchestrator_agent_config_summary: status.orchestrator_agent_config_summary,
@@ -4106,8 +4147,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     ? verbosity === 'debug'
                                         ? appendContinuityText(`Run ${status.run_id} is ${status.status} at stage ${status.stage}. Current next_step=${status.next_step}.${operatorViewText}`)
                                         : verbosity === 'quiet'
-                                            ? createQuietOperatorVisibilitySummary(status.current_task_card, status.run_lifecycle, status.next_step, status.workflow_operator_state)
-                                            : createDefaultOperatorVisibilitySummary(status.current_task_card, status.run_lifecycle, status.next_step, status.workflow_operator_state, status.task_graph_summary, status)
+                                            ? createQuietOperatorVisibilitySummary(status.current_task_card, status.run_lifecycle, status.next_step, status.loop_state, status.workflow_operator_state)
+                                            : createDefaultOperatorVisibilitySummary(status.current_task_card, status.run_lifecycle, status.next_step, status.loop_state, status.workflow_operator_state, status.task_graph_summary, status)
                                     : appendClarificationText(`Run ${status.run_id} is blocked at stage planning with next_step=await_clarification. No active task runtime exists yet.`),
                             },
                         ],
@@ -4137,8 +4178,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 operatorViewText +
                                 latestAttemptText)
                             : verbosity === 'quiet'
-                                ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state)
-                                : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result)
+                                ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state)
+                                : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result)
                         : appendClarificationText(`Run ${result.run_id} is blocked at stage planning with next_step=await_clarification. ` +
                             `No active task, delegation runtime, or orchestration attempt exists yet.`);
                     return createSuccessResponse(value.id, {
@@ -4207,8 +4248,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         `${createTaskGraphOperatorVisibilitySummary(result)} ` +
                                         `${createServerIdentityOperatorVisibilitySummary(result)}. Codex was not invoked.`
                                     : verbosity === 'quiet'
-                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state)
-                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state)
+                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                             },
                         ],
                         structuredContent: result,
@@ -4231,8 +4272,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         `${createTaskGraphOperatorVisibilitySummary(result)} ` +
                                         `${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
-                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state)
-                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state)
+                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                             },
                         ],
                         structuredContent: result,
@@ -4261,11 +4302,11 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                             : `Run ${result.run_id} has ${result.delegations.length} persisted delegation artifact${result.delegations.length === 1 ? '' : 's'} in ${result.cwd}.${operatorViewText}`
                                         : verbosity === 'quiet'
                                             ? [
-                                                createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state),
+                                                createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state),
                                                 `Delegations: ${result.delegations.length}`,
                                             ].join('\n')
                                             : [
-                                                createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                                createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                                                 `Delegations: ${result.delegations.length}`,
                                             ].join('\n')
                                     : appendClarificationText(`Run ${result.run_id} is blocked awaiting planner clarification, so no task-scoped delegation artifacts exist yet.`),
@@ -4310,8 +4351,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         ? `Run ${result.run_id} was routed through ${result.dispatched_via} and is now ${result.status} at stage ${result.stage} with next_step=${result.next_step}. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                         : `Run ${result.run_id} was not mutated because next_step=${result.next_step} has no automatic orchestration action in this MCP milestone. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
-                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state)
-                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                        ? createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state)
+                                        : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                             },
                         ],
                         structuredContent: result,
@@ -4330,11 +4371,11 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         : `Run ${result.run_id} inspected the enabled always-on companion state and stopped at ${result.stop_reason} without dispatching a step. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
                                         ? [
-                                            createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state),
+                                            createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state),
                                             `Loop: ${result.stop_reason}`,
                                         ].join('\n')
                                         : [
-                                            createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                            createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                                             `Loop: ${result.stop_reason}`,
                                         ].join('\n'),
                             },
@@ -4355,11 +4396,11 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         : `Run ${result.run_id} stopped its explicit bounded always-on companion loop at ${result.stop_reason} without dispatching a tick. Operator view: ${createTaskOperatorVisibilitySummary(result.current_task_card)} ${createCaptainLoopOperatorVisibilitySummary(result)} ${createWorkflowOperatorVisibilitySummary(result)} ${createOrchestratorOperatorVisibilitySummary(result)} ${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ${createTaskGraphOperatorVisibilitySummary(result)} ${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ${createServerIdentityOperatorVisibilitySummary(result)}.`
                                     : verbosity === 'quiet'
                                         ? [
-                                            createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state),
+                                            createQuietOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state),
                                             `Loop: ${result.stop_reason} after ${result.tick_count} tick(s)`,
                                         ].join('\n')
                                         : [
-                                            createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.workflow_operator_state, result.task_graph_summary, result),
+                                            createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.workflow_operator_state, result.task_graph_summary, result),
                                             `Loop: ${result.stop_reason} after ${result.tick_count} tick(s)`,
                                         ].join('\n'),
                             },

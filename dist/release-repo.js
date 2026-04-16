@@ -172,10 +172,27 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 
 - you send a request with \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <request>\`
 - \`captain\` reads the request and current Foreman state
-- Codex decides whether to answer locally or use a specialist role
+- \`captain\` chooses the next bounded loop stage and path variant before specialist routing
+- Codex decides whether to answer locally or use a specialist role inside that bounded stage
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` work is \`foreman_captain\`
 - specialist results return through \`captain\`, which decides whether to continue, review, reroute, stop, or answer
+
+## Canonical Loop
+
+The default bounded loop is:
+
+\`intake -> scoped -> investigating -> implementing -> reviewing -> verifying_execution_truth -> synthesizing -> completed\`
+
+The main shorter variants are:
+
+- \`light\`
+- \`investigate_only\`
+- \`implementation\`
+- \`verify_only\`
+- \`blocked_manual\`
+
+Packaged status and activity surfaces expose loop stage and path variant so the current bounded path stays visible.
 
 ## Public And Internal Boundary
 
@@ -224,6 +241,7 @@ ${codexPrompt}
 - a more structured entry path for requests that need orchestration
 - visible run state instead of one opaque turn of work
 - a captain-led loop that can hand work off and bring it back
+- visible loop stage and path variant on status surfaces
 - room for planning and review before the final answer is synthesized
 - a clearer internal/public boundary for how the harness is meant to be used
 
