@@ -5,6 +5,7 @@ exports.runCli = runCli;
 const promises_1 = require("node:timers/promises");
 const cli_mutation_lease_1 = require("./cli-mutation-lease");
 const entry_policy_1 = require("./entry-policy");
+const navigation_aids_1 = require("./navigation-aids");
 const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
 const mcp_server_1 = require("./mcp-server");
@@ -44,6 +45,8 @@ function usage() {
         '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill and custom-agent roster under the local Codex home, and add the MCP only when no conflicting registration exists.',
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
         '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
+        '  codex-foreman generate-navigation --target-dir <path> [--run-id <id>] [--output-dir <path>] [--validate-only] [--cwd <path>]',
+        '    Generate or validate a bounded repository-local navigation bundle for one target directory under .foreman/navigation/. The generated artifacts are derived, non-canonical investigation aids for captain, tactician, and scout.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
         '    Convenience wrapper: start + advance.',
     ].join('\n');
@@ -1376,6 +1379,42 @@ function parseCheckInstallOptions(rest) {
     }
     return options;
 }
+function parseGenerateNavigationOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        validateOnly: false,
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--target-dir':
+                options.targetDir = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--run-id':
+                options.runId = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--output-dir':
+                options.outputDir = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--validate-only':
+                options.validateOnly = true;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    if (!options.targetDir) {
+        throw new UsageError(`Missing required flag --target-dir.\n${usage()}`);
+    }
+    return options;
+}
 function parseCliArgs(argv) {
     const [command, ...rest] = argv;
     if (!command || command === '--help' || command === '-h') {
@@ -1425,6 +1464,9 @@ function parseCliArgs(argv) {
     }
     if (command === 'check-install') {
         return { command, options: parseCheckInstallOptions(rest) };
+    }
+    if (command === 'generate-navigation') {
+        return { command, options: parseGenerateNavigationOptions(rest) };
     }
     if (command === 'run') {
         return { command, options: parseStartLikeOptions(rest, 'run') };
@@ -1633,6 +1675,17 @@ async function runCli(argv) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} approval=${server.approvalExpectation} scope=${server.recommendationScope} hint=${server.usageHint}\n`);
             }
             return result.status === 'ok' ? 0 : 1;
+        }
+        if (parsed.command === 'generate-navigation') {
+            const result = parsed.options.validateOnly
+                ? await (0, navigation_aids_1.validateNavigationBundle)(parsed.options)
+                : await (0, navigation_aids_1.generateNavigationBundle)(parsed.options);
+            process.stdout.write(`Navigation bundle ${result.status}: target=${result.relativeTargetDir} output=${result.outputDir} files=${result.fileCount} functions=${result.functionCount} artifacts=${result.artifactCount} stale=${result.stale}\n`);
+            process.stdout.write(`Summary: ${result.summary}\n`);
+            for (const artifact of result.artifacts) {
+                process.stdout.write(`Artifact ${artifact.kind}: confidence=${artifact.confidence} path=${artifact.path} summary=${artifact.summary}\n`);
+            }
+            return result.stale ? 1 : 0;
         }
         const result = await (0, run_command_1.runForemanCommand)(parsed.options);
         process.stdout.write(`Run ${result.runId} finished with status=${result.status} stage=${result.stage} next_step=${result.nextStep} in ${result.runDirectory}\n`);

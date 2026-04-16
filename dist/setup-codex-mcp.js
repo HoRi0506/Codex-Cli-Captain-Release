@@ -13,6 +13,7 @@ const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
 const public_surface_1 = require("./public-surface");
 const runtime_1 = require("./runtime");
+const DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS = 8_000;
 class CodexMcpSetupConflictError extends Error {
     constructor(message) {
         super(message);
@@ -242,6 +243,7 @@ function formatCommandFailure(command, args, result) {
     return [
         `Command failed: ${formatCommand(command, args)}`,
         `exit_code=${String(result.code)} signal=${String(result.signal)}`,
+        `timed_out=${result.timedOut} duration_ms=${result.durationMs}${result.timeoutMs === null ? '' : ` timeout_ms=${result.timeoutMs}`}`,
         `STDOUT:\n${stdout.length > 0 ? stdout : '(empty)'}`,
         `STDERR:\n${stderr.length > 0 ? stderr : '(empty)'}`,
     ].join('\n');
@@ -348,13 +350,30 @@ async function hasMatchingRegistration(record, command, args) {
     }
     return await areEquivalentCommandArgs(registeredArgs, args);
 }
-async function spawnCommand(command, args) {
+async function spawnCommand(command, args, options) {
     return await new Promise((resolve, reject) => {
+        const startedAt = Date.now();
         const child = (0, node_child_process_1.spawn)(command, args, {
             stdio: ['ignore', 'pipe', 'pipe'],
         });
         let stdout = '';
         let stderr = '';
+        let settled = false;
+        let timedOut = false;
+        const timeoutMs = options?.timeoutMs ?? null;
+        const finish = (result) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            resolve(result);
+        };
+        const timeoutHandle = timeoutMs === null
+            ? null
+            : setTimeout(() => {
+                timedOut = true;
+                child.kill('SIGTERM');
+            }, timeoutMs);
         child.stdout.setEncoding('utf8');
         child.stderr.setEncoding('utf8');
         child.stdout.on('data', (chunk) => {
@@ -364,10 +383,24 @@ async function spawnCommand(command, args) {
             stderr += chunk;
         });
         child.on('error', (error) => {
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+            }
             reject(error instanceof Error ? error : new Error(`Failed to start ${command}.`));
         });
         child.on('close', (code, signal) => {
-            resolve({ code, signal, stdout, stderr });
+            if (timeoutHandle) {
+                clearTimeout(timeoutHandle);
+            }
+            finish({
+                code,
+                signal,
+                stdout,
+                stderr,
+                timedOut,
+                durationMs: Date.now() - startedAt,
+                timeoutMs,
+            });
         });
     });
 }
@@ -554,7 +587,9 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     let registeredLaunchArgs = [];
     let registeredEntrypointPath = null;
     const getArgs = ['mcp', 'get', '--json', options.serverName];
-    const existingRegistrationResult = await runCommand(options.codexPath, getArgs);
+    const existingRegistrationResult = await runCommand(options.codexPath, getArgs, {
+        timeoutMs: DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS,
+    });
     if (!isMissingRegistration(options.serverName, existingRegistrationResult)) {
         if (existingRegistrationResult.code !== 0 || existingRegistrationResult.signal !== null) {
             registrationStatus = 'unreadable_registration';
@@ -594,7 +629,9 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     let registryInspectionSummary = 'Unable to inspect the full Codex MCP registry.';
     let otherInstalledMcpServers = [];
     const listArgs = ['mcp', 'list', '--json'];
-    const listResult = await runCommand(options.codexPath, listArgs);
+    const listResult = await runCommand(options.codexPath, listArgs, {
+        timeoutMs: DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS,
+    });
     if (listResult.code === 0 && listResult.signal === null) {
         try {
             const records = JSON.parse(listResult.stdout);
@@ -634,6 +671,16 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const capSkill = await inspectPackagedForemanCapSkill(dependencies.packageRoot);
     const customAgents = await inspectPackagedForemanCustomAgents(dependencies.packageRoot);
     const packagedHarnessSurface = await inspectPackagedHarnessSurface(dependencies.packageRoot);
+    const timeoutDiagnosis = existingRegistrationResult.timedOut || listResult.timedOut
+        ? {
+            tool_name: 'foreman_server_identity',
+            stage: 'install_check',
+            budget_ms: DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS,
+            elapsed_ms: Math.max(existingRegistrationResult.durationMs, listResult.durationMs),
+            summary: 'Codex MCP install inspection exceeded the bounded subprocess budget. Registration or registry data may be partial.',
+            recorded_at: new Date().toISOString(),
+        }
+        : null;
     const status = registrationStatus === 'matching_registration' &&
         configExists &&
         registryInspectionStatus === 'listed' &&
@@ -675,6 +722,7 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         customAgentFileCount: customAgents.fileCount,
         customAgentStatus: customAgents.status,
         customAgentSummary: customAgents.summary,
+        timeout_diagnosis: timeoutDiagnosis,
     };
 }
 async function setupCodexMcp(options, dependencies = {}) {

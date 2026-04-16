@@ -39,6 +39,7 @@ const MCP_SERVER_INFO = {
     name: 'codex-foreman-mcp',
     version: package_metadata_1.FOREMAN_PACKAGE_VERSION,
 };
+const FOREMAN_TOOL_TIMEOUT_BUDGET_MS = 10_000;
 const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
     switch (policyMode) {
@@ -58,6 +59,47 @@ function createMcpEntryPolicyInstructions(policyMode) {
             return ('Session entry policy is explicit_only. ' +
                 'Do not assume fresh requests should enter Foreman unless the operator explicitly asks for the Foreman workflow.');
     }
+}
+function createTimeoutDiagnosis(toolName, stage, budgetMs) {
+    return {
+        tool_name: toolName,
+        stage,
+        budget_ms: budgetMs,
+        elapsed_ms: budgetMs,
+        summary: `${toolName} exceeded the bounded ${budgetMs}ms budget during ${stage}. Returning a visible degraded result instead of hanging.`,
+        recorded_at: new Date().toISOString(),
+    };
+}
+async function withBoundedToolBudget(input) {
+    const budgetMs = input.budgetMs ?? FOREMAN_TOOL_TIMEOUT_BUDGET_MS;
+    return await new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            resolve(input.onTimeout(createTimeoutDiagnosis(input.toolName, input.stage, budgetMs)));
+        }, budgetMs);
+        void input
+            .work()
+            .then((result) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            resolve(result);
+        })
+            .catch((error) => {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            clearTimeout(timer);
+            reject(error);
+        });
+    });
 }
 async function createMcpInitializeInstructions(cwd) {
     let policyMode = 'codex_cli_foreman_first';
@@ -1910,10 +1952,49 @@ function createForemanServerIdentityView(sessionContext) {
 }
 async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
     const serverIdentity = createForemanServerIdentityView(sessionContext);
-    const installCheck = await (0, setup_codex_mcp_1.checkCodexMcpInstall)({
-        cwd: process.cwd(),
-        codexPath: 'codex',
-        serverName: 'codex-foreman',
+    const installCheck = await withBoundedToolBudget({
+        toolName: 'foreman_server_identity',
+        stage: 'install_check',
+        work: async () => await (0, setup_codex_mcp_1.checkCodexMcpInstall)({
+            cwd: process.cwd(),
+            codexPath: 'codex',
+            serverName: 'codex-foreman',
+        }),
+        onTimeout: (diagnosis) => ({
+            status: 'warning',
+            packageName: 'codex-foreman',
+            packageVersion: MCP_SERVER_INFO.version,
+            publicEntrySkillName: 'cap',
+            publicEntryLabel: '$cap',
+            serverName: 'codex-foreman',
+            expectedLaunchCommand: process.execPath,
+            expectedLaunchArgs: [],
+            expectedEntrypointPath: serverIdentity.entrypoint_path,
+            registrationStatus: 'unreadable_registration',
+            registrationSummary: diagnosis.summary,
+            registeredLaunchCommand: null,
+            registeredLaunchArgs: [],
+            registeredEntrypointPath: null,
+            configPath: (0, runtime_1.resolveForemanConfigFilePath)(),
+            configExists: true,
+            registryInspectionStatus: 'unavailable',
+            registryInspectionSummary: diagnosis.summary,
+            otherInstalledMcpServers: [],
+            companionMcpUsageSummary: 'Companion MCP registry inspection was skipped because the bounded install-check budget was exhausted.',
+            packagedHarnessSurfaceStatus: 'incomplete_surface',
+            packagedHarnessSurfaceSummary: 'Packaged harness surface inspection was skipped because the bounded install-check budget was exhausted.',
+            packagedHarnessSurface: [],
+            capSkillName: 'cap',
+            capSkillPath: node_path_1.default.join(process.env.CODEX_HOME ?? '', 'skills', 'cap'),
+            capSkillStatus: 'unreadable_install',
+            capSkillSummary: diagnosis.summary,
+            customAgentDirectoryPath: node_path_1.default.join(process.env.CODEX_HOME ?? '', 'agents'),
+            customAgentNames: [],
+            customAgentFileCount: 0,
+            customAgentStatus: 'unreadable_install',
+            customAgentSummary: diagnosis.summary,
+            timeout_diagnosis: diagnosis,
+        }),
     });
     const sessionRegistrationMatch = serverIdentity.entrypoint_path === null || installCheck.registeredEntrypointPath === null
         ? 'unknown'
@@ -3466,19 +3547,134 @@ async function getForemanActivity(input, sessionContext = DEFAULT_MCP_SESSION_CO
     });
 }
 async function recommendForemanEntryForMcp(input) {
-    const cwd = resolveCwd(input.cwd);
-    const foremanConfig = await (0, runtime_1.loadForemanConfig)(cwd);
-    return (0, entry_policy_1.recommendForemanEntry)({
-        cwd,
-        request: input.request,
-    }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+    return await withBoundedToolBudget({
+        toolName: 'foreman_recommend_entry',
+        stage: 'startup',
+        work: async () => {
+            const cwd = resolveCwd(input.cwd);
+            const foremanConfig = await (0, runtime_1.loadForemanConfig)(cwd);
+            return (0, entry_policy_1.recommendForemanEntry)({
+                cwd,
+                request: input.request,
+            }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+        },
+        onTimeout: (diagnosis) => ({
+            cwd: resolveCwd(input.cwd),
+            request: input.request,
+            policy_mode: 'codex_cli_foreman_first',
+            policy_summary: 'Returning a degraded recommendation because the bounded Foreman entry recommendation budget was exhausted.',
+            automatic_entry_supported: false,
+            entry_boundary: 'session_instruction_plus_wrapper',
+            entry_boundary_summary: 'Degraded fallback after recommendation timeout. Use explicit entry or retry once the session is responsive.',
+            upstream_codex_binary_intercept_supported: false,
+            upstream_codex_binary_intercept_summary: 'Codex CLI interception is still unsupported; the current fallback is an honest degraded recommendation.',
+            orchestrator_scope: ORCHESTRATOR_SCOPE,
+            orchestrator_scope_summary: ORCHESTRATOR_SCOPE_SUMMARY,
+            orchestrator_agent: {
+                role: 'orchestrator',
+                roster_name: 'captain',
+                profile: null,
+                model: null,
+                variant: null,
+                config_entries: [],
+            },
+            orchestrator_request_settings_preview: {
+                source: 'shared_role_config',
+                profile: null,
+                model: null,
+                variant: null,
+                config_entries: [],
+            },
+            recommended_entrypoint: 'plan',
+            task_shape: 'multi_step_or_unclear',
+            confidence: 'medium',
+            summary: diagnosis.summary,
+            rationale: [
+                'The bounded recommendation path exceeded its startup budget, so Foreman returned a degraded plan-first suggestion instead of hanging.',
+            ],
+            suggested_cli_command: 'codex-foreman plan',
+            suggested_mcp_tool: null,
+            timeout_diagnosis: diagnosis,
+        }),
+    });
 }
 async function autoEnterForemanForMcp(input) {
-    const cwd = resolveCwd(input.cwd);
-    return (0, run_command_1.autoEnterForeman)({
-        cwd,
-        request: input.request,
-        codexPath: input.codex_bin ?? 'codex',
+    return await withBoundedToolBudget({
+        toolName: 'foreman_auto_entry',
+        stage: 'hydration',
+        work: async () => {
+            const cwd = resolveCwd(input.cwd);
+            return (0, run_command_1.autoEnterForeman)({
+                cwd,
+                request: input.request,
+                codexPath: input.codex_bin ?? 'codex',
+            });
+        },
+        onTimeout: (diagnosis) => ({
+            cwd: resolveCwd(input.cwd),
+            request: input.request,
+            policy_mode: 'codex_cli_foreman_first',
+            automatic_entry_supported: false,
+            entry_boundary: 'session_instruction_plus_wrapper',
+            entry_boundary_summary: 'Degraded fallback after bounded auto-entry hydration timeout.',
+            upstream_codex_binary_intercept_supported: false,
+            upstream_codex_binary_intercept_summary: 'Codex CLI interception remains unsupported; the current fallback preserves a visible degraded boundary.',
+            created: false,
+            run_selection: 'no_run_created',
+            inspected_active_run_count: 0,
+            fresh_active_run_count: 0,
+            stale_active_run_count: 0,
+            entrypoint_used: null,
+            scoping_source: null,
+            run_decision_reason: diagnosis.summary,
+            active_run_candidates: [],
+            selected_run_lifecycle: null,
+            run_id: null,
+            task_card_id: null,
+            run_directory: null,
+            status: null,
+            stage: null,
+            next_step: null,
+            can_advance: null,
+            summary: diagnosis.summary,
+            recommendation: {
+                cwd: resolveCwd(input.cwd),
+                request: input.request,
+                policy_mode: 'codex_cli_foreman_first',
+                policy_summary: 'Degraded recommendation generated because auto-entry timed out during bounded hydration.',
+                automatic_entry_supported: false,
+                entry_boundary: 'session_instruction_plus_wrapper',
+                entry_boundary_summary: 'Degraded fallback after auto-entry timeout.',
+                upstream_codex_binary_intercept_supported: false,
+                upstream_codex_binary_intercept_summary: 'Codex CLI interception remains unsupported; retry or use explicit entry once Foreman state is responsive.',
+                orchestrator_scope: ORCHESTRATOR_SCOPE,
+                orchestrator_scope_summary: ORCHESTRATOR_SCOPE_SUMMARY,
+                orchestrator_agent: {
+                    role: 'orchestrator',
+                    roster_name: 'captain',
+                    profile: null,
+                    model: null,
+                    variant: null,
+                    config_entries: [],
+                },
+                orchestrator_request_settings_preview: {
+                    source: 'shared_role_config',
+                    profile: null,
+                    model: null,
+                    variant: null,
+                    config_entries: [],
+                },
+                recommended_entrypoint: 'plan',
+                task_shape: 'multi_step_or_unclear',
+                confidence: 'medium',
+                summary: diagnosis.summary,
+                rationale: ['Auto-entry exceeded the bounded hydration budget, so Foreman returned a visible degraded fallback.'],
+                suggested_cli_command: 'codex-foreman plan',
+                suggested_mcp_tool: null,
+                timeout_diagnosis: diagnosis,
+            },
+            timeout_diagnosis: diagnosis,
+        }),
     });
 }
 async function getForemanDelegations(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
@@ -3876,9 +4072,14 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     `Install check: ${result.install_check.status}`,
                                     `Registration: ${result.install_check.registrationStatus}`,
                                     `Session registration match: ${result.install_check.session_registration_match}`,
+                                    result.install_check.timeout_diagnosis
+                                        ? `Timeout diagnosis: ${result.install_check.timeout_diagnosis.summary}`
+                                        : null,
                                     `Registry summary: ${result.install_check.registryInspectionSummary}`,
                                     `Companion MCPs: ${companionNames}`,
-                                ].join('\n'),
+                                ]
+                                    .filter((line) => line !== null)
+                                    .join('\n'),
                             },
                         ],
                         structuredContent: result,
@@ -3962,7 +4163,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     `captain_variant=${result.orchestrator_request_settings_preview.variant ?? 'none'} ` +
                                     `scope=${result.orchestrator_scope} ` +
                                     `entry_boundary=${result.entry_boundary} ` +
-                                    `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}.`,
+                                    `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}.` +
+                                    `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`,
                             },
                         ],
                         structuredContent: result,
@@ -3981,7 +4183,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     ? `Foreman auto-entry reused active run ${result.run_id} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
                                     : result.created
                                         ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
-                                        : `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.`,
+                                        : `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.` +
+                                            `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`,
                             },
                         ],
                         structuredContent: result,

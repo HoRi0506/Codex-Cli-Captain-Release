@@ -1,14 +1,19 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = void 0;
 exports.classifyRunFreshness = classifyRunFreshness;
 exports.deriveRunLifecycleView = deriveRunLifecycleView;
 exports.inspectWorkspaceRunLifecycleViews = inspectWorkspaceRunLifecycleViews;
 const promises_1 = require("node:fs/promises");
+const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
 exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const ARCHIVE_CANDIDATE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
 const PRUNE_CANDIDATE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000;
+const MAX_LIFECYCLE_SCAN_RUNS = 50;
 function parseAgeMs(updatedAt, nowMs) {
     const updatedAtMs = Date.parse(updatedAt);
     if (!Number.isFinite(updatedAtMs)) {
@@ -108,8 +113,26 @@ async function inspectWorkspaceRunLifecycleViews(cwd) {
         }
         throw error;
     }
+    const scoredRunIds = await Promise.all(runIds.map(async (runId) => {
+        try {
+            const runJsonPath = node_path_1.default.join(runsDirectory, runId, 'run.json');
+            const runStat = await (0, promises_1.stat)(runJsonPath);
+            return {
+                runId,
+                updatedAtMs: runStat.mtimeMs,
+            };
+        }
+        catch {
+            return {
+                runId,
+                updatedAtMs: 0,
+            };
+        }
+    }));
     const allRuns = [];
-    for (const runId of runIds.sort((left, right) => left.localeCompare(right))) {
+    for (const { runId } of scoredRunIds
+        .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.runId.localeCompare(right.runId))
+        .slice(0, MAX_LIFECYCLE_SCAN_RUNS)) {
         try {
             allRuns.push(await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(cwd, runId)));
         }
