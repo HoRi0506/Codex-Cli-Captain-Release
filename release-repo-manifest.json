@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-04-16T05:57:38.982Z",
+  "generated_at": "2026-04-16T06:30:21.252Z",
   "source_repo_path": "/Users/kwkim-hoir/dev/home/Codex-Foreman",
-  "source_git_commit": "694c6973b8e1e962a8911d6dd46b7934991bbdcd",
+  "source_git_commit": "e3657a82918bd8b30c90b2e0f6ec235b54e99dbd",
   "package_name": "codex-foreman",
-  "package_version": "1.5.4",
+  "package_version": "1.5.5",
   "managed_paths": [
     "dist",
     "schemas",

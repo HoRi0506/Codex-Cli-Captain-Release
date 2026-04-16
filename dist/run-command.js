@@ -697,9 +697,13 @@ function createRoleModelLaunchEvidence(input) {
     };
 }
 function isReadOnlyFallbackAllowed(taskCard) {
-    return (taskCard.task_kind !== 'execution' ||
-        taskCard.assigned_role !== 'code specialist' ||
-        taskCard.model_tier_intent === 'low_cost');
+    if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
+        return false;
+    }
+    if (taskCard.task_kind === 'execution') {
+        return taskCard.assigned_role === 'code specialist' && taskCard.model_tier_intent === 'low_cost';
+    }
+    return taskCard.owner_role === 'orchestrator' && taskCard.model_tier_intent === 'low_cost';
 }
 function deriveAllowedAgentIdsForRolePolicy(role, foremanConfig) {
     const configuredAgentId = (0, runtime_1.getForemanAgentConfigForRole)(foremanConfig, role).name;

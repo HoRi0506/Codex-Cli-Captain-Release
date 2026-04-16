@@ -306,7 +306,7 @@
       "properties": {
         "state": {
           "type": "string",
-          "enum": ["assigned_only", "launched", "observed", "review_linked", "host_session_fallback", "partial", "missing"]
+          "enum": ["assigned_only", "planned_only", "launched", "observed", "review_linked", "captain_read_only_fallback", "host_session_fallback", "partial", "missing"]
         },
         "assigned_role": {
           "type": "string",

@@ -1108,8 +1108,8 @@ async function runWatchCommand(options) {
     let remainingIterations = options.iterations ?? null;
     let previousOutput = null;
     let previousSnapshot = null;
-    const configuredVerbosity = await (0, runtime_1.loadForemanConfig)(options.cwd)
-        .then((config) => config.output.verbosity)
+    const configuredVerbosity = await Promise.resolve((0, runtime_1.loadForemanConfig)(options.cwd))
+        .then((config) => config?.output?.verbosity ?? 'default')
         .catch(() => 'default');
     const verbosity = resolveWatchVerbosity(options, configuredVerbosity);
     while (remainingIterations === null || remainingIterations > 0) {

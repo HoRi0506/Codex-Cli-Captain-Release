@@ -1428,16 +1428,36 @@ function createCurrentTaskExecutionProof(input) {
         ? input.concreteWorkerId ?? input.taskCard.assigned_agent_id ?? null
         : null;
     const modelSummary = `${model ?? 'none'} / ${variant ?? 'none'}`;
+    const proofState = input.executionOwner === 'foreman_worker'
+        ? 'foreman_worker_visible'
+        : input.hostExecutionEvidenceVisible
+            ? input.readOnlyFallbackAllowed
+                ? 'captain_read_only_fallback'
+                : 'host_session_fallback'
+            : 'planned_assignment_only';
     return {
-        proof_state: input.executionOwner === 'foreman_worker' ? 'foreman_worker_visible' : 'host_session_fallback',
+        proof_state: proofState,
         assigned_agent_id: input.taskCard.assigned_agent_id,
         actual_agent_id: actualAgentId,
         model,
         variant,
-        summary: input.executionOwner === 'foreman_worker'
+        summary: proofState === 'foreman_worker_visible'
             ? `foreman_worker via ${actualAgentId ?? 'assigned worker'} using ${modelSummary}`
-            : `host_session fallback for ${input.taskCard.assigned_agent_id ?? 'unassigned'} using ${modelSummary}`,
+            : proofState === 'captain_read_only_fallback'
+                ? `captain read-only fallback with ${input.taskCard.assigned_agent_id ?? 'unassigned'} still recorded as planned specialist using ${modelSummary}`
+                : proofState === 'host_session_fallback'
+                    ? `host_session execution was visible, but ${input.taskCard.assigned_agent_id ?? 'unassigned'} still has no accepted worker launch proof using ${modelSummary}`
+                    : `planned specialist ${input.taskCard.assigned_agent_id ?? 'unassigned'} has no worker launch proof yet`,
     };
+}
+function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
+    if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
+        return false;
+    }
+    if (taskCard.task_kind === 'execution') {
+        return taskCard.assigned_role === 'code specialist' && taskCard.model_tier_intent === 'low_cost';
+    }
+    return taskCard.owner_role === 'orchestrator' && taskCard.model_tier_intent === 'low_cost';
 }
 function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
     const taskLinkedDelegations = taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id);
@@ -1473,6 +1493,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         taskCard,
         taskDelegations,
     });
+    const readOnlyFallbackAllowed = isCaptainOwnedReadOnlyFallbackAllowed(taskCard);
+    const hostExecutionEvidenceVisible = taskCard.thread_ids.length > 0 || actualModelLaunch !== null;
     const executionProof = createCurrentTaskExecutionProof({
         taskCard,
         executionOwner,
@@ -1480,6 +1502,8 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
         actualModelLaunch,
         agentConfigSummary: assignedAgentConfigSummary ?? ownerAgentConfigSummary,
         resolvedRequestSettings,
+        readOnlyFallbackAllowed,
+        hostExecutionEvidenceVisible,
     });
     return {
         task_card_id: taskCard.task_card_id,

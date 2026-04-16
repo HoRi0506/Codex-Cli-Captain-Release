@@ -12,6 +12,16 @@ exports.createTaskOwnershipGuard = createTaskOwnershipGuard;
 const node_fs_1 = require("node:fs");
 const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
+function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
+    const modelTierIntent = taskCard.model_tier_intent ?? 'standard';
+    if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
+        return false;
+    }
+    if (taskCard.task_kind === 'execution') {
+        return taskCard.assigned_role === 'code specialist' && modelTierIntent === 'low_cost';
+    }
+    return taskCard.owner_role === 'orchestrator' && modelTierIntent === 'low_cost';
+}
 function pickLatestDelegation(delegations) {
     return delegations.slice().sort((left, right) => right.updated_at.localeCompare(left.updated_at)).at(0) ?? null;
 }
@@ -39,6 +49,12 @@ function describeOwnershipObservation(input) {
 }
 function summarizeTaskOwnershipChain(chain) {
     const reviewerSummary = describeOwnershipReviewer(chain.reviewer_agent_id, chain.reviewer_link_state, chain.reviewer_count);
+    if (chain.state === 'planned_only') {
+        return `planned=${chain.assigned_agent_id ?? 'unassigned'} -> launch=not_started -> review=${reviewerSummary} -> ${chain.captain_agent_id} [awaiting_worker_launch]`;
+    }
+    if (chain.state === 'captain_read_only_fallback') {
+        return `planned=${chain.assigned_agent_id ?? 'unassigned'} -> captain read-only fallback (${chain.fallback_reason ?? 'allowed'}) -> review=${reviewerSummary} -> ${chain.captain_agent_id} [captain_read_only_fallback]`;
+    }
     if (chain.execution_owner_mode === 'host_session_fallback') {
         return `assigned=${chain.assigned_agent_id ?? 'unassigned'} -> host_session fallback (${chain.fallback_reason ?? 'unknown'}) -> review=${reviewerSummary} -> ${chain.captain_agent_id} [downgraded:${chain.state}]`;
     }
@@ -81,18 +97,38 @@ function createTaskOwnershipChain(input) {
             : null);
     const reviewerLinkState = reviewerAgentIds.length > 0 ? 'actual' : inferredReviewerAgentId !== null ? 'inferred' : 'missing';
     const executionOwnerMode = workerDelegations.length > 0 ? 'foreman_worker' : 'host_session_fallback';
+    const hostSessionEvidenceVisible = input.taskCard.thread_ids.length > 0 || input.taskCard.latest_model_launch !== null;
+    const readOnlyFallbackAllowed = isCaptainOwnedReadOnlyFallbackAllowed({
+        owner_role: input.taskCard.owner_role,
+        assigned_role: input.taskCard.assigned_role,
+        task_kind: input.taskCard.task_kind ?? 'execution',
+        model_tier_intent: input.taskCard.model_tier_intent ?? 'standard',
+    });
     const fallbackReason = executionOwnerMode === 'foreman_worker'
         ? launchEvidence?.observation_status === 'unavailable'
             ? launchEvidence.observation_unavailable_reason ?? 'observed_evidence_missing'
             : null
-        : input.taskCard.thread_ids.length > 0 || input.taskCard.latest_model_launch !== null
-            ? 'host_session_visible_execution'
+        : hostSessionEvidenceVisible
+            ? readOnlyFallbackAllowed
+                ? 'captain_read_only_fallback'
+                : 'worker_launch_required'
             : stableAssignedAgentId !== null
-                ? 'no_visible_worker_linkage'
+                ? 'worker_not_launched'
                 : 'missing_assignment';
     let state = 'missing';
     if (executionOwnerMode === 'host_session_fallback') {
-        state = stableAssignedAgentId === null ? 'missing' : 'host_session_fallback';
+        if (stableAssignedAgentId === null) {
+            state = 'missing';
+        }
+        else if (hostSessionEvidenceVisible && readOnlyFallbackAllowed) {
+            state = 'captain_read_only_fallback';
+        }
+        else if (hostSessionEvidenceVisible) {
+            state = 'host_session_fallback';
+        }
+        else {
+            state = 'planned_only';
+        }
     }
     else if (reviewerLinkState === 'actual') {
         state = 'review_linked';
@@ -135,8 +171,17 @@ function createTaskOwnershipChain(input) {
     return chain;
 }
 function createOwnershipChainProvenanceHeader(chain) {
-    const executionOwner = chain.execution_owner_mode === 'host_session_fallback' ? 'host_session' : 'foreman_worker';
-    const baseHeader = `[Foreman captain | assigned=${chain.assigned_agent_id ?? 'unassigned'} | execution=${executionOwner}:${chain.launched_worker_id ?? chain.assigned_agent_id ?? 'unassigned'} | review=${chain.reviewer_agent_id ?? (0, runtime_1.getAgentIdForRole)('verifier') ?? 'arbiter'}]`;
+    const executionOwner = chain.state === 'planned_only'
+        ? 'planned'
+        : chain.execution_owner_mode === 'host_session_fallback'
+            ? 'host_session'
+            : 'foreman_worker';
+    const executionTarget = chain.state === 'planned_only'
+        ? chain.assigned_agent_id ?? 'unassigned'
+        : chain.state === 'captain_read_only_fallback'
+            ? chain.captain_agent_id
+            : chain.launched_worker_id ?? chain.assigned_agent_id ?? 'unassigned';
+    const baseHeader = `[Foreman captain | assigned=${chain.assigned_agent_id ?? 'unassigned'} | execution=${executionOwner}:${executionTarget} | review=${chain.reviewer_agent_id ?? (0, runtime_1.getAgentIdForRole)('verifier') ?? 'arbiter'}]`;
     const observedSummary = chain.observed_worker_id ??
         (chain.observed_evidence_state === 'observed'
             ? `${chain.observed_source ?? 'observed'}:${chain.observed_model ?? 'unknown'}`
