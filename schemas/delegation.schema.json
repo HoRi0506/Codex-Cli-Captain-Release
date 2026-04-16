@@ -13,6 +13,7 @@
     "child_agent",
     "executor",
     "worker_request",
+    "worker_lifecycle",
     "worker_result",
     "result_summary",
     "reviewer_outcome",
@@ -80,6 +81,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/roleModelLaunchEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "worker_lifecycle": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/workerLifecycle"
         },
         {
           "type": "null"
@@ -249,6 +260,74 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "workerLifecycle": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "reclaim_state",
+        "queued_at",
+        "launch_requested_at",
+        "started_at",
+        "last_progress_at",
+        "returned_at",
+        "stale_at",
+        "timed_out_at",
+        "stale_after_ms",
+        "timeout_after_ms",
+        "summary"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": ["queued", "launching", "running", "returned", "failed", "cancelled", "stale", "timed_out"]
+        },
+        "reclaim_state": {
+          "type": "string",
+          "enum": ["not_needed", "reclaim_needed", "resumable", "reclaimed"]
+        },
+        "queued_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "launch_requested_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "started_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "last_progress_at": {
+          "type": "string",
+          "minLength": 1
+        },
+        "returned_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "stale_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "timed_out_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "stale_after_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeout_after_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
         }
       }
     },

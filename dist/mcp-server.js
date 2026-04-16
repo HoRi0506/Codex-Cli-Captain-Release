@@ -1557,11 +1557,95 @@ function createReadableRunContext(input) {
 function isActiveDelegatedWorkerStatus(status) {
     return status === 'queued' || status === 'running';
 }
+function summarizeVisibleWorkerLifecycleState(state) {
+    switch (state) {
+        case 'queued':
+            return 'queued and waiting for captain launch';
+        case 'launching':
+            return 'launch requested and waiting for running checkpoint';
+        case 'running':
+            return 'running under captain supervision';
+        case 'returned':
+            return 'returned to captain';
+        case 'failed':
+            return 'failed and needs captain follow-up';
+        case 'cancelled':
+            return 'cancelled under captain control';
+        case 'stale':
+            return 'stale and needs bounded reclaim';
+        case 'timed_out':
+            return 'timed out and needs bounded reclaim';
+    }
+}
+function createWorkerLifecycleView(delegation) {
+    const lifecycle = delegation.worker_lifecycle;
+    if (lifecycle === null || lifecycle === undefined) {
+        return null;
+    }
+    const progressTimestamp = Date.parse(lifecycle.last_progress_at);
+    const elapsedSinceProgressMs = Number.isFinite(progressTimestamp) ? Math.max(0, Date.now() - progressTimestamp) : null;
+    let state = lifecycle.state;
+    let reclaimState = lifecycle.reclaim_state;
+    let staleAt = lifecycle.stale_at;
+    let timedOutAt = lifecycle.timed_out_at;
+    if (delegation.child_agent.status === 'running' && elapsedSinceProgressMs !== null) {
+        if (elapsedSinceProgressMs >= lifecycle.timeout_after_ms) {
+            state = 'timed_out';
+            reclaimState = 'reclaim_needed';
+            timedOutAt = timedOutAt ?? lifecycle.last_progress_at;
+        }
+        else if (elapsedSinceProgressMs >= lifecycle.stale_after_ms) {
+            state = 'stale';
+            reclaimState = 'reclaim_needed';
+            staleAt = staleAt ?? lifecycle.last_progress_at;
+        }
+        else if (lifecycle.launch_requested_at !== null && lifecycle.started_at === null) {
+            state = 'launching';
+        }
+        else {
+            state = 'running';
+        }
+    }
+    else if (delegation.child_agent.status === 'completed') {
+        state = 'returned';
+        reclaimState = lifecycle.reclaim_state === 'reclaimed' ? 'reclaimed' : 'resumable';
+    }
+    else if (delegation.child_agent.status === 'failed') {
+        state = 'failed';
+        reclaimState = 'not_needed';
+    }
+    else if (delegation.child_agent.status === 'cancelled') {
+        state = 'cancelled';
+        reclaimState = 'not_needed';
+    }
+    else if (delegation.child_agent.status === 'queued' && lifecycle.launch_requested_at !== null) {
+        state = 'launching';
+    }
+    else {
+        state = 'queued';
+    }
+    return {
+        state,
+        reclaim_state: reclaimState,
+        queued_at: lifecycle.queued_at,
+        launch_requested_at: lifecycle.launch_requested_at,
+        started_at: lifecycle.started_at,
+        last_progress_at: lifecycle.last_progress_at,
+        returned_at: lifecycle.returned_at,
+        stale_at: staleAt,
+        timed_out_at: timedOutAt,
+        stale_after_ms: lifecycle.stale_after_ms,
+        timeout_after_ms: lifecycle.timeout_after_ms,
+        elapsed_since_progress_ms: elapsedSinceProgressMs,
+        summary: summarizeVisibleWorkerLifecycleState(state),
+    };
+}
 function createReadableWorkerSnapshot(delegation, foremanConfig) {
     const readableWorker = createReadableAgentContext(delegation.child_agent.role, delegation.child_agent.agent_id, foremanConfig);
     const sliceLabel = delegation.worker_request?.slice_label ?? delegation.worker_result?.slice_label ?? null;
     const scope = delegation.worker_request?.scope ?? delegation.worker_result?.scope ?? null;
     const sliceSummary = sliceLabel ?? delegation.summary;
+    const workerLifecycle = createWorkerLifecycleView(delegation);
     return {
         ...delegation.child_agent,
         roster_name: readableWorker.roster_name,
@@ -1570,7 +1654,22 @@ function createReadableWorkerSnapshot(delegation, foremanConfig) {
         slice_label: sliceLabel,
         partition_strategy: delegation.worker_request?.partition_strategy ?? delegation.worker_result?.partition_strategy ?? null,
         coverage_focus: [...(delegation.worker_request?.coverage_focus ?? delegation.worker_result?.coverage_focus ?? [])],
-        summary: scope ? `${sliceSummary}: ${scope}` : sliceSummary,
+        worker_lifecycle: workerLifecycle ?? {
+            state: 'queued',
+            reclaim_state: 'not_needed',
+            queued_at: delegation.created_at,
+            launch_requested_at: null,
+            started_at: null,
+            last_progress_at: delegation.updated_at,
+            returned_at: delegation.completed_at,
+            stale_at: null,
+            timed_out_at: null,
+            stale_after_ms: 0,
+            timeout_after_ms: 0,
+            elapsed_since_progress_ms: null,
+            summary: 'queued and waiting for captain launch',
+        },
+        summary: `${scope ? `${sliceSummary}: ${scope}` : sliceSummary} (lifecycle=${workerLifecycle?.state ?? 'queued'})`,
     };
 }
 function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
@@ -1589,25 +1688,38 @@ function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
 }
 function createWorkerVisibility(input) {
     const allWorkers = input.task_delegations.map((delegation) => createReadableWorkerSnapshot(delegation, input.foremanConfig));
-    const activeWorkers = allWorkers.filter((worker) => isActiveDelegatedWorkerStatus(worker.status));
+    const activeWorkers = allWorkers.filter((worker) => isActiveDelegatedWorkerStatus(worker.status) ||
+        worker.worker_lifecycle?.state === 'stale' ||
+        worker.worker_lifecycle?.state === 'timed_out');
     const queuedWorkerCount = input.task_delegations.filter((delegation) => delegation.child_agent.status === 'queued').length;
     const runningWorkerCount = input.task_delegations.filter((delegation) => delegation.child_agent.status === 'running').length;
     const completedWorkerCount = input.task_delegations.filter((delegation) => delegation.child_agent.status === 'completed').length;
     const failedWorkerCount = input.task_delegations.filter((delegation) => delegation.child_agent.status === 'failed').length;
     const cancelledWorkerCount = input.task_delegations.filter((delegation) => delegation.child_agent.status === 'cancelled').length;
+    const launchingWorkerCount = allWorkers.filter((worker) => worker.worker_lifecycle?.state === 'launching').length;
+    const returnedWorkerCount = allWorkers.filter((worker) => worker.worker_lifecycle?.state === 'returned').length;
+    const staleWorkerCount = allWorkers.filter((worker) => worker.worker_lifecycle?.state === 'stale').length;
+    const timedOutWorkerCount = allWorkers.filter((worker) => worker.worker_lifecycle?.state === 'timed_out').length;
+    const reclaimNeededWorkerCount = allWorkers.filter((worker) => worker.worker_lifecycle?.reclaim_state === 'reclaim_needed').length;
     return {
         task_card_id: input.task_card.task_card_id,
         total_worker_count: input.task_delegations.length,
         active_worker_count: activeWorkers.length,
         queued_worker_count: queuedWorkerCount,
+        launching_worker_count: launchingWorkerCount,
         running_worker_count: runningWorkerCount,
+        returned_worker_count: returnedWorkerCount,
         completed_worker_count: completedWorkerCount,
         failed_worker_count: failedWorkerCount,
         cancelled_worker_count: cancelledWorkerCount,
+        stale_worker_count: staleWorkerCount,
+        timed_out_worker_count: timedOutWorkerCount,
+        reclaim_needed_worker_count: reclaimNeededWorkerCount,
         workers: allWorkers,
         active_workers: activeWorkers,
         summary: `Task "${input.task_card.title}" has ${activeWorkers.length} active ${input.worker_label}${activeWorkers.length === 1 ? '' : 's'}` +
-            ` out of the explicit cap ${input.max_active_workers}; ${completedWorkerCount} completed, ${failedWorkerCount} failed, and ${cancelledWorkerCount} cancelled.`,
+            ` out of the explicit cap ${input.max_active_workers}; ${completedWorkerCount} completed, ${failedWorkerCount} failed, ${cancelledWorkerCount} cancelled, ` +
+            `${returnedWorkerCount} returned, ${staleWorkerCount} stale, and ${timedOutWorkerCount} timed out.`,
     };
 }
 function createVisibleWorkerRequest(workerRequest) {
@@ -1811,6 +1923,7 @@ function createVisibleDelegation(delegation, taskTitle, foremanConfig) {
         child_agent_config_summary: createTaskCardAgentConfigSummary(delegation.child_agent.role, foremanConfig),
         worker_request: createVisibleWorkerRequest(delegation.worker_request),
         worker_role_config_snapshot: delegation.worker_role_config_snapshot ?? null,
+        worker_lifecycle: createWorkerLifecycleView(delegation),
         worker_result: createVisibleWorkerResult(delegation.worker_result),
         executor: delegation.executor,
         result_summary: delegation.result_summary === null ? null : SAFE_PERSISTED_DETAIL_SUMMARY,
@@ -2193,6 +2306,7 @@ function createForemanActivityResult(input) {
                 child_agent: delegation.child_agent,
                 child_agent_config_summary: createTaskCardAgentConfigSummary(delegation.child_agent.role, input.foremanConfig),
                 executor: delegation.executor,
+                worker_lifecycle: createWorkerLifecycleView(delegation),
                 updated_at: delegation.updated_at,
             })),
         },
@@ -2775,6 +2889,7 @@ function createForemanDelegateResult(cwd, delegation) {
         summary: delegation.summary,
         child_agent: delegation.child_agent,
         executor: delegation.executor,
+        worker_lifecycle: createWorkerLifecycleView(delegation),
         created_at: delegation.created_at,
         updated_at: delegation.updated_at,
     };
@@ -2793,6 +2908,7 @@ function createForemanUpdateDelegationResult(cwd, delegation) {
         summary: delegation.summary,
         child_agent: delegation.child_agent,
         executor: delegation.executor,
+        worker_lifecycle: createWorkerLifecycleView(delegation),
         result_summary: delegation.result_summary,
         reviewer_outcome: delegation.reviewer_outcome,
         latest_failure: delegation.latest_failure,
@@ -3137,6 +3253,9 @@ async function declareForemanDelegation(input, sessionContext = DEFAULT_MCP_SESS
                 acceptance: taskCard.acceptance,
             }
             : null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,

@@ -1749,6 +1749,9 @@ function createQueuedInvestigationDelegation(input) {
         },
         worker_role_config_snapshot: input.taskCard.role_config_snapshot,
         worker_launch_evidence: null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,
@@ -1787,6 +1790,9 @@ function createQueuedReviewDelegation(input) {
         },
         worker_request: null,
         worker_launch_evidence: null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,
@@ -1825,6 +1831,9 @@ function createQueuedPrimaryExecutionDelegation(input) {
         worker_request: createExecutionDelegationWorkerRequest(input.taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.taskCard)),
         worker_role_config_snapshot: input.taskCard.role_config_snapshot,
         worker_launch_evidence: null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,
@@ -1865,6 +1874,9 @@ function createQueuedGraphChildDelegation(input) {
         worker_request: createExecutionDelegationWorkerRequest(input.sourceTaskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.sourceTaskCard)),
         worker_role_config_snapshot: input.sourceTaskCard.role_config_snapshot,
         worker_launch_evidence: null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,
@@ -2317,6 +2329,9 @@ async function syncDelegatedVerificationRepairArtifacts(runPaths, run, taskCard,
         worker_request: sourceDelegation.worker_request ??
             createExecutionDelegationWorkerRequest(taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(taskCard)),
         worker_launch_evidence: null,
+        worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+            createdAt: timestamp,
+        }),
         worker_result: null,
         result_summary: null,
         reviewer_outcome: null,
@@ -2467,6 +2482,10 @@ async function executeDelegatedGraphChildSet(input) {
                 profile: executionProfile,
                 config_entries: executionConfigEntries,
             },
+        });
+        await (0, runtime_1.markDelegationLaunchingWithVisibilitySync)(input.runPaths, {
+            delegationId: delegation.delegation_id,
+            workerLaunchEvidence,
         });
         await syncDelegationLifecycle(input.runPaths, input.run, {
             delegationId: delegation.delegation_id,
@@ -3729,6 +3748,10 @@ async function advanceForemanRun(options) {
             configuredModel: executionDelegation.worker_role_config_snapshot?.model ?? taskCard.role_config_snapshot.model,
             configuredVariant: executionDelegation.worker_role_config_snapshot?.variant ?? taskCard.role_config_snapshot.variant,
             actualRequest: executionRequest,
+        });
+        await (0, runtime_1.markDelegationLaunchingWithVisibilitySync)(runPaths, {
+            delegationId: executionDelegation.delegation_id,
+            workerLaunchEvidence: delegatedExecutionLaunchEvidence,
         });
         await syncDelegationLifecycle(runPaths, run, {
             delegationId: executionDelegation.delegation_id,

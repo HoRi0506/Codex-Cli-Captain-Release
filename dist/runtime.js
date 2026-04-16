@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.createDelegationWorkerLifecycleRecord = createDelegationWorkerLifecycleRecord;
 exports.deriveRoleModelObservationDefaults = deriveRoleModelObservationDefaults;
 exports.nowTimestamp = nowTimestamp;
 exports.resolveForemanConfigDirectory = resolveForemanConfigDirectory;
@@ -47,6 +48,7 @@ exports.loadTaskDelegationSummary = loadTaskDelegationSummary;
 exports.persistDelegationArtifact = persistDelegationArtifact;
 exports.persistDelegationWithVisibilitySync = persistDelegationWithVisibilitySync;
 exports.updateDelegationWithVisibilitySync = updateDelegationWithVisibilitySync;
+exports.markDelegationLaunchingWithVisibilitySync = markDelegationLaunchingWithVisibilitySync;
 exports.createOrchestrationAttemptArtifactFilePath = createOrchestrationAttemptArtifactFilePath;
 exports.loadOrchestrationAttemptArtifact = loadOrchestrationAttemptArtifact;
 exports.listOrchestrationAttemptIds = listOrchestrationAttemptIds;
@@ -127,6 +129,106 @@ function upsertChildAgentSnapshot(childAgents, nextSnapshot) {
 }
 function buildSpecialistExecutorId(childAgentId) {
     return `specialist-executor:${childAgentId}`;
+}
+function summarizeWorkerLifecycleState(state) {
+    switch (state) {
+        case 'queued':
+            return 'Worker is queued and waiting for captain to launch it.';
+        case 'launching':
+            return 'Captain requested worker launch and is waiting for the running checkpoint.';
+        case 'running':
+            return 'Worker is running under captain supervision.';
+        case 'returned':
+            return 'Worker returned a bounded result to captain.';
+        case 'failed':
+            return 'Worker ended in failure and needs captain follow-up.';
+        case 'cancelled':
+            return 'Worker was cancelled under captain control.';
+        case 'stale':
+            return 'Worker appears stale and should be reclaimed explicitly.';
+        case 'timed_out':
+            return 'Worker exceeded the bounded timeout window and should be reclaimed explicitly.';
+    }
+}
+function createDelegationWorkerLifecycleRecord(input) {
+    const state = input.state ?? 'queued';
+    return {
+        state,
+        reclaim_state: input.reclaimState ?? (state === 'returned' ? 'resumable' : 'not_needed'),
+        queued_at: input.createdAt,
+        launch_requested_at: input.launchRequestedAt ?? null,
+        started_at: input.startedAt ?? null,
+        last_progress_at: input.lastProgressAt ?? input.createdAt,
+        returned_at: input.returnedAt ?? null,
+        stale_at: input.staleAt ?? null,
+        timed_out_at: input.timedOutAt ?? null,
+        stale_after_ms: constants_1.FOREMAN_WORKER_STALE_AFTER_MS,
+        timeout_after_ms: constants_1.FOREMAN_WORKER_TIMEOUT_AFTER_MS,
+        summary: summarizeWorkerLifecycleState(state),
+    };
+}
+function normalizeLoadedWorkerLifecycle(candidate, fallback) {
+    if (isRecord(candidate) &&
+        typeof candidate.state === 'string' &&
+        typeof candidate.reclaim_state === 'string' &&
+        typeof candidate.queued_at === 'string' &&
+        typeof candidate.last_progress_at === 'string' &&
+        typeof candidate.stale_after_ms === 'number' &&
+        typeof candidate.timeout_after_ms === 'number' &&
+        typeof candidate.summary === 'string') {
+        return {
+            state: candidate.state,
+            reclaim_state: candidate.reclaim_state,
+            queued_at: candidate.queued_at,
+            launch_requested_at: typeof candidate.launch_requested_at === 'string' ? candidate.launch_requested_at : null,
+            started_at: typeof candidate.started_at === 'string' ? candidate.started_at : null,
+            last_progress_at: candidate.last_progress_at,
+            returned_at: typeof candidate.returned_at === 'string' ? candidate.returned_at : null,
+            stale_at: typeof candidate.stale_at === 'string' ? candidate.stale_at : null,
+            timed_out_at: typeof candidate.timed_out_at === 'string' ? candidate.timed_out_at : null,
+            stale_after_ms: candidate.stale_after_ms,
+            timeout_after_ms: candidate.timeout_after_ms,
+            summary: candidate.summary,
+        };
+    }
+    if (fallback.childStatus === 'running') {
+        return createDelegationWorkerLifecycleRecord({
+            createdAt: fallback.createdAt,
+            state: 'running',
+            launchRequestedAt: fallback.updatedAt,
+            startedAt: fallback.updatedAt,
+            lastProgressAt: fallback.updatedAt,
+        });
+    }
+    if (fallback.childStatus === 'completed') {
+        const returnedAt = fallback.completedAt ?? fallback.updatedAt;
+        return createDelegationWorkerLifecycleRecord({
+            createdAt: fallback.createdAt,
+            state: 'returned',
+            reclaimState: 'resumable',
+            launchRequestedAt: fallback.updatedAt,
+            startedAt: fallback.updatedAt,
+            lastProgressAt: returnedAt,
+            returnedAt,
+        });
+    }
+    if (fallback.childStatus === 'failed' || fallback.childStatus === 'cancelled') {
+        return createDelegationWorkerLifecycleRecord({
+            createdAt: fallback.createdAt,
+            state: fallback.childStatus,
+            reclaimState: 'not_needed',
+            launchRequestedAt: fallback.updatedAt,
+            startedAt: fallback.updatedAt,
+            lastProgressAt: fallback.completedAt ?? fallback.updatedAt,
+            returnedAt: fallback.completedAt ?? fallback.updatedAt,
+        });
+    }
+    return createDelegationWorkerLifecycleRecord({
+        createdAt: fallback.createdAt,
+        state: 'queued',
+        reclaimState: 'not_needed',
+        lastProgressAt: fallback.updatedAt,
+    });
 }
 function createSpecialistExecutorSnapshot(delegation) {
     return {
@@ -340,6 +442,12 @@ function normalizeLoadedDelegationRecord(candidate) {
         worker_launch_evidence: Object.prototype.hasOwnProperty.call(candidate, 'worker_launch_evidence')
             ? normalizeLoadedRoleModelLaunchEvidence(candidate.worker_launch_evidence)
             : null,
+        worker_lifecycle: normalizeLoadedWorkerLifecycle(Object.prototype.hasOwnProperty.call(candidate, 'worker_lifecycle') ? candidate.worker_lifecycle : null, {
+            childStatus: isRecord(candidate.child_agent) ? candidate.child_agent.status : 'queued',
+            createdAt: typeof candidate.created_at === 'string' ? candidate.created_at : nowTimestamp(),
+            updatedAt: typeof candidate.updated_at === 'string' ? candidate.updated_at : nowTimestamp(),
+            completedAt: typeof candidate.completed_at === 'string' ? candidate.completed_at : null,
+        }),
         worker_result: Object.prototype.hasOwnProperty.call(candidate, 'worker_result')
             ? normalizeLoadedWorkerResult(candidate.worker_result)
             : null,
@@ -1145,6 +1253,21 @@ async function updateDelegationWithVisibilitySync(paths, input) {
             delegation.reviewer_outcome = null;
             delegation.latest_failure = null;
             delegation.completed_at = null;
+            delegation.worker_lifecycle = {
+                ...(delegation.worker_lifecycle ??
+                    createDelegationWorkerLifecycleRecord({
+                        createdAt: delegation.created_at,
+                    })),
+                state: 'running',
+                reclaim_state: 'not_needed',
+                launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? delegation.updated_at,
+                started_at: delegation.worker_lifecycle?.started_at ?? timestamp,
+                last_progress_at: timestamp,
+                stale_at: null,
+                timed_out_at: null,
+                returned_at: null,
+                summary: summarizeWorkerLifecycleState('running'),
+            };
             break;
         }
         case 'completed':
@@ -1164,6 +1287,21 @@ async function updateDelegationWithVisibilitySync(paths, input) {
             delegation.reviewer_outcome = input.status === 'completed' ? input.reviewerOutcome ?? null : null;
             delegation.latest_failure = null;
             delegation.completed_at = timestamp;
+            delegation.worker_lifecycle = {
+                ...(delegation.worker_lifecycle ??
+                    createDelegationWorkerLifecycleRecord({
+                        createdAt: delegation.created_at,
+                    })),
+                state: input.status === 'completed' ? 'returned' : 'cancelled',
+                reclaim_state: input.status === 'completed' ? 'resumable' : 'not_needed',
+                launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? delegation.updated_at,
+                started_at: delegation.worker_lifecycle?.started_at ?? delegation.updated_at,
+                last_progress_at: timestamp,
+                stale_at: null,
+                timed_out_at: null,
+                returned_at: timestamp,
+                summary: summarizeWorkerLifecycleState(input.status === 'completed' ? 'returned' : 'cancelled'),
+            };
             break;
         }
         case 'failed': {
@@ -1187,9 +1325,48 @@ async function updateDelegationWithVisibilitySync(paths, input) {
                 recorded_at: timestamp,
             };
             delegation.completed_at = timestamp;
+            delegation.worker_lifecycle = {
+                ...(delegation.worker_lifecycle ??
+                    createDelegationWorkerLifecycleRecord({
+                        createdAt: delegation.created_at,
+                    })),
+                state: 'failed',
+                reclaim_state: 'not_needed',
+                launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? delegation.updated_at,
+                started_at: delegation.worker_lifecycle?.started_at ?? delegation.updated_at,
+                last_progress_at: timestamp,
+                stale_at: null,
+                timed_out_at: null,
+                returned_at: timestamp,
+                summary: summarizeWorkerLifecycleState('failed'),
+            };
             break;
         }
     }
+    await persistDelegationWithVisibilitySync(paths, delegation);
+    return delegation;
+}
+async function markDelegationLaunchingWithVisibilitySync(paths, input) {
+    const delegation = await loadDelegationArtifact(paths, input.delegationId);
+    if (delegation.child_agent.status !== 'queued') {
+        throw new Error(`Only queued delegations may enter the launching checkpoint; current status is ${delegation.child_agent.status}.`);
+    }
+    const timestamp = nowTimestamp();
+    delegation.updated_at = timestamp;
+    delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
+    delegation.worker_lifecycle = {
+        ...(delegation.worker_lifecycle ??
+            createDelegationWorkerLifecycleRecord({
+                createdAt: delegation.created_at,
+            })),
+        state: 'launching',
+        reclaim_state: 'not_needed',
+        launch_requested_at: timestamp,
+        last_progress_at: timestamp,
+        stale_at: null,
+        timed_out_at: null,
+        summary: summarizeWorkerLifecycleState('launching'),
+    };
     await persistDelegationWithVisibilitySync(paths, delegation);
     return delegation;
 }
