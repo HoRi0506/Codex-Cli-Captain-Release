@@ -1796,6 +1796,44 @@ function createQueuedReviewDelegation(input) {
         completed_at: null,
     };
 }
+function createQueuedPrimaryExecutionDelegation(input) {
+    const timestamp = (0, runtime_1.nowTimestamp)();
+    const childAgentId = input.taskCard.assigned_agent_id ??
+        (0, runtime_1.getAgentIdForRole)(input.taskCard.assigned_role) ??
+        `worker-${input.taskCard.task_card_id}`;
+    return {
+        delegation_id: input.delegationId,
+        run_id: input.run.run_id,
+        task_card_id: input.taskCard.task_card_id,
+        delegated_by_role: input.run.active_role ?? input.taskCard.assigned_role,
+        review_round: null,
+        summary: `Primary worker ${childAgentId ?? input.taskCard.assigned_role} queued for task "${input.taskCard.title}".`,
+        child_agent: {
+            agent_id: childAgentId,
+            parent_agent_id: input.run.active_agent_id,
+            role: input.taskCard.assigned_role,
+            status: 'queued',
+            task_card_id: input.taskCard.task_card_id,
+        },
+        executor: {
+            executor_id: `specialist-executor:${childAgentId ?? input.taskCard.task_card_id}`,
+            status: 'queued',
+            task_card_id: input.taskCard.task_card_id,
+            delegation_id: input.delegationId,
+            child_agent_id: childAgentId ?? input.taskCard.task_card_id,
+        },
+        worker_request: createExecutionDelegationWorkerRequest(input.taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.taskCard)),
+        worker_role_config_snapshot: input.taskCard.role_config_snapshot,
+        worker_launch_evidence: null,
+        worker_result: null,
+        result_summary: null,
+        reviewer_outcome: null,
+        latest_failure: null,
+        created_at: timestamp,
+        updated_at: timestamp,
+        completed_at: null,
+    };
+}
 function buildParallelGraphChildAgentId(fanInTaskCard, sourceTaskCard, childIndex) {
     return `fan-in-${fanInTaskCard.task_card_id}-child-${childIndex}-${sourceTaskCard.task_card_id}`;
 }
@@ -1928,6 +1966,31 @@ async function seedExploreInvestigationDelegationsIfEligible(input) {
     input.run.updated_at = updatedAt;
     return seededDelegations;
 }
+async function seedPrimaryExecutionDelegationIfEligible(input) {
+    if (input.run.stage !== 'execution' ||
+        input.taskCard.status !== 'active' ||
+        input.taskCard.task_kind !== 'execution' ||
+        input.taskCard.assigned_role !== 'code specialist' ||
+        input.taskCard.model_tier_intent === 'low_cost' ||
+        input.taskCard.acceptance_checks.length === 0 ||
+        input.taskCard.owner_role === 'verifier' ||
+        input.taskCard.owner_role !== input.taskCard.assigned_role) {
+        return [];
+    }
+    const existingDelegations = selectExecutionStageDelegations(input.taskCard, await (0, runtime_1.loadDelegationArtifacts)(input.runPaths));
+    if (existingDelegations.length > 0) {
+        return [];
+    }
+    const delegation = createQueuedPrimaryExecutionDelegation({
+        delegationId: await (0, runtime_1.allocateDelegationId)(input.runPaths),
+        run: input.run,
+        taskCard: input.taskCard,
+    });
+    await (0, runtime_1.persistDelegationArtifact)(input.runPaths, delegation);
+    syncDelegationChildAgent(input.run, delegation);
+    input.run.updated_at = delegation.updated_at;
+    return [delegation];
+}
 function mapVerifierFailureReason(outcome) {
     switch (outcome.kind) {
         case 'invalid_output':
@@ -1943,6 +2006,22 @@ function mapVerifierFailureReason(outcome) {
 }
 function buildReviewerDelegationResultSummary(outcome, reviewerIndex, reviewerCount) {
     return `Reviewer ${reviewerIndex}/${reviewerCount} returned ${outcome.outcome}: ${outcome.summary}`;
+}
+function createReviewerWorkerResult(summary, reviewerOutcome) {
+    return {
+        thread_id: null,
+        raw_events_file: null,
+        scope: null,
+        slice_label: null,
+        partition_strategy: null,
+        coverage_focus: [],
+        key_findings: reviewerOutcome ? [reviewerOutcome.summary] : [summary],
+        evidence_paths: [],
+        confidence: reviewerOutcome ? 'medium' : null,
+        uncertainty_summary: reviewerOutcome ? null : summary,
+        summary,
+        recorded_at: (0, runtime_1.nowTimestamp)(),
+    };
 }
 function buildReviewerManualHoldSummary(taskCard, taskDelegations) {
     const failedOrCancelledReviewer = taskDelegations.find((delegation) => delegation.child_agent.status === 'failed' ||
@@ -2122,13 +2201,22 @@ async function performExplicitDelegationFanIn(runPaths, run, taskCards, taskCard
     if (exploreArtifact !== null) {
         await (0, runtime_1.persistExploreArtifact)(runPaths, exploreArtifact);
     }
-    const verificationHandoff = (0, runtime_1.createHandoffRecord)({
+    const workerReturnHandoff = (0, runtime_1.createHandoffRecord)({
         handoffId: (0, node_crypto_1.randomUUID)(),
         runId: run.run_id,
         taskCardId: taskCard.task_card_id,
         fromRole: taskCard.assigned_role,
+        toRole: 'orchestrator',
+        summary: 'Configured worker execution returned to captain for bounded result ingest.',
+    });
+    await (0, runtime_1.persistHandoffRecord)(runPaths, workerReturnHandoff);
+    const verificationHandoff = (0, runtime_1.createHandoffRecord)({
+        handoffId: (0, node_crypto_1.randomUUID)(),
+        runId: run.run_id,
+        taskCardId: taskCard.task_card_id,
+        fromRole: 'orchestrator',
         toRole: 'verifier',
-        summary: 'Bounded delegated execution reached terminal fan-in and handed the parent task to the verifier.',
+        summary: 'Captain ingested the configured worker result and handed the parent task to the verifier.',
     });
     (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
     await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
@@ -2831,6 +2919,8 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
                 delegationId: delegation.delegation_id,
                 status: 'completed',
                 resultSummary: buildReviewerDelegationResultSummary(reviewerOutcome.verification, reviewerIndex + 1, reviewDelegations.length),
+                workerLaunchEvidence: reviewerLaunchEvidence,
+                workerResult: createReviewerWorkerResult(reviewerOutcome.verification.summary, reviewerOutcome.verification),
                 reviewerOutcome: {
                     outcome: reviewerOutcome.verification.outcome,
                     summary: reviewerOutcome.verification.summary,
@@ -2845,6 +2935,8 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
                 delegationId: delegation.delegation_id,
                 status: 'cancelled',
                 resultSummary: reviewerOutcome.summary,
+                workerLaunchEvidence: reviewerLaunchEvidence,
+                workerResult: createReviewerWorkerResult(reviewerOutcome.summary),
             });
             syncDelegationChildAgent(run, cancelledDelegation);
             continue;
@@ -2853,6 +2945,8 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
             delegationId: delegation.delegation_id,
             status: 'failed',
             resultSummary: reviewerOutcome.summary,
+            workerLaunchEvidence: reviewerLaunchEvidence,
+            workerResult: createReviewerWorkerResult(reviewerOutcome.summary),
             failureStage: 'verification',
             failureReason: mapVerifierFailureReason(reviewerOutcome),
             failureSummary: reviewerOutcome.summary,
@@ -3569,6 +3663,25 @@ async function advanceForemanRun(options) {
             orchestrationPolicy: orchestratorState.orchestration_policy,
         });
     }
+    const seededPrimaryExecutionDelegations = await seedPrimaryExecutionDelegationIfEligible({
+        runPaths,
+        run,
+        taskCard,
+    });
+    if (seededPrimaryExecutionDelegations.length > 0) {
+        ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+        (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
+        await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
+        await persistRunArtifactsAndProgress(runPaths, {
+            run,
+            taskCards: await ensureTaskCards(),
+            taskCard,
+            latestHandoff: currentLatestHandoff,
+            decision,
+            orchestrationPolicy: orchestratorState.orchestration_policy,
+            taskDelegations: seededPrimaryExecutionDelegations,
+        });
+    }
     const routeSelection = (0, orchestrator_1.getOrchestratorRouteSelection)(orchestratorState.current_decision);
     const executionDelegations = routeSelection.route_id === 'delegated_execute'
         ? await resolveAdvanceExecutionDelegations(runPaths, run, taskCard, orchestratorState.orchestration_policy.parallelism.max_active_workers)
@@ -4198,73 +4311,47 @@ async function verifyForemanRun(options) {
             verified: false,
         };
     }
-    const reviewerCap = orchestratorState.orchestration_policy.review.max_active_reviewers;
+    const reviewerCap = Math.max(1, orchestratorState.orchestration_policy.review.max_active_reviewers);
     let verified = false;
-    if (reviewerCap > 1) {
-        const existingReviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
-        if (existingReviewDelegations.length > 0) {
-            throw new Error(`verify cannot launch a new bounded reviewer swarm because review round ${taskCard.review_pass_count} already has ${existingReviewDelegations.length} persisted verifier delegation artifact${existingReviewDelegations.length === 1 ? '' : 's'}.`);
-        }
-        await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, orchestratorState.verification_request, reviewerCap);
-        const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
-        const aggregatedOutcome = aggregateReviewerOutcomes(taskCard, reviewDelegations);
-        if (aggregatedOutcome) {
-            verified = true;
-            const resolution = await applyVerificationOutcome(runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, aggregatedOutcome);
-            activeTaskCard = resolution.activeTaskCard;
-            currentLatestHandoff = resolution.latestPersistedHandoff;
-            syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
-        }
-        else {
-            const hasCancelledReviewer = reviewDelegations.some((delegation) => delegation.child_agent.status === 'cancelled');
-            const hasDependencyFailure = reviewDelegations.some((delegation) => delegation.latest_failure?.reason === 'blocked_dependency');
-            const hasInvalidOutput = reviewDelegations.some((delegation) => delegation.latest_failure?.reason === 'invalid_output');
-            recordVerificationAutomationFailure(run, taskCard, {
-                reason: hasCancelledReviewer
-                    ? 'cancelled'
-                    : hasDependencyFailure
-                        ? 'blocked_dependency'
-                        : hasInvalidOutput
-                            ? 'invalid_output'
-                            : 'unknown',
-                summary: buildReviewerManualHoldSummary(taskCard, reviewDelegations),
-            });
-            orchestratorState.verification_request = null;
-        }
+    const existingReviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
+    if (existingReviewDelegations.length > 0) {
+        throw new Error(`verify cannot launch a new bounded reviewer swarm because review round ${taskCard.review_pass_count} already has ${existingReviewDelegations.length} persisted verifier delegation artifact${existingReviewDelegations.length === 1 ? '' : 's'}.`);
+    }
+    await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, orchestratorState.verification_request, reviewerCap);
+    const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
+    const aggregatedOutcome = aggregateReviewerOutcomes(taskCard, reviewDelegations);
+    if (aggregatedOutcome) {
+        verified = true;
+        const reviewerReturnHandoff = (0, runtime_1.createHandoffRecord)({
+            handoffId: (0, node_crypto_1.randomUUID)(),
+            runId: run.run_id,
+            taskCardId: taskCard.task_card_id,
+            fromRole: 'verifier',
+            toRole: 'orchestrator',
+            summary: `Verifier returned ${aggregatedOutcome.outcome} to captain for bounded ingest.`,
+        });
+        currentLatestHandoff = reviewerReturnHandoff;
+        await (0, runtime_1.persistHandoffRecord)(runPaths, reviewerReturnHandoff);
+        const resolution = await applyVerificationOutcome(runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, aggregatedOutcome);
+        activeTaskCard = resolution.activeTaskCard;
+        currentLatestHandoff = resolution.latestPersistedHandoff;
+        syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
     }
     else {
-        const verificationLaunchConfig = createConfiguredLaunchSelectionFromRequest('verifier', orchestratorState.verification_request);
-        taskCard.latest_model_launch = createRoleModelLaunchEvidence({
-            role: verificationLaunchConfig.role,
-            requestKind: 'verification',
-            codexPath: options.codexPath,
-            configuredProfile: verificationLaunchConfig.profile,
-            configuredModel: verificationLaunchConfig.model,
-            configuredVariant: verificationLaunchConfig.variant,
-            actualRequest: orchestratorState.verification_request,
-        });
-        const outcome = await executeVerifierCodex(options, orchestratorState.verification_request);
-        if (outcome.kind === 'resolved' && outcome.verification) {
-            verified = true;
-            const resolution = await applyVerificationOutcome(runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, outcome.verification);
-            activeTaskCard = resolution.activeTaskCard;
-            currentLatestHandoff = resolution.latestPersistedHandoff;
-            syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
-        }
-        else {
-            const reason = outcome.kind === 'invalid_output'
-                ? 'invalid_output'
-                : outcome.kind === 'blocked_dependency'
+        const hasCancelledReviewer = reviewDelegations.some((delegation) => delegation.child_agent.status === 'cancelled');
+        const hasDependencyFailure = reviewDelegations.some((delegation) => delegation.latest_failure?.reason === 'blocked_dependency');
+        const hasInvalidOutput = reviewDelegations.some((delegation) => delegation.latest_failure?.reason === 'invalid_output');
+        recordVerificationAutomationFailure(run, taskCard, {
+            reason: hasCancelledReviewer
+                ? 'cancelled'
+                : hasDependencyFailure
                     ? 'blocked_dependency'
-                    : outcome.kind === 'cancelled'
-                        ? 'cancelled'
-                        : 'unknown';
-            recordVerificationAutomationFailure(run, taskCard, {
-                reason,
-                summary: outcome.summary,
-            });
-            orchestratorState.verification_request = null;
-        }
+                    : hasInvalidOutput
+                        ? 'invalid_output'
+                        : 'unknown',
+            summary: buildReviewerManualHoldSummary(taskCard, reviewDelegations),
+        });
+        orchestratorState.verification_request = null;
     }
     ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);

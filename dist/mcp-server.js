@@ -1440,12 +1440,15 @@ function createCurrentTaskExecutionProof(input) {
     };
 }
 function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
-    const activeDelegation = taskDelegations.find((delegation) => delegation.task_card_id === taskCard.task_card_id &&
-        (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
+    const taskLinkedDelegations = taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id);
+    const activeDelegation = taskLinkedDelegations.find((delegation) => (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
+    const latestTaskDelegation = taskLinkedDelegations
+        .slice()
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .at(0) ?? null;
     const actualModelLaunch = selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations);
-    const executionOwner = activeDelegation || actualModelLaunch ? 'foreman_worker' : 'host_session';
-    const concreteWorkerId = activeDelegation?.child_agent.agent_id ??
-        (taskCard.owner_role === taskCard.assigned_role ? taskCard.assigned_agent_id : null);
+    const executionOwner = taskLinkedDelegations.length > 0 ? 'foreman_worker' : 'host_session';
+    const concreteWorkerId = activeDelegation?.child_agent.agent_id ?? latestTaskDelegation?.child_agent.agent_id ?? null;
     const ownerAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
     const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.assigned_role ?? taskCard.owner_role, foremanConfig);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);

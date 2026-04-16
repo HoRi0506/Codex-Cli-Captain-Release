@@ -367,11 +367,18 @@ function deriveRouteSelection(input) {
         });
         const isPlannedFanInChildSet = input.taskCard.node_kind === 'fan_in' && !!counts && counts.total > 0;
         const isPartitionedInvestigationSet = input.taskCard.task_kind === 'explore' && !!counts && counts.total > 0;
-        if (!isPlannedFanInChildSet && !isPartitionedInvestigationSet && !supportsDelegatedLowerTierExecution(recommendedCategory)) {
+        const isPrimaryWorkerLaunchCandidate = input.taskCard.task_kind === 'execution' &&
+            input.taskCard.assigned_role === 'code specialist' &&
+            input.taskCard.model_tier_intent !== 'low_cost' &&
+            recommendedCategory !== 'writing';
+        if (!isPlannedFanInChildSet &&
+            !isPartitionedInvestigationSet &&
+            !isPrimaryWorkerLaunchCandidate &&
+            !supportsDelegatedLowerTierExecution(recommendedCategory)) {
             return createExplicitFallbackRouteSelection('delegated lower-tier execution currently supports only clearly documentation or writing-shaped tasks');
         }
         if (!counts || counts.total === 0) {
-            return createExplicitFallbackRouteSelection('no fully queued bounded child set is available for delegated lower-tier execution');
+            return createExplicitFallbackRouteSelection('no queued bounded worker set is available for delegated execution');
         }
         if (counts.total !== counts.queued) {
             return createExplicitFallbackRouteSelection('the current child set is already frozen for explicit fan-in and cannot start delegated lower-tier execution');
@@ -383,7 +390,9 @@ function deriveRouteSelection(input) {
             ? `fan-in task "${input.taskCard.title}" has ${counts.total} queued planned graph child delegation${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`
             : isPartitionedInvestigationSet
                 ? `explore task "${input.taskCard.title}" has ${counts.total} queued bounded investigation worker slice${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`
-                : `task "${input.taskCard.title}" has ${counts.total} queued bounded child delegation${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`);
+                : isPrimaryWorkerLaunchCandidate
+                    ? `captain selected a bounded worker launch for task "${input.taskCard.title}" because it is a non-low-cost code-specialist execution task`
+                    : `task "${input.taskCard.title}" has ${counts.total} queued bounded child delegation${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`);
     }
     switch (input.decision.next_step) {
         case 'verify_task':
