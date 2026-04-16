@@ -129,32 +129,72 @@ function createReleaseReadme(input) {
     const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`$cap\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
-Captain-first workflow for Codex CLI.
+Captain-first Foreman toolbox for Codex CLI.
 
-Codex-Foreman lets you send a request into a Foreman-managed path before it falls back to the host Codex session. The main entrypoint is \`$cap\`, which hands the request to \`captain\` first.
+Codex-Foreman is for requests that benefit from a more structured path than one opaque Codex turn. It adds a captain-first entry, visible run state, role-shaped specialist routing, and an explicit review lane without replacing Codex as the orchestrator.
+
+The public entrypoint is \`$cap\`. That entry hands the request to \`captain\` first.
+
+## What It Is For
+
+Use Codex-Foreman when you want one or more of these:
+
+- a captain-led intake before work begins
+- visible run, delegation, and fallback state
+- role-shaped planning, exploration, implementation, or review
+- a bounded path that can stop, reroute, review, or continue instead of flattening everything into one response
+- clearer proof about whether work stayed local or used a configured specialist path
+
+It is most useful for multi-step work, repository investigation, scoped implementation, verification-sensitive tasks, and any request where you want the path of work to stay inspectable.
+
+For trivial answers or short conversational turns, the normal Codex path is often enough.
 
 ## What Captain Does
 
-\`captain\` is the orchestrator. It receives the request, decides whether to continue an existing run or start a new one, breaks work into bounded steps, chooses the right agent role for the next task, and pulls the result back into one visible Foreman run.
+\`captain\` is the orchestrator. It receives the request, checks the current Foreman state, decides whether to stay local or choose a specialist role, keeps the work bounded, and pulls the result back into one visible run.
 
-## How It Works
+## How It Behaves
 
 - you send a request with \`$cap <request>\`
-- \`captain\` reads the request and the current Foreman state
-- when the packaged custom-agent roster is available, \`$cap\` hands the Codex-side request to \`foreman_captain\` first
-- Foreman routes work to role-shaped agents such as planning, exploration, execution, or review
-- results flow back through \`captain\`, which decides whether to continue, reroute, review, or answer
+- \`captain\` reads the request and current Foreman state
+- Codex decides whether to answer locally or use a specialist role
+- Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
+- when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`$cap\` work is \`foreman_captain\`
+- specialist results return through \`captain\`, which decides whether to continue, review, reroute, stop, or answer
+
+## Public And Internal Boundary
+
+The public harness surface is:
+
+- \`$cap\`
+
+The internal support surfaces are:
+
+- the packaged custom-agent roster
+- the role wrappers and playbook mappings
+- the bounded review and ownership helpers
+
+Those internal pieces help \`captain\` route and supervise work. They are not public operator commands.
+
+## When To Reach For It
+
+Reach for Codex-Foreman when:
+
+- you want \`captain\` to inspect the request before execution begins
+- you want planning, exploration, implementation, and review to stay visible as one run
+- you care which role and model were selected
+- you want bounded fallback behavior instead of silent drift
 
 ## Packaged Harness Surface
 
-The packaged install surface now ships:
+The packaged install surface ships:
 
 - the public \`$cap\` skill
 - a matching Foreman custom-agent roster for Codex-native harness work
+- the captain and specialist wrapper docs that define the internal contract
 - a plugin-era manifest skeleton and MCP placeholder that keep the package aligned with supported Codex extension surfaces
 
 The current supported activation path is still \`codex-foreman setup\`, which installs the skill and custom-agent roster and registers the MCP entrypoint.
-The first Codex-native receiver for packaged \`$cap\` work is \`foreman_captain\` when that custom-agent roster is available.
 
 ## Install
 
@@ -170,6 +210,7 @@ ${codexPrompt}
 - visible run state instead of one opaque turn of work
 - a captain-led loop that can hand work off and bring it back
 - room for planning and review before the final answer is synthesized
+- a clearer internal/public boundary for how the harness is meant to be used
 
 ## Agent Roles
 
@@ -188,7 +229,7 @@ After install and restart:
 - use \`codex-foreman check-install\` when you want to confirm the install is healthy
 - restart Codex CLI after install or update so the latest MCP session and skill are loaded
 
-Codex authentication remains on supported Codex login paths. Foreman does not proxy or scrape OAuth credentials.
+Codex remains the orchestrator and authentication stays on supported Codex login paths. Foreman does not proxy or scrape OAuth credentials.
 
 ## Config
 
