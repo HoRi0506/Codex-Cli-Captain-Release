@@ -591,6 +591,98 @@ function createRoleModelLaunchEvidence(input) {
         recorded_at: (0, runtime_1.nowTimestamp)(),
     };
 }
+function isReadOnlyFallbackAllowed(taskCard) {
+    return (taskCard.task_kind !== 'execution' ||
+        taskCard.assigned_role !== 'code specialist' ||
+        taskCard.model_tier_intent === 'low_cost');
+}
+function deriveAllowedAgentIdsForRolePolicy(role, foremanConfig) {
+    const configuredAgentId = (0, runtime_1.getForemanAgentConfigForRole)(foremanConfig, role).name;
+    const canonicalAgentId = (0, runtime_1.getAgentIdForRole)(role);
+    return [...new Set([configuredAgentId, canonicalAgentId].filter((value) => typeof value === 'string' && value.length > 0))];
+}
+function createWorkerLaunchPolicyDecision(input) {
+    const requestedSelection = extractModelSelectionFromConfigEntries(input.actualRequest.config_entries);
+    const configuredModelTier = (0, runtime_1.deriveTaskModelTierIntent)({
+        role: input.roleConfigSnapshot.role,
+        model: input.roleConfigSnapshot.model,
+        variant: input.roleConfigSnapshot.variant,
+    });
+    const requestedModelTier = requestedSelection.model === null && requestedSelection.variant === null
+        ? null
+        : (0, runtime_1.deriveTaskModelTierIntent)({
+            role: input.roleConfigSnapshot.role,
+            model: requestedSelection.model,
+            variant: requestedSelection.variant,
+        });
+    const allowedAgentIds = deriveAllowedAgentIdsForRolePolicy(input.expectedRole, input.foremanConfig);
+    const mismatchReasons = [];
+    if (input.roleConfigSnapshot.role !== input.expectedRole) {
+        mismatchReasons.push({
+            reason: 'role_mismatch',
+            detail: `configured role ${input.roleConfigSnapshot.role} does not match assigned role ${input.expectedRole}`,
+        });
+    }
+    if (input.selectedAgentId !== null && !allowedAgentIds.includes(input.selectedAgentId)) {
+        mismatchReasons.push({
+            reason: 'agent_mismatch',
+            detail: `selected agent ${input.selectedAgentId} is outside the allowed set ${allowedAgentIds.join(', ')}`,
+        });
+    }
+    if (requestedModelTier !== null && requestedModelTier !== configuredModelTier) {
+        mismatchReasons.push({
+            reason: 'model_tier_mismatch',
+            detail: `requested model tier ${requestedModelTier} does not match configured model tier ${configuredModelTier}`,
+        });
+    }
+    if (requestedSelection.variant !== input.roleConfigSnapshot.variant) {
+        mismatchReasons.push({
+            reason: 'reasoning_tier_mismatch',
+            detail: `requested reasoning ${requestedSelection.variant ?? 'none'} does not match configured reasoning ${input.roleConfigSnapshot.variant ?? 'none'}`,
+        });
+    }
+    const outcome = mismatchReasons.length === 0 ? 'allowed' : 'policy_blocked';
+    const rejectionReason = mismatchReasons[0]?.reason ?? null;
+    const summary = outcome === 'allowed'
+        ? `allowed: launch policy for ${input.expectedRole} accepts agent ${input.selectedAgentId ?? 'unassigned'} at model tier ${configuredModelTier}.`
+        : `policy_blocked: launch policy for ${input.expectedRole} refused agent ${input.selectedAgentId ?? 'unassigned'} because ${mismatchReasons
+            .map((item) => item.detail)
+            .join('; ')}.`;
+    return {
+        outcome,
+        configured_role: input.expectedRole,
+        selected_agent_id: input.selectedAgentId,
+        allowed_agent_ids: allowedAgentIds,
+        configured_model_tier: configuredModelTier,
+        requested_model_tier: requestedModelTier,
+        allowed_model_tiers: [configuredModelTier],
+        configured_variant: input.roleConfigSnapshot.variant,
+        requested_variant: requestedSelection.variant,
+        rejection_reason: rejectionReason,
+        read_only_fallback_allowed: input.readOnlyFallbackAllowed,
+        summary,
+        recorded_at: (0, runtime_1.nowTimestamp)(),
+    };
+}
+function createRetryableWorkerPolicyDecision(decision, mismatchSummary) {
+    if (decision === null) {
+        return null;
+    }
+    return {
+        ...decision,
+        outcome: 'policy_retryable',
+        summary: `policy_retryable: ${mismatchSummary}`,
+        recorded_at: (0, runtime_1.nowTimestamp)(),
+    };
+}
+function createPolicyOverrideRequiredOutcome(taskCard) {
+    return {
+        kind: 'compatibility_failed',
+        threadId: null,
+        rawEventsFile: null,
+        summary: `policy_override_required: task "${taskCard.title}" requires an approved ${taskCard.assigned_role} worker launch for model tier ${taskCard.model_tier_intent}, and read-only fallback is not allowed.`,
+    };
+}
 function resolveCodexStateDbPath() {
     return process.env.FOREMAN_CODEX_STATE_DB_PATH ?? node_path_1.default.join((0, node_os_1.homedir)(), '.codex', 'state_5.sqlite');
 }
@@ -2483,14 +2575,46 @@ async function executeDelegatedGraphChildSet(input) {
                 config_entries: executionConfigEntries,
             },
         });
+        const workerPolicyDecision = createWorkerLaunchPolicyDecision({
+            expectedRole: sourceTaskCard?.assigned_role ?? delegation.child_agent.role,
+            selectedAgentId: sourceTaskCard?.assigned_agent_id ?? (0, runtime_1.getAgentIdForRole)(sourceTaskCard?.assigned_role ?? delegation.child_agent.role),
+            roleConfigSnapshot: {
+                role: configuredLaunch.role,
+                model: configuredLaunch.model,
+                variant: configuredLaunch.variant,
+            },
+            actualRequest: {
+                profile: executionProfile,
+                config_entries: executionConfigEntries,
+            },
+            foremanConfig: input.foremanConfig,
+            readOnlyFallbackAllowed: isReadOnlyFallbackAllowed(sourceTaskCard ?? input.activeTaskCard),
+        });
         await (0, runtime_1.markDelegationLaunchingWithVisibilitySync)(input.runPaths, {
             delegationId: delegation.delegation_id,
             workerLaunchEvidence,
+            workerPolicyDecision,
         });
+        if (workerPolicyDecision.outcome === 'policy_blocked') {
+            await syncDelegationLifecycle(input.runPaths, input.run, {
+                delegationId: delegation.delegation_id,
+                status: 'failed',
+                resultSummary: workerPolicyDecision.summary,
+                workerLaunchEvidence,
+                workerPolicyDecision,
+                workerResult: null,
+                failureStage: 'compatibility',
+                failureReason: 'surface_mismatch',
+                failureSummary: workerPolicyDecision.summary,
+            });
+            await cancelRemainingGraphChildDelegations(input.runPaths, input.run, input.activeTaskCard, remainingQueuedDelegations, workerPolicyDecision.summary);
+            break;
+        }
         await syncDelegationLifecycle(input.runPaths, input.run, {
             delegationId: delegation.delegation_id,
             status: 'running',
             workerLaunchEvidence,
+            workerPolicyDecision,
         });
         if (workerLaunchEvidence.match_state === 'mismatch') {
             await syncDelegationLifecycle(input.runPaths, input.run, {
@@ -2897,7 +3021,7 @@ async function executeVerifierCodex(options, verificationRequest) {
         summary: 'Verifier output validated successfully.',
     };
 }
-async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, verificationRequest, reviewerCount) {
+async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, verificationRequest, reviewerCount, foremanConfig) {
     const reviewDelegations = [];
     for (let reviewerIndex = 1; reviewerIndex <= reviewerCount; reviewerIndex += 1) {
         const delegation = createQueuedReviewDelegation({
@@ -2926,10 +3050,38 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
             configuredVariant: reviewerLaunchConfig.variant,
             actualRequest: verificationRequest,
         });
+        const reviewerPolicyDecision = createWorkerLaunchPolicyDecision({
+            expectedRole: 'verifier',
+            selectedAgentId: (0, runtime_1.getAgentIdForRole)('verifier'),
+            roleConfigSnapshot: {
+                role: reviewerLaunchConfig.role,
+                model: reviewerLaunchConfig.model,
+                variant: reviewerLaunchConfig.variant,
+            },
+            actualRequest: verificationRequest,
+            foremanConfig,
+            readOnlyFallbackAllowed: true,
+        });
+        if (reviewerPolicyDecision.outcome === 'policy_blocked') {
+            const blockedDelegation = await (0, runtime_1.updateDelegationWithVisibilitySync)(runPaths, {
+                delegationId: delegation.delegation_id,
+                status: 'failed',
+                resultSummary: reviewerPolicyDecision.summary,
+                workerLaunchEvidence: reviewerLaunchEvidence,
+                workerPolicyDecision: reviewerPolicyDecision,
+                workerResult: null,
+                failureStage: 'compatibility',
+                failureReason: 'surface_mismatch',
+                failureSummary: reviewerPolicyDecision.summary,
+            });
+            syncDelegationChildAgent(run, blockedDelegation);
+            continue;
+        }
         const runningDelegation = await (0, runtime_1.updateDelegationWithVisibilitySync)(runPaths, {
             delegationId: delegation.delegation_id,
             status: 'running',
             workerLaunchEvidence: reviewerLaunchEvidence,
+            workerPolicyDecision: reviewerPolicyDecision,
         });
         syncDelegationChildAgent(run, runningDelegation);
         const reviewerOutcome = await executeVerifierCodex(options, verificationRequest);
@@ -3549,6 +3701,7 @@ async function autoEnterForeman(options) {
 async function advanceForemanRun(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
     const { run, taskCard, latestHandoff, orchestratorState, hydrateTaskCards } = await (0, runtime_1.loadMutableRunContext)(runPaths);
+    const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     let taskCards = null;
     const ensureTaskCards = async () => {
         if (taskCards === null) {
@@ -3734,6 +3887,7 @@ async function advanceForemanRun(options) {
             decision,
             delegations: executionDelegations,
             orchestratorState,
+            foremanConfig,
         });
     }
     let delegatedExecutionLaunchEvidence = null;
@@ -3749,27 +3903,36 @@ async function advanceForemanRun(options) {
             configuredVariant: executionDelegation.worker_role_config_snapshot?.variant ?? taskCard.role_config_snapshot.variant,
             actualRequest: executionRequest,
         });
+        const executionPolicyDecision = createWorkerLaunchPolicyDecision({
+            expectedRole: taskCard.assigned_role,
+            selectedAgentId: taskCard.assigned_agent_id ?? (0, runtime_1.getAgentIdForRole)(taskCard.assigned_role),
+            roleConfigSnapshot: {
+                role: executionDelegation.worker_role_config_snapshot?.role ?? taskCard.assigned_role,
+                model: executionDelegation.worker_role_config_snapshot?.model ?? taskCard.role_config_snapshot.model,
+                variant: executionDelegation.worker_role_config_snapshot?.variant ?? taskCard.role_config_snapshot.variant,
+            },
+            actualRequest: executionRequest,
+            foremanConfig,
+            readOnlyFallbackAllowed: isReadOnlyFallbackAllowed(taskCard),
+        });
         await (0, runtime_1.markDelegationLaunchingWithVisibilitySync)(runPaths, {
             delegationId: executionDelegation.delegation_id,
             workerLaunchEvidence: delegatedExecutionLaunchEvidence,
+            workerPolicyDecision: executionPolicyDecision,
         });
-        await syncDelegationLifecycle(runPaths, run, {
-            delegationId: executionDelegation.delegation_id,
-            status: 'running',
-            workerLaunchEvidence: delegatedExecutionLaunchEvidence,
-        });
-        if (delegatedExecutionLaunchEvidence.match_state === 'mismatch') {
+        if (executionPolicyDecision.outcome === 'policy_blocked') {
             outcome = {
                 kind: 'compatibility_failed',
                 threadId: null,
                 rawEventsFile: null,
-                summary: delegatedExecutionLaunchEvidence.mismatch_summary ?? 'Configured role launch mismatch.',
+                summary: executionPolicyDecision.summary,
             };
             await syncDelegationLifecycle(runPaths, run, {
                 delegationId: executionDelegation.delegation_id,
                 status: 'failed',
                 resultSummary: outcome.summary,
                 workerLaunchEvidence: delegatedExecutionLaunchEvidence,
+                workerPolicyDecision: executionPolicyDecision,
                 workerResult: null,
                 failureStage: 'compatibility',
                 failureReason: 'surface_mismatch',
@@ -3777,9 +3940,42 @@ async function advanceForemanRun(options) {
             });
             delegationAlreadyFinalized = true;
         }
+        else {
+            await syncDelegationLifecycle(runPaths, run, {
+                delegationId: executionDelegation.delegation_id,
+                status: 'running',
+                workerLaunchEvidence: delegatedExecutionLaunchEvidence,
+                workerPolicyDecision: executionPolicyDecision,
+            });
+            if (delegatedExecutionLaunchEvidence.match_state === 'mismatch') {
+                outcome = {
+                    kind: 'compatibility_failed',
+                    threadId: null,
+                    rawEventsFile: null,
+                    summary: delegatedExecutionLaunchEvidence.mismatch_summary ?? 'Configured role launch mismatch.',
+                };
+                await syncDelegationLifecycle(runPaths, run, {
+                    delegationId: executionDelegation.delegation_id,
+                    status: 'failed',
+                    resultSummary: outcome.summary,
+                    workerLaunchEvidence: delegatedExecutionLaunchEvidence,
+                    workerPolicyDecision: executionPolicyDecision,
+                    workerResult: null,
+                    failureStage: 'compatibility',
+                    failureReason: 'surface_mismatch',
+                    failureSummary: outcome.summary,
+                });
+                delegationAlreadyFinalized = true;
+            }
+        }
     }
     if (delegationAlreadyFinalized) {
         // already closed through the delegation lifecycle path above
+    }
+    else if (!executionDelegation &&
+        routeSelection.route_id === 'delegated_execute' &&
+        !isReadOnlyFallbackAllowed(taskCard)) {
+        outcome = createPolicyOverrideRequiredOutcome(taskCard);
     }
     else if (!executionDelegation && directExecutionLaunchEvidence.match_state === 'mismatch') {
         taskCard.latest_model_launch = directExecutionLaunchEvidence;
@@ -3848,6 +4044,7 @@ async function advanceForemanRun(options) {
         taskCard.latest_model_launch = retryResult.launchEvidence;
     }
     if (executionDelegation && delegatedExecutionLaunchEvidence) {
+        const initialPolicyDecision = executionDelegation.worker_policy_decision ?? null;
         const retryRoleConfigSnapshot = executionDelegation.worker_role_config_snapshot ?? taskCard.role_config_snapshot;
         const retryResult = await applyObservedMismatchRetryPolicy({
             options: {
@@ -3874,6 +4071,17 @@ async function advanceForemanRun(options) {
         });
         outcome = retryResult.outcome;
         delegatedExecutionLaunchEvidence = retryResult.launchEvidence;
+        if (delegatedExecutionLaunchEvidence !== null && delegatedExecutionLaunchEvidence.observation_match_state === 'mismatch') {
+            const retryablePolicyDecision = createRetryableWorkerPolicyDecision(initialPolicyDecision, delegatedExecutionLaunchEvidence.observation_mismatch_summary ?? 'Observed worker evidence drifted after launch.');
+            if (retryablePolicyDecision !== null) {
+                const updatedDelegation = await (0, runtime_1.updateDelegationPolicyDecisionWithVisibilitySync)(runPaths, {
+                    delegationId: executionDelegation.delegation_id,
+                    workerLaunchEvidence: delegatedExecutionLaunchEvidence,
+                    workerPolicyDecision: retryablePolicyDecision,
+                });
+                syncDelegationChildAgent(run, updatedDelegation);
+            }
+        }
     }
     if (!executionDelegation) {
         outcome = applyObservationUnavailablePolicy({
@@ -4340,7 +4548,7 @@ async function verifyForemanRun(options) {
     if (existingReviewDelegations.length > 0) {
         throw new Error(`verify cannot launch a new bounded reviewer swarm because review round ${taskCard.review_pass_count} already has ${existingReviewDelegations.length} persisted verifier delegation artifact${existingReviewDelegations.length === 1 ? '' : 's'}.`);
     }
-    await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, orchestratorState.verification_request, reviewerCap);
+    await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, orchestratorState.verification_request, reviewerCap, await (0, runtime_1.loadForemanConfig)(options.cwd));
     const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
     const aggregatedOutcome = aggregateReviewerOutcomes(taskCard, reviewDelegations);
     if (aggregatedOutcome) {

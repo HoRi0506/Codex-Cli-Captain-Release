@@ -1654,6 +1654,7 @@ function createReadableWorkerSnapshot(delegation, foremanConfig) {
         slice_label: sliceLabel,
         partition_strategy: delegation.worker_request?.partition_strategy ?? delegation.worker_result?.partition_strategy ?? null,
         coverage_focus: [...(delegation.worker_request?.coverage_focus ?? delegation.worker_result?.coverage_focus ?? [])],
+        worker_policy_decision: delegation.worker_policy_decision ?? null,
         worker_lifecycle: workerLifecycle ?? {
             state: 'queued',
             reclaim_state: 'not_needed',
@@ -1669,7 +1670,8 @@ function createReadableWorkerSnapshot(delegation, foremanConfig) {
             elapsed_since_progress_ms: null,
             summary: 'queued and waiting for captain launch',
         },
-        summary: `${scope ? `${sliceSummary}: ${scope}` : sliceSummary} (lifecycle=${workerLifecycle?.state ?? 'queued'})`,
+        summary: `${scope ? `${sliceSummary}: ${scope}` : sliceSummary} (lifecycle=${workerLifecycle?.state ?? 'queued'}` +
+            `${delegation.worker_policy_decision ? `, policy=${delegation.worker_policy_decision.outcome}` : ''})`,
     };
 }
 function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
@@ -1923,6 +1925,7 @@ function createVisibleDelegation(delegation, taskTitle, foremanConfig) {
         child_agent_config_summary: createTaskCardAgentConfigSummary(delegation.child_agent.role, foremanConfig),
         worker_request: createVisibleWorkerRequest(delegation.worker_request),
         worker_role_config_snapshot: delegation.worker_role_config_snapshot ?? null,
+        worker_policy_decision: delegation.worker_policy_decision ?? null,
         worker_lifecycle: createWorkerLifecycleView(delegation),
         worker_result: createVisibleWorkerResult(delegation.worker_result),
         executor: delegation.executor,
@@ -2306,6 +2309,7 @@ function createForemanActivityResult(input) {
                 child_agent: delegation.child_agent,
                 child_agent_config_summary: createTaskCardAgentConfigSummary(delegation.child_agent.role, input.foremanConfig),
                 executor: delegation.executor,
+                worker_policy_decision: delegation.worker_policy_decision ?? null,
                 worker_lifecycle: createWorkerLifecycleView(delegation),
                 updated_at: delegation.updated_at,
             })),
@@ -2889,6 +2893,7 @@ function createForemanDelegateResult(cwd, delegation) {
         summary: delegation.summary,
         child_agent: delegation.child_agent,
         executor: delegation.executor,
+        worker_policy_decision: delegation.worker_policy_decision ?? null,
         worker_lifecycle: createWorkerLifecycleView(delegation),
         created_at: delegation.created_at,
         updated_at: delegation.updated_at,
@@ -2908,6 +2913,7 @@ function createForemanUpdateDelegationResult(cwd, delegation) {
         summary: delegation.summary,
         child_agent: delegation.child_agent,
         executor: delegation.executor,
+        worker_policy_decision: delegation.worker_policy_decision ?? null,
         worker_lifecycle: createWorkerLifecycleView(delegation),
         result_summary: delegation.result_summary,
         reviewer_outcome: delegation.reviewer_outcome,

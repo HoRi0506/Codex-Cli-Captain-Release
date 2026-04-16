@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PERSISTED_TASK_CARD_ASSIGNED_AGENT_IDS = exports.PERSISTED_RUN_ACTIVE_AGENT_IDS = exports.FOREMAN_WORKER_TIMEOUT_AFTER_MS = exports.FOREMAN_WORKER_STALE_AFTER_MS = exports.FOREMAN_ACTIVE_TASK_MAX_WORKERS = exports.FOREMAN_VERIFIER_AGENT_ID = exports.FOREMAN_CODE_SPECIALIST_AGENT_ID = exports.FOREMAN_EXPLORER_AGENT_ID = exports.FOREMAN_PLANNER_AGENT_ID = exports.FOREMAN_ORCHESTRATOR_AGENT_ID = exports.FOREMAN_AGENT_ROSTER = exports.ORCHESTRATOR_DECISION_STEPS = exports.HANDOFF_OUTCOMES = exports.WORKER_RECLAIM_STATES = exports.WORKER_LIFECYCLE_STATES = exports.CHILD_AGENT_STATUSES = exports.VERIFICATION_STATES = exports.ROLE_DEFAULT_ROLES = exports.ROLES = exports.FAILURE_REASONS = exports.WORKFLOW_STAGES = exports.TASK_CARD_STATUSES = exports.RUN_STATUSES = void 0;
+exports.PERSISTED_TASK_CARD_ASSIGNED_AGENT_IDS = exports.PERSISTED_RUN_ACTIVE_AGENT_IDS = exports.FOREMAN_WORKER_TIMEOUT_AFTER_MS = exports.FOREMAN_WORKER_STALE_AFTER_MS = exports.FOREMAN_ACTIVE_TASK_MAX_WORKERS = exports.FOREMAN_VERIFIER_AGENT_ID = exports.FOREMAN_CODE_SPECIALIST_AGENT_ID = exports.FOREMAN_EXPLORER_AGENT_ID = exports.FOREMAN_PLANNER_AGENT_ID = exports.FOREMAN_ORCHESTRATOR_AGENT_ID = exports.FOREMAN_AGENT_ROSTER = exports.ORCHESTRATOR_DECISION_STEPS = exports.HANDOFF_OUTCOMES = exports.ROLE_POLICY_REJECTION_REASONS = exports.ROLE_POLICY_DECISION_OUTCOMES = exports.WORKER_RECLAIM_STATES = exports.WORKER_LIFECYCLE_STATES = exports.CHILD_AGENT_STATUSES = exports.VERIFICATION_STATES = exports.ROLE_DEFAULT_ROLES = exports.ROLES = exports.FAILURE_REASONS = exports.WORKFLOW_STAGES = exports.TASK_CARD_STATUSES = exports.RUN_STATUSES = void 0;
 exports.RUN_STATUSES = [
     'queued',
     'active',
@@ -59,6 +59,20 @@ exports.WORKER_RECLAIM_STATES = [
     'reclaim_needed',
     'resumable',
     'reclaimed',
+];
+exports.ROLE_POLICY_DECISION_OUTCOMES = [
+    'allowed',
+    'policy_blocked',
+    'policy_retryable',
+    'policy_override_required',
+];
+exports.ROLE_POLICY_REJECTION_REASONS = [
+    'role_mismatch',
+    'agent_mismatch',
+    'model_tier_mismatch',
+    'reasoning_tier_mismatch',
+    'write_scope_requires_worker',
+    'unknown',
 ];
 exports.HANDOFF_OUTCOMES = ['accepted'];
 exports.ORCHESTRATOR_DECISION_STEPS = [

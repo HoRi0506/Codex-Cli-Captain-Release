@@ -49,6 +49,7 @@ exports.persistDelegationArtifact = persistDelegationArtifact;
 exports.persistDelegationWithVisibilitySync = persistDelegationWithVisibilitySync;
 exports.updateDelegationWithVisibilitySync = updateDelegationWithVisibilitySync;
 exports.markDelegationLaunchingWithVisibilitySync = markDelegationLaunchingWithVisibilitySync;
+exports.updateDelegationPolicyDecisionWithVisibilitySync = updateDelegationPolicyDecisionWithVisibilitySync;
 exports.createOrchestrationAttemptArtifactFilePath = createOrchestrationAttemptArtifactFilePath;
 exports.loadOrchestrationAttemptArtifact = loadOrchestrationAttemptArtifact;
 exports.listOrchestrationAttemptIds = listOrchestrationAttemptIds;
@@ -229,6 +230,41 @@ function normalizeLoadedWorkerLifecycle(candidate, fallback) {
         reclaimState: 'not_needed',
         lastProgressAt: fallback.updatedAt,
     });
+}
+function normalizeLoadedWorkerPolicyDecision(candidate) {
+    if (isRecord(candidate) &&
+        typeof candidate.outcome === 'string' &&
+        typeof candidate.configured_role === 'string' &&
+        (typeof candidate.selected_agent_id === 'string' || candidate.selected_agent_id === null) &&
+        Array.isArray(candidate.allowed_agent_ids) &&
+        candidate.allowed_agent_ids.every((entry) => typeof entry === 'string') &&
+        typeof candidate.configured_model_tier === 'string' &&
+        (typeof candidate.requested_model_tier === 'string' || candidate.requested_model_tier === null) &&
+        Array.isArray(candidate.allowed_model_tiers) &&
+        candidate.allowed_model_tiers.every((entry) => typeof entry === 'string') &&
+        (typeof candidate.configured_variant === 'string' || candidate.configured_variant === null) &&
+        (typeof candidate.requested_variant === 'string' || candidate.requested_variant === null) &&
+        (typeof candidate.rejection_reason === 'string' || candidate.rejection_reason === null) &&
+        typeof candidate.read_only_fallback_allowed === 'boolean' &&
+        typeof candidate.summary === 'string' &&
+        typeof candidate.recorded_at === 'string') {
+        return {
+            outcome: candidate.outcome,
+            configured_role: candidate.configured_role,
+            selected_agent_id: candidate.selected_agent_id,
+            allowed_agent_ids: [...candidate.allowed_agent_ids],
+            configured_model_tier: candidate.configured_model_tier,
+            requested_model_tier: candidate.requested_model_tier,
+            allowed_model_tiers: [...candidate.allowed_model_tiers],
+            configured_variant: candidate.configured_variant,
+            requested_variant: candidate.requested_variant,
+            rejection_reason: candidate.rejection_reason,
+            read_only_fallback_allowed: candidate.read_only_fallback_allowed,
+            summary: candidate.summary,
+            recorded_at: candidate.recorded_at,
+        };
+    }
+    return null;
 }
 function createSpecialistExecutorSnapshot(delegation) {
     return {
@@ -442,6 +478,9 @@ function normalizeLoadedDelegationRecord(candidate) {
         worker_launch_evidence: Object.prototype.hasOwnProperty.call(candidate, 'worker_launch_evidence')
             ? normalizeLoadedRoleModelLaunchEvidence(candidate.worker_launch_evidence)
             : null,
+        worker_policy_decision: Object.prototype.hasOwnProperty.call(candidate, 'worker_policy_decision')
+            ? normalizeLoadedWorkerPolicyDecision(candidate.worker_policy_decision)
+            : null,
         worker_lifecycle: normalizeLoadedWorkerLifecycle(Object.prototype.hasOwnProperty.call(candidate, 'worker_lifecycle') ? candidate.worker_lifecycle : null, {
             childStatus: isRecord(candidate.child_agent) ? candidate.child_agent.status : 'queued',
             createdAt: typeof candidate.created_at === 'string' ? candidate.created_at : nowTimestamp(),
@@ -462,7 +501,7 @@ function normalizeLoadedDelegationRecord(candidate) {
 }
 function assertDelegationTransitionAllowed(currentStatus, nextStatus) {
     const allowedTransitions = new Map([
-        ['queued', new Set(['running', 'cancelled'])],
+        ['queued', new Set(['running', 'failed', 'cancelled'])],
         ['running', new Set(['completed', 'failed', 'cancelled'])],
         ['completed', new Set()],
         ['failed', new Set()],
@@ -1249,6 +1288,7 @@ async function updateDelegationWithVisibilitySync(paths, input) {
             }
             delegation.result_summary = null;
             delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
+            delegation.worker_policy_decision = input.workerPolicyDecision ?? delegation.worker_policy_decision ?? null;
             delegation.worker_result = null;
             delegation.reviewer_outcome = null;
             delegation.latest_failure = null;
@@ -1283,6 +1323,7 @@ async function updateDelegationWithVisibilitySync(paths, input) {
             }
             delegation.result_summary = input.resultSummary;
             delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
+            delegation.worker_policy_decision = input.workerPolicyDecision ?? delegation.worker_policy_decision ?? null;
             delegation.worker_result = input.workerResult ?? null;
             delegation.reviewer_outcome = input.status === 'completed' ? input.reviewerOutcome ?? null : null;
             delegation.latest_failure = null;
@@ -1316,6 +1357,7 @@ async function updateDelegationWithVisibilitySync(paths, input) {
             }
             delegation.result_summary = input.resultSummary;
             delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
+            delegation.worker_policy_decision = input.workerPolicyDecision ?? delegation.worker_policy_decision ?? null;
             delegation.worker_result = input.workerResult ?? null;
             delegation.reviewer_outcome = null;
             delegation.latest_failure = {
@@ -1354,6 +1396,7 @@ async function markDelegationLaunchingWithVisibilitySync(paths, input) {
     const timestamp = nowTimestamp();
     delegation.updated_at = timestamp;
     delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
+    delegation.worker_policy_decision = input.workerPolicyDecision ?? delegation.worker_policy_decision ?? null;
     delegation.worker_lifecycle = {
         ...(delegation.worker_lifecycle ??
             createDelegationWorkerLifecycleRecord({
@@ -1367,6 +1410,14 @@ async function markDelegationLaunchingWithVisibilitySync(paths, input) {
         timed_out_at: null,
         summary: summarizeWorkerLifecycleState('launching'),
     };
+    await persistDelegationWithVisibilitySync(paths, delegation);
+    return delegation;
+}
+async function updateDelegationPolicyDecisionWithVisibilitySync(paths, input) {
+    const delegation = await loadDelegationArtifact(paths, input.delegationId);
+    delegation.updated_at = nowTimestamp();
+    delegation.worker_policy_decision = input.workerPolicyDecision ?? delegation.worker_policy_decision ?? null;
+    delegation.worker_launch_evidence = input.workerLaunchEvidence ?? delegation.worker_launch_evidence ?? null;
     await persistDelegationWithVisibilitySync(paths, delegation);
     return delegation;
 }

@@ -87,6 +87,16 @@
         }
       ]
     },
+    "worker_policy_decision": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/workerPolicyDecision"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
     "worker_lifecycle": {
       "anyOf": [
         {
@@ -326,6 +336,84 @@
           "minimum": 1
         },
         "summary": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "workerPolicyDecision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "outcome",
+        "configured_role",
+        "selected_agent_id",
+        "allowed_agent_ids",
+        "configured_model_tier",
+        "requested_model_tier",
+        "allowed_model_tiers",
+        "configured_variant",
+        "requested_variant",
+        "rejection_reason",
+        "read_only_fallback_allowed",
+        "summary",
+        "recorded_at"
+      ],
+      "properties": {
+        "outcome": {
+          "type": "string",
+          "enum": ["allowed", "policy_blocked", "policy_retryable", "policy_override_required"]
+        },
+        "configured_role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "selected_agent_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "allowed_agent_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "configured_model_tier": {
+          "type": "string",
+          "enum": ["low_cost", "standard", "high_tier"]
+        },
+        "requested_model_tier": {
+          "type": ["string", "null"],
+          "enum": ["low_cost", "standard", "high_tier", null]
+        },
+        "allowed_model_tiers": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["low_cost", "standard", "high_tier"]
+          }
+        },
+        "configured_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "requested_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "rejection_reason": {
+          "type": ["string", "null"],
+          "enum": ["role_mismatch", "agent_mismatch", "model_tier_mismatch", "reasoning_tier_mismatch", "write_scope_requires_worker", "unknown", null]
+        },
+        "read_only_fallback_allowed": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recorded_at": {
           "type": "string",
           "minLength": 1
         }
