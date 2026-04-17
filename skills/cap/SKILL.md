@@ -15,6 +15,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - treat `$cap` as the user-facing trigger that hands the operator request to `captain`, not as the worker itself
 - when the packaged custom-agent roster is available, treat `foreman_captain` as the first Codex-native receiver for the `$cap` request
 - keep the public entry surface narrow: the operator uses `$cap`, while worker-to-worker progression stays internal to Foreman
+- keep one current Foreman run per Codex CLI session unless the operator explicitly asks to close it or start a new one
 - prefer persisted Foreman state, status, orchestration, and delegation visibility over ad hoc host-session improvisation
 - treat Codex as the orchestrator that decides when to stay local, when to inspect Foreman state, when to call a specialist role, and when to verify before replying
 - treat Foreman as the bounded toolbox that exposes role, model, playbook, wrapper, result-contract, run, delegation, and evidence metadata
@@ -27,13 +28,19 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 4. If `foreman_auto_entry` does not create a run because current policy still requires an explicit entry call, use `mcp__codex_foreman__foreman_recommend_entry` and then enter through the matching explicit Foreman tool.
 5. Treat `captain` as the first Foreman receiver for work that entered through this skill. When the packaged custom-agent roster is installed, prefer the Codex-native `foreman_captain` custom agent as that first receiver.
 6. Use `mcp__codex_foreman__foreman_status`, `mcp__codex_foreman__foreman_activity`, `mcp__codex_foreman__foreman_orchestrate`, and delegation visibility surfaces to keep the run inspectable.
-7. Keep worker routing internal. Do not tell the operator to invoke separate public worker skills or slash commands. If internal worker delegation is needed and the packaged custom-agent roster is present, prefer these Codex-native custom agents:
+7. When Foreman exposes a current run label, include `Current run: <label>` once near the top or bottom of the answer so the operator can see which persisted run is active.
+8. Treat these operator phrases as explicit session-run controls:
+   - `$cap close current run`
+   - `$cap clear run session`
+   - `$cap start a new run ...`
+   - `$cap 새 run으로 ...`
+9. Keep worker routing internal. Do not tell the operator to invoke separate public worker skills or slash commands. If internal worker delegation is needed and the packaged custom-agent roster is present, prefer these Codex-native custom agents:
    - `foreman_tactician` for planning
    - `foreman_scout` for exploration
    - `foreman_raider` for implementation
    - `foreman_arbiter` for review
    - `foreman_sentinel` for ownership classification
-8. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
+10. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
 
 ## Captain-directed loop
 
@@ -44,6 +51,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 ## Notes
 
 - `$cap` depends on the installed `codex-foreman` MCP and the packaged local skill directory
+- the packaged run session can be cleared explicitly with `$cap close current run` or `$cap clear run session`
 - the packaged install surface may also ship matching Codex custom-agent files for internal harness routing, but `$cap` remains the only public operator entrypoint
 - those custom agents or subagents are bounded specialist executors that Codex chooses deliberately; they are not hidden always-on workers
 - packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, code specialist, and verifier; those are internal specialist contracts, not public operator commands

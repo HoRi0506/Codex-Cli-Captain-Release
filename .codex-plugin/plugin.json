@@ -1,6 +1,6 @@
 {
   "name": "codex-foreman",
-  "version": "1.5.23",
+  "version": "1.5.24",
   "description": "Captain-led Foreman harness entrypoint for Codex CLI.",
   "author": {
     "name": "HoRi0506"

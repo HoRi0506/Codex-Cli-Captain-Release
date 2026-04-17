@@ -215,6 +215,8 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
+Within one Codex CLI session, Foreman now keeps one current run by default. The same session keeps reusing that run until the operator explicitly asks for a new run or closes it, and the bound run is closed when that session ends. Operator-facing surfaces can now show a readable current-run label in date-time-task form instead of only a raw run id.
+
 Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 
 The MCP auto-entry surface can now report bounded elapsed timing as part of the operator-facing diagnostic path, which makes it easier to tell whether slowdown came from Foreman work itself or from outer session transport.
@@ -233,6 +235,7 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - \`codex-foreman status --run-id <id>\` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
 - bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
+- one Codex CLI session can keep one current run until the operator explicitly closes it or asks for a new run
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` work is \`foreman_captain\`
@@ -338,6 +341,8 @@ To update an existing install, copy the latest release README install block agai
 After install and restart:
 
 - use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <your request>\` when you want the request to enter Foreman through \`captain\`
+- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run\` or \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} clear run session\` when you want to clear the current session-bound run
+- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} start a new run <your request>\` when you want to stop reusing the current run and force a fresh one
 - use \`codex-foreman check-install\` when you want to confirm the install is healthy
 - restart Codex CLI after install or update so the latest MCP session and skill are loaded
 

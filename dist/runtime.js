@@ -660,8 +660,8 @@ const DEFAULT_FOREMAN_AGENT_SETTINGS = {
     },
     'code specialist': {
         name: constants_1.FOREMAN_AGENT_ROSTER.codeSpecialist,
-        model: 'gpt-5.4-mini',
-        variant: 'medium',
+        model: 'gpt-5.3-codex',
+        variant: 'high',
     },
     verifier: {
         name: constants_1.FOREMAN_AGENT_ROSTER.verifier,
@@ -919,6 +919,15 @@ function normalizeForemanConfigCandidate(candidate) {
         return candidate;
     }
     const defaultConfig = createDefaultForemanConfig();
+    const candidateAgents = isRecord(candidate.agents) ? candidate.agents : null;
+    const candidateCodeSpecialist = candidateAgents && isRecord(candidateAgents['code specialist']) ? candidateAgents['code specialist'] : null;
+    const shouldMigrateLegacyCodeSpecialistDefault = candidateCodeSpecialist &&
+        candidateCodeSpecialist.model === 'gpt-5.4-mini' &&
+        candidateCodeSpecialist.variant === 'medium' &&
+        Array.isArray(candidateCodeSpecialist.config_entries) &&
+        candidateCodeSpecialist.config_entries.every((entry) => entry === 'model=gpt-5.4-mini' ||
+            entry === 'model_reasoning_effort=medium' ||
+            entry === 'approval_policy=never');
     const output = isRecord(candidate.output) &&
         (candidate.output.verbosity === 'quiet' ||
             candidate.output.verbosity === 'default' ||
@@ -929,10 +938,15 @@ function normalizeForemanConfigCandidate(candidate) {
         ...candidate,
         entry_policy: isRecord(candidate.entry_policy) ? candidate.entry_policy : createDefaultForemanEntryPolicy(),
         output,
-        agents: isRecord(candidate.agents) && !Object.prototype.hasOwnProperty.call(candidate.agents, 'explorer')
+        agents: candidateAgents
             ? {
-                ...candidate.agents,
-                explorer: defaultConfig.agents.explorer,
+                ...candidateAgents,
+                explorer: Object.prototype.hasOwnProperty.call(candidateAgents, 'explorer')
+                    ? candidateAgents.explorer
+                    : defaultConfig.agents.explorer,
+                'code specialist': shouldMigrateLegacyCodeSpecialistDefault
+                    ? defaultConfig.agents['code specialist']
+                    : candidateAgents['code specialist'],
             }
             : candidate.agents,
     };

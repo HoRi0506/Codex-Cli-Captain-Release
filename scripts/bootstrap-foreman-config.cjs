@@ -39,8 +39,8 @@ function fallbackCreateDefaultForemanConfig() {
       'code specialist': {
         name: 'raider',
         profile: null,
-        model: 'gpt-5.4-mini',
-        variant: 'medium',
+        model: 'gpt-5.3-codex',
+        variant: 'high',
         config_entries: [],
       },
       verifier: {

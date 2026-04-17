@@ -62,6 +62,7 @@ const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
 const request_shape_1 = require("./request-shape");
 const run_lifecycle_1 = require("./run-lifecycle");
+const session_run_binding_1 = require("./session-run-binding");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
 const helper_agents_1 = require("./helper-agents");
@@ -1366,6 +1367,7 @@ async function loadContinueRunSnapshot(options) {
         runId: run.run_id,
         taskCardId: taskCard.task_card_id,
         runDirectory: runPaths.runDir,
+        createdAt: run.created_at,
         goal: run.goal,
         taskTitle: taskCard.title,
         taskKind: taskCard.task_kind,
@@ -1385,6 +1387,7 @@ function buildContinueRunSnapshotFromLoopResult(result) {
         runId: result.runId,
         taskCardId: result.finalSnapshot.task_card_id,
         runDirectory: result.runDirectory,
+        createdAt: (0, runtime_1.nowTimestamp)(),
         goal: '',
         taskTitle: result.finalSnapshot.task_card_id,
         taskKind: result.finalSnapshot.next_step === 'verify_task' ? 'review' : 'execution',
@@ -4039,6 +4042,38 @@ function renderAutoEntryAnswerTrace(trace) {
         `why_not_heavier_role=${trace.why_not_heavier_role}`,
     ].join(' | ');
 }
+function detectAutoEntrySessionDirective(request) {
+    const normalized = request.replace(/\s+/g, ' ').trim();
+    if (normalized.length === 0) {
+        return null;
+    }
+    if (/\b(close|clear|end|stop)\s+(the\s+)?(current\s+)?run\b/i.test(normalized) ||
+        /\bclear\s+run\s+session\b/i.test(normalized) ||
+        /(현재|지금)\s*run\s*(을|를)?\s*(닫아|끝내|종료|정리)/i.test(normalized) ||
+        /run\s*(세션)?\s*(을|를)?\s*(닫아|끝내|종료|클리어|정리)/i.test(normalized)) {
+        return 'close_run';
+    }
+    if (/\b(start|create|open)\s+(a\s+)?new\s+run\b/i.test(normalized) ||
+        /\bnew\s+run\b/i.test(normalized) ||
+        /(새|새로운)\s*run\s*(으로|에서)?/i.test(normalized)) {
+        return 'new_run';
+    }
+    return null;
+}
+function createAutoEntryRunLabelFromSnapshot(snapshot) {
+    return (0, session_run_binding_1.createForemanRunLabel)({
+        createdAt: snapshot.createdAt,
+        title: snapshot.taskTitle,
+        goal: snapshot.goal,
+    });
+}
+function createAutoEntryRunLabelFromRun(run, taskTitle) {
+    return (0, session_run_binding_1.createForemanRunLabel)({
+        createdAt: run.created_at,
+        title: taskTitle,
+        goal: run.goal,
+    });
+}
 async function persistLatestAutoEntryTrace(input) {
     const runPaths = (0, runtime_1.createRunPaths)(input.cwd, input.runId);
     const run = await (0, runtime_1.loadRunRecord)(runPaths);
@@ -4062,18 +4097,44 @@ async function autoEnterForeman(options) {
         cwd: options.cwd,
         request: options.request,
     }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+    if (recommendation.automatic_entry_supported) {
+        await (0, session_run_binding_1.cleanupStaleSessionBoundRuns)(options.cwd);
+    }
     const activeRunInspection = recommendation.automatic_entry_supported
         ? await inspectPersistedActiveRunsForAutoEntry(options.cwd)
         : { fresh: [], stale: [] };
     const inspectedActiveRunCount = activeRunInspection.fresh.length + activeRunInspection.stale.length;
     const activeRunCandidates = [...activeRunInspection.fresh, ...activeRunInspection.stale].map((candidate) => candidate.lifecycle);
-    const reusableRun = recommendation.automatic_entry_supported
+    const sessionDirective = detectAutoEntrySessionDirective(options.request);
+    const sessionBoundRunRecord = recommendation.automatic_entry_supported && options.session
+        ? await (0, session_run_binding_1.findSessionBoundRun)({
+            cwd: options.cwd,
+            session: options.session,
+        })
+        : null;
+    let sessionBoundRun = null;
+    if (sessionBoundRunRecord !== null) {
+        try {
+            sessionBoundRun = {
+                snapshot: await loadContinueRunSnapshot({
+                    cwd: options.cwd,
+                    runId: sessionBoundRunRecord.run_id,
+                }),
+                lifecycle: [...activeRunInspection.fresh, ...activeRunInspection.stale].find((candidate) => candidate.snapshot.runId === sessionBoundRunRecord.run_id)?.lifecycle ?? (0, run_lifecycle_1.deriveRunLifecycleView)(sessionBoundRunRecord, [sessionBoundRunRecord]),
+            };
+        }
+        catch {
+            sessionBoundRun = null;
+        }
+    }
+    const defaultReusableRun = recommendation.automatic_entry_supported && sessionDirective === null
         ? selectReusableAutoEntryRun({
             recommendation,
             activeRunInspection,
             request: options.request,
         })
         : null;
+    const reusableRun = sessionDirective === null ? sessionBoundRun ?? defaultReusableRun : null;
     if (!recommendation.automatic_entry_supported) {
         return {
             cwd: options.cwd,
@@ -4095,6 +4156,7 @@ async function autoEnterForeman(options) {
             active_run_candidates: activeRunCandidates,
             selected_run_lifecycle: null,
             run_id: null,
+            run_label: null,
             task_card_id: null,
             run_directory: null,
             status: null,
@@ -4110,15 +4172,71 @@ async function autoEnterForeman(options) {
             recommendation,
         };
     }
+    if (sessionDirective === 'close_run') {
+        if (sessionBoundRunRecord && options.session) {
+            await (0, session_run_binding_1.releaseRunFromSession)({
+                cwd: options.cwd,
+                runId: sessionBoundRunRecord.run_id,
+                session: options.session,
+                reason: 'operator_closed',
+                closeRun: true,
+            });
+        }
+        return {
+            cwd: options.cwd,
+            request: options.request,
+            policy_mode: recommendation.policy_mode,
+            automatic_entry_supported: true,
+            entry_boundary: recommendation.entry_boundary,
+            entry_boundary_summary: recommendation.entry_boundary_summary,
+            upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
+            upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            created: false,
+            run_selection: 'no_run_created',
+            inspected_active_run_count: inspectedActiveRunCount,
+            fresh_active_run_count: activeRunInspection.fresh.length,
+            stale_active_run_count: activeRunInspection.stale.length,
+            entrypoint_used: null,
+            scoping_source: null,
+            run_decision_reason: sessionBoundRun === null
+                ? 'the operator asked to close the current run, but no session-bound run was active'
+                : 'the operator explicitly closed the current session-bound run',
+            active_run_candidates: activeRunCandidates,
+            selected_run_lifecycle: null,
+            run_id: null,
+            run_label: sessionBoundRun ? createAutoEntryRunLabelFromSnapshot(sessionBoundRun.snapshot) : null,
+            task_card_id: null,
+            run_directory: null,
+            status: null,
+            stage: null,
+            next_step: null,
+            can_advance: null,
+            summary: sessionBoundRun === null
+                ? 'Foreman did not find an active session-bound run to close.'
+                : `Foreman closed the current session run ${createAutoEntryRunLabelFromSnapshot(sessionBoundRun.snapshot)}.`,
+            answer_trace: createAutoEntryAnswerTrace({
+                recommendation,
+                runSelection: 'no_run_created',
+                selectedRun: null,
+            }),
+            recommendation,
+        };
+    }
     if (reusableRun) {
         const answerTrace = createAutoEntryAnswerTrace({
             recommendation,
             runSelection: 'existing_run_reused',
             selectedRun: reusableRun,
         });
+        const reusableRunLabel = createAutoEntryRunLabelFromSnapshot(reusableRun.snapshot);
+        const runDecisionReason = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
+            ? 'current session already owns a persisted run, so Foreman kept reusing it until the operator asks for a new run or closes it'
+            : reusableRun.lifecycle.decision_reason;
         const summary = `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
-            `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
-            'because it was the only fresh active candidate in the workspace.';
+            `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} (${reusableRunLabel}) ` +
+            (sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
+                ? 'because the current Codex CLI session already owns that run.'
+                : 'because it was the only fresh active candidate in the workspace.');
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: reusableRun.snapshot.runId,
@@ -4126,10 +4244,17 @@ async function autoEnterForeman(options) {
             runSelection: 'existing_run_reused',
             entryBoundary: recommendation.entry_boundary,
             upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
-            runDecisionReason: reusableRun.lifecycle.decision_reason,
+            runDecisionReason,
             summary,
             answerTrace,
         });
+        if (options.session) {
+            await (0, session_run_binding_1.bindRunToSession)({
+                cwd: options.cwd,
+                runId: reusableRun.snapshot.runId,
+                session: options.session,
+            });
+        }
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4146,10 +4271,11 @@ async function autoEnterForeman(options) {
             stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: null,
             scoping_source: 'persisted_active_run_reuse',
-            run_decision_reason: reusableRun.lifecycle.decision_reason,
+            run_decision_reason: runDecisionReason,
             active_run_candidates: activeRunCandidates,
             selected_run_lifecycle: reusableRun.lifecycle,
             run_id: reusableRun.snapshot.runId,
+            run_label: reusableRunLabel,
             task_card_id: reusableRun.snapshot.taskCardId,
             run_directory: reusableRun.snapshot.runDirectory,
             status: reusableRun.snapshot.status,
@@ -4187,6 +4313,7 @@ async function autoEnterForeman(options) {
             active_run_candidates: activeRunCandidates,
             selected_run_lifecycle: null,
             run_id: null,
+            run_label: null,
             task_card_id: null,
             run_directory: null,
             status: null,
@@ -4202,6 +4329,15 @@ async function autoEnterForeman(options) {
             }),
             recommendation,
         };
+    }
+    if (sessionDirective === 'new_run' && sessionBoundRunRecord && options.session) {
+        await (0, session_run_binding_1.releaseRunFromSession)({
+            cwd: options.cwd,
+            runId: sessionBoundRunRecord.run_id,
+            session: options.session,
+            reason: 'new_run_requested',
+            closeRun: true,
+        });
     }
     if (recommendation.recommended_entrypoint === 'plan') {
         const result = await planForemanRun({
@@ -4237,6 +4373,15 @@ async function autoEnterForeman(options) {
             summary,
             answerTrace,
         });
+        const createdRunRecord = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, result.runId));
+        const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord, options.request);
+        if (options.session) {
+            await (0, session_run_binding_1.bindRunToSession)({
+                cwd: options.cwd,
+                runId: result.runId,
+                session: options.session,
+            });
+        }
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4261,6 +4406,7 @@ async function autoEnterForeman(options) {
             active_run_candidates: activeRunCandidates,
             selected_run_lifecycle: null,
             run_id: result.runId,
+            run_label: runLabel,
             task_card_id: result.taskCardId,
             run_directory: result.runDirectory,
             status: result.status,
@@ -4298,6 +4444,19 @@ async function autoEnterForeman(options) {
         summary,
         answerTrace,
     });
+    const createdRunRecord = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, startResult.runId));
+    const createdSnapshot = await loadContinueRunSnapshot({
+        cwd: options.cwd,
+        runId: startResult.runId,
+    });
+    const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord, createdSnapshot.taskTitle);
+    if (options.session) {
+        await (0, session_run_binding_1.bindRunToSession)({
+            cwd: options.cwd,
+            runId: startResult.runId,
+            session: options.session,
+        });
+    }
     return {
         cwd: options.cwd,
         request: options.request,
@@ -4322,6 +4481,7 @@ async function autoEnterForeman(options) {
         active_run_candidates: activeRunCandidates,
         selected_run_lifecycle: null,
         run_id: startResult.runId,
+        run_label: runLabel,
         task_card_id: startResult.taskCardId,
         run_directory: startResult.runDirectory,
         status: startResult.status,

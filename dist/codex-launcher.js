@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.parseCodexLauncherArgs = parseCodexLauncherArgs;
 exports.runCodexLauncher = runCodexLauncher;
 const node_child_process_1 = require("node:child_process");
+const cli_mutation_lease_1 = require("./cli-mutation-lease");
 const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
 class LauncherUsageError extends Error {
@@ -73,11 +74,13 @@ function parseCodexLauncherArgs(argv) {
 }
 function buildLauncherPrompt(result, request) {
     const runId = result.run_id ?? 'unknown-run';
+    const runLabel = result.run_label ?? runId;
     const firstLine = result.run_selection === 'existing_run_reused'
-        ? `Foreman auto-entry attached to existing run ${runId}.`
-        : `Foreman auto-entry already created run ${runId}.`;
+        ? `Foreman auto-entry attached to existing run ${runLabel}.`
+        : `Foreman auto-entry already created run ${runLabel}.`;
     return [
         firstLine,
+        `Current run: ${runLabel}`,
         'Continue through the persisted Foreman workflow for that run instead of re-scoping the request from scratch.',
         `Run decision: ${result.run_decision_reason}`,
         `Auto-entry summary: ${result.summary}`,
@@ -117,10 +120,12 @@ async function runCodexLauncher(argv) {
     if (parsed.request && !parsed.disableForemanAutoEntry) {
         const foremanConfig = await (0, runtime_1.loadForemanConfig)(parsed.cwd);
         if (foremanConfig.entry_policy.mode === 'codex_cli_foreman_first') {
+            const session = (0, cli_mutation_lease_1.createCliMutationLeaseSessionContext)();
             const autoEntryResult = await (0, run_command_1.autoEnterForeman)({
                 cwd: parsed.cwd,
                 request: parsed.request,
                 codexPath: parsed.codexPath,
+                session,
             });
             process.stderr.write(`Foreman launcher policy=${autoEntryResult.policy_mode} created=${autoEntryResult.created} entrypoint=${autoEntryResult.entrypoint_used ?? 'none'}\n`);
             process.stderr.write(`Foreman launcher boundary=${autoEntryResult.entry_boundary}\n`);
