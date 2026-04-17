@@ -657,6 +657,13 @@ function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowe
                 why: routingMetadata.routing_trace.selected_route_reason,
                 c: routingMetadata.routing_trace.recommended_category,
                 sk: routingMetadata.routing_trace.recommended_skills,
+                wc: routingMetadata.routing_trace.workload_class,
+                pw: routingMetadata.routing_trace.path_weight,
+                xp: routingMetadata.routing_trace.execution_path,
+                tb: routingMetadata.routing_trace.model_tier_budget,
+                eb: routingMetadata.routing_trace.reasoning_effort_budget,
+                rr: routingMetadata.routing_trace.review_requirement,
+                br: routingMetadata.routing_trace.budget_reason,
             },
             rv: {
                 m: reviewMetadata.review_trace.review_mode,

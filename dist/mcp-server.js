@@ -3128,12 +3128,17 @@ function describeCurrentTaskRouting(currentTaskCard, routingTrace) {
     const targetRole = routingTrace?.route_target_role ?? currentTaskCard?.assigned_role ?? currentTaskCard?.owner_role ?? 'none';
     const modelTier = currentTaskCard?.model_tier_intent ?? 'none';
     const selectedRoute = routingTrace?.selected_route ?? 'none';
+    const workloadClass = routingTrace?.workload_class ?? 'none';
+    const pathWeight = routingTrace?.path_weight ?? 'none';
+    const executionPath = routingTrace?.execution_path ?? 'none';
+    const effortBudget = routingTrace?.reasoning_effort_budget ?? 'none';
+    const reviewRequirement = routingTrace?.review_requirement ?? 'none';
     const category = routingTrace?.recommended_category ?? 'none';
     const skills = routingTrace?.recommended_skills && routingTrace.recommended_skills.length > 0
         ? routingTrace.recommended_skills.join(',')
         : 'none';
     const reason = compactRoutingReason(routingTrace?.selected_route_reason);
-    return `target=${targetRole} tier=${modelTier} route=${selectedRoute} category=${category} skills=${skills} reason=${reason}`;
+    return `target=${targetRole} tier=${modelTier} workload=${workloadClass} weight=${pathWeight} path=${executionPath} effort=${effortBudget} review=${reviewRequirement} route=${selectedRoute} category=${category} skills=${skills} reason=${reason}`;
 }
 function createTaskOperatorVisibilitySummary(currentTaskCard) {
     if (currentTaskCard === null) {

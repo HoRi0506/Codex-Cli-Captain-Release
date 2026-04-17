@@ -148,6 +148,8 @@ Captain-first Foreman toolbox for Codex CLI.
 
 Codex-Foreman is for requests that benefit from a more structured path than one opaque Codex turn. It adds a captain-first entry, visible run state, role-shaped specialist routing, and an explicit review lane without replacing Codex as the orchestrator.
 
+Beta warning: this release surface is still beta. Expect changes, fixes, and update cadence to stay relatively fast and sometimes irregular while the harness contract continues to harden.
+
 The public entrypoint is \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`. That entry hands the request to \`captain\` first.
 
 ## What It Is For
@@ -158,6 +160,7 @@ Use Codex-Foreman when you want one or more of these:
 - visible run, delegation, and fallback state
 - derived navigation bundles that captain, tactician, and scout can use as bounded read-first aids
 - role-shaped planning, exploration, implementation, or review
+- routing that explains whether the current bounded path is light, medium, or heavy and why
 - a bounded path that can stop, reroute, review, or continue instead of flattening everything into one response
 - clearer proof about whether work stayed local or used a configured specialist path
 
@@ -176,6 +179,7 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 - \`captain\` chooses the next bounded loop stage and path variant before specialist routing
 - Codex decides whether to answer locally or use a specialist role inside that bounded stage
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
+- the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` work is \`foreman_captain\`
 - specialist results return through \`captain\`, which decides whether to continue, review, reroute, stop, or answer

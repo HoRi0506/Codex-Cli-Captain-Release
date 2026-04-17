@@ -1486,9 +1486,9 @@ async function loadLatestOrchestrationAttempt(paths) {
     return loadOrchestrationAttemptArtifact(paths, latestAttemptId);
 }
 async function persistOrchestrationAttemptArtifact(paths, attempt) {
-    (0, validation_1.assertValidOrchestrationAttemptRecord)(attempt);
+    const normalizedAttempt = normalizeLoadedOrchestrationAttempt(attempt);
     await (0, promises_1.mkdir)(paths.orchestrationAttemptsDir, { recursive: true });
-    await writeJsonDocument(createOrchestrationAttemptArtifactFilePath(paths, attempt.attempt_id), attempt);
+    await writeJsonDocument(createOrchestrationAttemptArtifactFilePath(paths, normalizedAttempt.attempt_id), normalizedAttempt);
 }
 async function persistRunRecord(paths, run) {
     (0, validation_1.assertValidRunRecord)(run);
@@ -2130,23 +2130,63 @@ function createLegacyCompatibleAttemptRoutingMetadata(nextStep) {
     const routingPrefix = `Policy routing remains ${defaultPolicy.specialist_routing.mode} with ${defaultPolicy.parallelism.mode}.`;
     const neutralRecommendationSummary = 'Advisory visibility only surfaces neutral OmO recommendation values (category none; skills none).';
     const selectedRouteSummary = `Persisted route explicit_fallback keeps the explicit workflow because ${routeSelection.reason}.`;
-    const routingSummary = nextStep === 'execute_task'
-        ? `${routingPrefix} Decision execute_task maps advisory specialist routing to canonical code specialist for execute_task. ${neutralRecommendationSummary} ${selectedRouteSummary}`
+    const budgetTrace = nextStep === 'execute_task'
+        ? {
+            workload_class: 'scoped_mutation',
+            path_weight: 'medium',
+            execution_path: 'local',
+            model_tier_budget: 'standard',
+            reasoning_effort_budget: 'medium',
+            review_requirement: 'conditional',
+            budget_reason: 'legacy attempt metadata defaults scoped execution work to a bounded medium budget until richer task-specific evidence is available',
+        }
         : nextStep === 'verify_task'
-            ? `${routingPrefix} Decision verify_task maps advisory specialist routing to canonical verifier for verify_task. ${neutralRecommendationSummary} ${selectedRouteSummary}`
+            ? {
+                workload_class: 'risky_review',
+                path_weight: 'heavy',
+                execution_path: 'delegated_plus_review',
+                model_tier_budget: 'high_tier',
+                reasoning_effort_budget: 'high',
+                review_requirement: 'required',
+                budget_reason: 'legacy attempt metadata defaults verification work to a heavy reviewed budget until richer task-specific evidence is available',
+            }
+            : nextStep === 'halt_completed' || nextStep === 'halt_failed' || nextStep === 'halt_cancelled'
+                ? {
+                    workload_class: 'terminal',
+                    path_weight: 'light',
+                    execution_path: 'terminal',
+                    model_tier_budget: 'none',
+                    reasoning_effort_budget: 'none',
+                    review_requirement: 'none',
+                    budget_reason: 'legacy attempt metadata marks terminal states as spending no new routing budget',
+                }
+                : {
+                    workload_class: 'manual_boundary',
+                    path_weight: 'medium',
+                    execution_path: 'manual_boundary',
+                    model_tier_budget: 'none',
+                    reasoning_effort_budget: 'none',
+                    review_requirement: 'required',
+                    budget_reason: 'legacy attempt metadata marks explicit holds and repair states as manual boundaries',
+                };
+    const budgetSummary = `Budget path ${budgetTrace.execution_path} stays ${budgetTrace.path_weight} for ${budgetTrace.workload_class}; model tier ${budgetTrace.model_tier_budget}; reasoning effort ${budgetTrace.reasoning_effort_budget}; review ${budgetTrace.review_requirement} because ${budgetTrace.budget_reason}.`;
+    const routingSummary = nextStep === 'execute_task'
+        ? `${routingPrefix} Decision execute_task maps advisory specialist routing to canonical code specialist for execute_task. ${neutralRecommendationSummary} ${budgetSummary} ${selectedRouteSummary}`
+        : nextStep === 'verify_task'
+            ? `${routingPrefix} Decision verify_task maps advisory specialist routing to canonical verifier for verify_task. ${neutralRecommendationSummary} ${budgetSummary} ${selectedRouteSummary}`
             : nextStep === 'await_fan_in'
-                ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because parent execution is explicitly paused until bounded child delegation fan-in completes. ${selectedRouteSummary}`
+                ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because parent execution is explicitly paused until bounded child delegation fan-in completes. ${selectedRouteSummary}`
                 : nextStep === 'await_verification'
-                    ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because verification automation is unavailable and the run awaits an explicit operator resolution. ${selectedRouteSummary}`
+                    ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because verification automation is unavailable and the run awaits an explicit operator resolution. ${selectedRouteSummary}`
                     : nextStep === 'await_repair_decision'
-                        ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because the workflow is awaiting an explicit repair decision. ${selectedRouteSummary}`
+                        ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the workflow is awaiting an explicit repair decision. ${selectedRouteSummary}`
                         : nextStep === 'await_operator'
-                            ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because the workflow awaits manual operator action. ${selectedRouteSummary}`
+                            ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the workflow awaits manual operator action. ${selectedRouteSummary}`
                             : nextStep === 'halt_completed'
-                                ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because the run is already completed. ${selectedRouteSummary}`
+                                ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the run is already completed. ${selectedRouteSummary}`
                                 : nextStep === 'halt_failed'
-                                    ? `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because the run has failed and requires review before any further action. ${selectedRouteSummary}`
-                                    : `${routingPrefix} ${neutralRecommendationSummary} No specialist handoff target is derived because the run is cancelled. ${selectedRouteSummary}`;
+                                    ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the run has failed and requires review before any further action. ${selectedRouteSummary}`
+                                    : `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the run is cancelled. ${selectedRouteSummary}`;
     return {
         routing_summary: routingSummary,
         routing_trace: {
@@ -2159,6 +2199,13 @@ function createLegacyCompatibleAttemptRoutingMetadata(nextStep) {
             selected_route_reason: routeSelection.reason,
             recommended_category: null,
             recommended_skills: [],
+            workload_class: budgetTrace.workload_class,
+            path_weight: budgetTrace.path_weight,
+            execution_path: budgetTrace.execution_path,
+            model_tier_budget: budgetTrace.model_tier_budget,
+            reasoning_effort_budget: budgetTrace.reasoning_effort_budget,
+            review_requirement: budgetTrace.review_requirement,
+            budget_reason: budgetTrace.budget_reason,
             advisory_only: true,
             execution_unchanged: true,
         },
@@ -2196,6 +2243,25 @@ function normalizeLoadedOrchestrationAttemptRoutingTrace(candidate) {
         recommended_skills: Object.prototype.hasOwnProperty.call(candidate, 'recommended_skills')
             ? candidate.recommended_skills
             : [],
+        workload_class: Object.prototype.hasOwnProperty.call(candidate, 'workload_class')
+            ? candidate.workload_class
+            : 'manual_boundary',
+        path_weight: Object.prototype.hasOwnProperty.call(candidate, 'path_weight') ? candidate.path_weight : 'medium',
+        execution_path: Object.prototype.hasOwnProperty.call(candidate, 'execution_path')
+            ? candidate.execution_path
+            : 'manual_boundary',
+        model_tier_budget: Object.prototype.hasOwnProperty.call(candidate, 'model_tier_budget')
+            ? candidate.model_tier_budget
+            : 'none',
+        reasoning_effort_budget: Object.prototype.hasOwnProperty.call(candidate, 'reasoning_effort_budget')
+            ? candidate.reasoning_effort_budget
+            : 'none',
+        review_requirement: Object.prototype.hasOwnProperty.call(candidate, 'review_requirement')
+            ? candidate.review_requirement
+            : 'required',
+        budget_reason: Object.prototype.hasOwnProperty.call(candidate, 'budget_reason')
+            ? candidate.budget_reason
+            : 'legacy routing trace did not record a route budget explanation',
         advisory_only: Object.prototype.hasOwnProperty.call(candidate, 'advisory_only') ? candidate.advisory_only : true,
         execution_unchanged: Object.prototype.hasOwnProperty.call(candidate, 'execution_unchanged')
             ? candidate.execution_unchanged
@@ -2241,31 +2307,40 @@ function normalizeLoadedOrchestrationAttemptSnapshot(candidate) {
     if (!isRecord(candidate)) {
         return candidate;
     }
+    const { next_step: nextStep, verification_state: verificationState } = candidate;
+    const nextStepIsKnown = nextStep === 'execute_task' ||
+        nextStep === 'verify_task' ||
+        nextStep === 'await_fan_in' ||
+        nextStep === 'await_verification' ||
+        nextStep === 'await_repair_decision' ||
+        nextStep === 'await_operator' ||
+        nextStep === 'halt_completed' ||
+        nextStep === 'halt_failed' ||
+        nextStep === 'halt_cancelled';
+    const verificationStateIsKnown = verificationState === 'pending' ||
+        verificationState === 'passed' ||
+        verificationState === 'needs_work' ||
+        verificationState === 'blocked';
     if (Object.prototype.hasOwnProperty.call(candidate, 'routing_summary') &&
         Object.prototype.hasOwnProperty.call(candidate, 'routing_trace') &&
         Object.prototype.hasOwnProperty.call(candidate, 'review_summary') &&
         Object.prototype.hasOwnProperty.call(candidate, 'review_trace')) {
+        if (nextStepIsKnown && verificationStateIsKnown) {
+            const routingMetadata = createLegacyCompatibleAttemptRoutingMetadata(nextStep);
+            return {
+                ...candidate,
+                routing_trace: normalizeLoadedOrchestrationAttemptRoutingTrace({
+                    ...routingMetadata.routing_trace,
+                    ...(isRecord(candidate.routing_trace) ? candidate.routing_trace : {}),
+                }),
+            };
+        }
         return {
             ...candidate,
             routing_trace: normalizeLoadedOrchestrationAttemptRoutingTrace(candidate.routing_trace),
         };
     }
-    const { next_step: nextStep, verification_state: verificationState } = candidate;
-    if (nextStep !== 'execute_task' &&
-        nextStep !== 'verify_task' &&
-        nextStep !== 'await_fan_in' &&
-        nextStep !== 'await_verification' &&
-        nextStep !== 'await_repair_decision' &&
-        nextStep !== 'await_operator' &&
-        nextStep !== 'halt_completed' &&
-        nextStep !== 'halt_failed' &&
-        nextStep !== 'halt_cancelled') {
-        return candidate;
-    }
-    if (verificationState !== 'pending' &&
-        verificationState !== 'passed' &&
-        verificationState !== 'needs_work' &&
-        verificationState !== 'blocked') {
+    if (!nextStepIsKnown || !verificationStateIsKnown) {
         return candidate;
     }
     const routingMetadata = createLegacyCompatibleAttemptRoutingMetadata(nextStep);

@@ -134,6 +134,13 @@
           "selected_route_reason",
           "recommended_category",
           "recommended_skills",
+          "workload_class",
+          "path_weight",
+          "execution_path",
+          "model_tier_budget",
+          "reasoning_effort_budget",
+          "review_requirement",
+          "budget_reason",
           "advisory_only",
           "execution_unchanged"
         ],
@@ -152,7 +159,7 @@
         },
         "route_target_role": {
           "type": ["string", "null"],
-          "enum": ["code specialist", "verifier", null]
+          "enum": ["planner", "explorer", "code specialist", "verifier", null]
         },
         "route_target_step": {
           "type": ["string", "null"],
@@ -185,6 +192,43 @@
             "enum": ["frontend-ui-ux", "playwright"]
           },
           "uniqueItems": true
+        },
+        "workload_class": {
+          "type": "string",
+          "enum": [
+            "trivial_local",
+            "scoped_planning",
+            "bounded_survey",
+            "scoped_mutation",
+            "risky_review",
+            "drift_check",
+            "manual_boundary",
+            "terminal"
+          ]
+        },
+        "path_weight": {
+          "type": "string",
+          "enum": ["light", "medium", "heavy"]
+        },
+        "execution_path": {
+          "type": "string",
+          "enum": ["local", "delegated", "delegated_plus_review", "manual_boundary", "terminal"]
+        },
+        "model_tier_budget": {
+          "type": "string",
+          "enum": ["low_cost", "standard", "high_tier", "none"]
+        },
+        "reasoning_effort_budget": {
+          "type": "string",
+          "enum": ["low", "medium", "high", "xhigh", "none"]
+        },
+        "review_requirement": {
+          "type": "string",
+          "enum": ["none", "conditional", "required"]
+        },
+        "budget_reason": {
+          "type": "string",
+          "minLength": 1
         },
         "advisory_only": {
           "type": "boolean"

@@ -84,6 +84,168 @@ function buildRoutingRecommendationVisibilitySummary(input) {
     }
     return `Advisory visibility only surfaces recommended OmO category ${input.recommendedCategory ?? 'none'} and skills ${formatRecommendedSkills(input.recommendedSkills)}.`;
 }
+function looksLikeDriftCheck(taskCard) {
+    const combinedTaskText = [
+        taskCard.title,
+        taskCard.intent,
+        taskCard.scope,
+        taskCard.acceptance,
+        taskCard.execution_prompt,
+    ]
+        .join('\n')
+        .toLowerCase();
+    return includesAnyKeyword(combinedTaskText, [
+        'drift',
+        'ownership',
+        'execution truth',
+        'route truth',
+        'routing truth',
+        'model policy',
+        'config drift',
+        'fallback honesty',
+        'degraded',
+        'sentinel',
+    ]);
+}
+function deriveRoutingBudgetProfile(input) {
+    const normalizedDecision = normalizeOrchestratorDecision(input.decision);
+    switch (normalizedDecision.next_step) {
+        case 'halt_completed':
+        case 'halt_failed':
+        case 'halt_cancelled':
+            return {
+                workloadClass: 'terminal',
+                pathWeight: 'light',
+                executionPath: 'terminal',
+                modelTierBudget: 'none',
+                reasoningEffortBudget: 'none',
+                reviewRequirement: 'none',
+                budgetReason: 'the run is already terminal, so no new routing budget should be spent',
+            };
+        case 'await_operator':
+            return {
+                workloadClass: 'manual_boundary',
+                pathWeight: 'medium',
+                executionPath: 'manual_boundary',
+                modelTierBudget: 'none',
+                reasoningEffortBudget: 'none',
+                reviewRequirement: 'required',
+                budgetReason: 'the workflow is waiting at an explicit manual boundary instead of spending more routed work automatically',
+            };
+        case 'await_fan_in':
+        case 'await_verification':
+        case 'await_repair_decision':
+            return {
+                workloadClass: 'manual_boundary',
+                pathWeight: 'heavy',
+                executionPath: 'manual_boundary',
+                modelTierBudget: 'none',
+                reasoningEffortBudget: 'none',
+                reviewRequirement: 'required',
+                budgetReason: 'the workflow is inside an explicit verification or repair boundary, so additional work stays paused until that boundary is resolved',
+            };
+        case 'verify_task':
+            return {
+                workloadClass: looksLikeDriftCheck(input.taskCard) ? 'drift_check' : 'risky_review',
+                pathWeight: 'heavy',
+                executionPath: 'delegated_plus_review',
+                modelTierBudget: 'high_tier',
+                reasoningEffortBudget: 'high',
+                reviewRequirement: 'required',
+                budgetReason: looksLikeDriftCheck(input.taskCard)
+                    ? 'captain is prioritizing execution-truth or drift evidence, so the review lane stays heavy and explicit'
+                    : 'captain is entering the verifier lane, so the path stays high-tier and review-required',
+            };
+        case 'execute_task':
+            break;
+    }
+    if (looksLikeDriftCheck(input.taskCard)) {
+        return {
+            workloadClass: 'drift_check',
+            pathWeight: 'medium',
+            executionPath: normalizedDecision.route_selection?.route_id === 'delegated_execute' ? 'delegated' : 'local',
+            modelTierBudget: 'standard',
+            reasoningEffortBudget: 'medium',
+            reviewRequirement: 'conditional',
+            budgetReason: 'captain is checking ownership or execution truth, so the routing budget stays bounded and evidence-oriented',
+        };
+    }
+    if (input.taskCard.task_kind === 'plan') {
+        return {
+            workloadClass: 'scoped_planning',
+            pathWeight: 'light',
+            executionPath: 'local',
+            modelTierBudget: 'standard',
+            reasoningEffortBudget: 'medium',
+            reviewRequirement: 'none',
+            budgetReason: 'scope-shaping work should stay lightweight until a concrete bounded next move exists',
+        };
+    }
+    if (input.taskCard.task_kind === 'explore') {
+        return {
+            workloadClass: 'bounded_survey',
+            pathWeight: input.taskCard.model_tier_intent === 'high_tier' ? 'heavy' : 'medium',
+            executionPath: normalizedDecision.route_selection?.route_id === 'delegated_execute' ? 'delegated' : 'local',
+            modelTierBudget: input.taskCard.model_tier_intent === 'high_tier' ? 'high_tier' : 'low_cost',
+            reasoningEffortBudget: input.taskCard.model_tier_intent === 'high_tier' ? 'high' : 'medium',
+            reviewRequirement: 'none',
+            budgetReason: 'bounded survey work should bias toward cheaper evidence gathering before heavier mutation or review',
+        };
+    }
+    if (input.taskCard.task_kind === 'review') {
+        return {
+            workloadClass: 'risky_review',
+            pathWeight: 'heavy',
+            executionPath: 'delegated_plus_review',
+            modelTierBudget: 'high_tier',
+            reasoningEffortBudget: 'high',
+            reviewRequirement: 'required',
+            budgetReason: 'review tasks are verification-sensitive, so captain keeps them on a heavy reviewed path',
+        };
+    }
+    if (input.taskCard.task_kind === 'execution') {
+        if (input.taskCard.model_tier_intent === 'low_cost') {
+            return {
+                workloadClass: 'scoped_mutation',
+                pathWeight: 'light',
+                executionPath: normalizedDecision.route_selection?.route_id === 'delegated_execute' ? 'delegated' : 'local',
+                modelTierBudget: 'low_cost',
+                reasoningEffortBudget: 'medium',
+                reviewRequirement: 'conditional',
+                budgetReason: 'simple scoped mutation should avoid heavyweight routing and only escalate when the bounded path proves it is needed',
+            };
+        }
+        if (input.taskCard.model_tier_intent === 'high_tier') {
+            return {
+                workloadClass: 'scoped_mutation',
+                pathWeight: 'heavy',
+                executionPath: normalizedDecision.route_selection?.route_id === 'delegated_execute' ? 'delegated_plus_review' : 'delegated',
+                modelTierBudget: 'high_tier',
+                reasoningEffortBudget: 'high',
+                reviewRequirement: 'conditional',
+                budgetReason: 'complex mutation needs more model budget and usually benefits from an explicit review lane',
+            };
+        }
+        return {
+            workloadClass: 'scoped_mutation',
+            pathWeight: 'medium',
+            executionPath: normalizedDecision.route_selection?.route_id === 'delegated_execute' ? 'delegated' : 'local',
+            modelTierBudget: 'standard',
+            reasoningEffortBudget: 'medium',
+            reviewRequirement: 'conditional',
+            budgetReason: 'standard mutation work should stay role-shaped and bounded without paying a heavy review cost by default',
+        };
+    }
+    return {
+        workloadClass: 'trivial_local',
+        pathWeight: 'light',
+        executionPath: 'local',
+        modelTierBudget: 'low_cost',
+        reasoningEffortBudget: 'low',
+        reviewRequirement: 'none',
+        budgetReason: 'the task is small enough that captain should prefer the local lightweight path',
+    };
+}
 function deriveRecommendedCategory(input) {
     const combinedTaskText = [
         input.taskCard.title,
@@ -329,32 +491,33 @@ function buildPolicyAwareRoutingSummary(input) {
         recommendedCategory: input.recommendedCategory,
         recommendedSkills: input.recommendedSkills,
     });
+    const budgetSummary = `Budget path ${input.executionPath} stays ${input.pathWeight} for ${input.workloadClass}; model tier ${input.modelTierBudget}; reasoning effort ${input.reasoningEffortBudget}; review ${input.reviewRequirement} because ${input.budgetReason}.`;
     const routeSelection = getOrchestratorRouteSelection(input.decision);
     const selectedRouteSummary = routeSelection.route_id === 'delegated_execute'
         ? `Persisted route delegated_execute reuses delegated lower-tier execution because ${routeSelection.reason}.`
         : `Persisted route explicit_fallback keeps the explicit workflow because ${routeSelection.reason}.`;
     if (input.routeTargetRole && input.routeTargetStep) {
-        return `${basePolicySummary} Decision ${input.decision.next_step} maps advisory specialist routing to canonical ${input.routeTargetRole} for ${input.routeTargetStep}. ${recommendationVisibilitySummary} ${selectedRouteSummary}`;
+        return `${basePolicySummary} Decision ${input.decision.next_step} maps advisory specialist routing to canonical ${input.routeTargetRole} for ${input.routeTargetStep}. ${recommendationVisibilitySummary} ${budgetSummary} ${selectedRouteSummary}`;
     }
     switch (input.decision.next_step) {
         case 'await_fan_in':
             return input.run.stage === 'verification'
-                ? `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because verification is explicitly paused until the bounded verifier delegation fan-in completes for task "${input.taskCard.title}". ${selectedRouteSummary}`
-                : `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because parent execution is explicitly paused until the bounded child delegation fan-in completes for task "${input.taskCard.title}". ${selectedRouteSummary}`;
+                ? `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because verification is explicitly paused until the bounded verifier delegation fan-in completes for task "${input.taskCard.title}". ${selectedRouteSummary}`
+                : `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because parent execution is explicitly paused until the bounded child delegation fan-in completes for task "${input.taskCard.title}". ${selectedRouteSummary}`;
         case 'await_verification':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because verification automation is unavailable and the run awaits an explicit operator resolution. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because verification automation is unavailable and the run awaits an explicit operator resolution. ${selectedRouteSummary}`;
         case 'await_repair_decision':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because verification blocked task "${input.taskCard.title}" and the next move must be an explicit retry or replan decision. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because verification blocked task "${input.taskCard.title}" and the next move must be an explicit retry or replan decision. ${selectedRouteSummary}`;
         case 'await_operator':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because the current persisted state for run ${input.run.run_id} awaits manual operator action. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because the current persisted state for run ${input.run.run_id} awaits manual operator action. ${selectedRouteSummary}`;
         case 'halt_completed':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because the run is already completed. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because the run is already completed. ${selectedRouteSummary}`;
         case 'halt_failed':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because the run has failed and requires review before any further action. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because the run has failed and requires review before any further action. ${selectedRouteSummary}`;
         case 'halt_cancelled':
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived because the run is cancelled. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived because the run is cancelled. ${selectedRouteSummary}`;
         default:
-            return `${basePolicySummary} ${recommendationVisibilitySummary} No specialist handoff target is derived for the current workflow state. ${selectedRouteSummary}`;
+            return `${basePolicySummary} ${recommendationVisibilitySummary} ${budgetSummary} No specialist handoff target is derived for the current workflow state. ${selectedRouteSummary}`;
     }
 }
 function deriveRouteSelection(input) {
@@ -477,6 +640,10 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
         ? normalizedDecision.next_step
         : null;
     const routeSelection = getOrchestratorRouteSelection(normalizedDecision);
+    const budgetProfile = deriveRoutingBudgetProfile({
+        taskCard,
+        decision: normalizedDecision,
+    });
     return {
         routing_summary: buildPolicyAwareRoutingSummary({
             run,
@@ -487,6 +654,13 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
             routeTargetStep,
             recommendedCategory,
             recommendedSkills,
+            workloadClass: budgetProfile.workloadClass,
+            pathWeight: budgetProfile.pathWeight,
+            executionPath: budgetProfile.executionPath,
+            modelTierBudget: budgetProfile.modelTierBudget,
+            reasoningEffortBudget: budgetProfile.reasoningEffortBudget,
+            reviewRequirement: budgetProfile.reviewRequirement,
+            budgetReason: budgetProfile.budgetReason,
         }),
         routing_trace: {
             specialist_routing_mode: policy.specialist_routing.mode,
@@ -498,6 +672,13 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
             selected_route_reason: routeSelection.reason,
             recommended_category: recommendedCategory,
             recommended_skills: recommendedSkills,
+            workload_class: budgetProfile.workloadClass,
+            path_weight: budgetProfile.pathWeight,
+            execution_path: budgetProfile.executionPath,
+            model_tier_budget: budgetProfile.modelTierBudget,
+            reasoning_effort_budget: budgetProfile.reasoningEffortBudget,
+            review_requirement: budgetProfile.reviewRequirement,
+            budget_reason: budgetProfile.budgetReason,
             advisory_only: routeSelection.route_id === 'explicit_fallback',
             execution_unchanged: routeSelection.route_id === 'explicit_fallback',
         },
