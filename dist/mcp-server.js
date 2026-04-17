@@ -1575,6 +1575,41 @@ function createCurrentTaskExecutionProof(input) {
                         : `planned specialist ${input.taskCard.assigned_agent_id ?? 'unassigned'} has no worker launch proof yet`,
     };
 }
+function createCurrentTaskSpecialistExecutionTruth(input) {
+    const specialistRole = input.taskCard.owner_role === 'verifier' ||
+        input.taskCard.assigned_agent_id === (0, runtime_1.getAgentIdForRole)('verifier')
+        ? 'verifier'
+        : input.taskCard.assigned_role ?? input.taskCard.owner_role;
+    const specialistAgentId = input.taskCard.assigned_agent_id ?? null;
+    const launchedWorkerId = input.ownershipChain?.launched_worker_id ?? input.concreteWorkerId ?? null;
+    const observedModel = input.actualModelLaunch?.observed_model ?? null;
+    const observedVariant = input.actualModelLaunch?.observed_variant ?? null;
+    const hasObservedEvidence = input.actualModelLaunch?.observation_status === 'observed' || input.ownershipChain?.observed_evidence_state === 'observed';
+    const state = input.executionProof.proof_state === 'host_session_fallback' || input.executionProof.proof_state === 'captain_read_only_fallback'
+        ? 'host_fallback'
+        : hasObservedEvidence
+            ? 'observed'
+            : input.executionOwner === 'foreman_worker' || input.ownershipChain?.state === 'launched' || input.ownershipChain?.state === 'review_linked'
+                ? 'launched'
+                : 'planned';
+    const observedSummary = hasObservedEvidence ? `${observedModel ?? 'unknown'} / ${observedVariant ?? 'unknown'}` : 'none';
+    return {
+        proof_state: input.executionProof.proof_state,
+        state,
+        owner: input.executionOwner,
+        visibility: input.ownershipGuard.verdict,
+        specialist_role: specialistRole,
+        specialist_agent_id: specialistAgentId,
+        launched_worker_id: launchedWorkerId,
+        configured_model: input.executionProof.model,
+        configured_variant: input.executionProof.variant,
+        observed_model: observedModel,
+        observed_variant: observedVariant,
+        summary: `${specialistAgentId ?? specialistRole} ${state}; proof=${input.executionProof.proof_state}; owner=${input.executionOwner}; visibility=${input.ownershipGuard.verdict}; ` +
+            `launched=${launchedWorkerId ?? 'none'}; configured=${input.executionProof.model ?? 'none'} / ${input.executionProof.variant ?? 'none'}; ` +
+            `observed=${observedSummary}`,
+    };
+}
 function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
         return false;
@@ -1646,6 +1681,15 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         readOnlyFallbackAllowed,
         hostExecutionEvidenceVisible,
     });
+    const specialistExecutionTruth = createCurrentTaskSpecialistExecutionTruth({
+        taskCard,
+        ownershipChain,
+        executionOwner,
+        executionProof,
+        ownershipGuard,
+        actualModelLaunch,
+        concreteWorkerId,
+    });
     const specialistContractSummary = createSpecialistContractSummary({
         taskCard,
         ownerRolePlaybook,
@@ -1676,6 +1720,7 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         specialist_contract_summary: specialistContractSummary,
         resolved_request_settings: resolvedRequestSettings,
         execution_proof: executionProof,
+        specialist_execution_truth: specialistExecutionTruth,
         ownership_chain: ownershipChain,
         execution_assignment_state: createCurrentTaskExecutionAssignmentState(taskCard, ownershipChain),
         execution_source: executionOwner === 'foreman_worker' ? 'foreman_worker' : 'codex_session',
@@ -3076,7 +3121,9 @@ function resolveOperatorDisplayProofState(currentTaskCard) {
     if (currentTaskCard === null) {
         return 'planned_assignment_only';
     }
-    return (currentTaskCard.execution_proof?.proof_state ?? 'planned_assignment_only');
+    return (currentTaskCard.specialist_execution_truth?.proof_state ??
+        currentTaskCard.execution_proof?.proof_state ??
+        'planned_assignment_only');
 }
 function resolveOperatorDisplayAgentName(currentTaskCard) {
     if (currentTaskCard === null) {
@@ -3154,6 +3201,12 @@ function describeCurrentTaskExecutionProof(currentTaskCard) {
         return 'none';
     }
     return currentTaskCard.execution_proof?.summary ?? 'none';
+}
+function describeCurrentTaskSpecialistExecutionTruth(currentTaskCard) {
+    if (currentTaskCard === null) {
+        return 'none';
+    }
+    return currentTaskCard.specialist_execution_truth?.summary ?? 'none';
 }
 function describeCurrentTaskOwnershipChain(currentTaskCard) {
     if (currentTaskCard === null) {
@@ -3237,7 +3290,8 @@ function createTaskOperatorVisibilitySummary(currentTaskCard) {
         : 'none';
     const contractSource = currentTaskCard.assigned_role_playbook?.contract_source ?? 'none';
     const contractState = currentTaskCard.assigned_role_playbook?.contract_validation_state ?? 'none';
-    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} contract_source=${contractSource} contract_state=${contractState} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    return `task_role=${role} task_kind=${taskKind} roster=${rosterName} request=${requestKind} model=${model} variant=${variant} dispatched_model=${dispatchedModel} dispatched_variant=${dispatchedVariant} model_state=${modelState} observed_model=${observedModel} observed_variant=${observedVariant} observation_state=${observationState} observation_match=${observationMatchState} observed_source=${observedSource} observed_confidence=${observedConfidence} observed_capability=${observedCapability} observation_unavailable=${observationUnavailable} observation_mismatch=${observationMismatch} evidence=${evidence} playbooks=${playbookBundle} wrapper=${wrapperDoc} result_contract=${resultContract} contract_source=${contractSource} contract_state=${contractState} config_drift=${configDriftState} config_drift_request=${configDriftRequest} config_drift_role=${configDriftRole} source=${source} execution_owner=${executionOwner} codex_ui_trace_owner=${codexUiTraceOwner} proof_state=${proofState} worker=${worker} sentinel=${guardVerdict} framing_target=${framingTarget}`;
 }
 function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, nextStep, loopState, runTruthSurface, workflowOperatorState) {
     const phase = workflowOperatorState?.phase ?? 'none';
@@ -3255,6 +3309,13 @@ function createCompactOperatorVisibilitySummary(currentTaskCard, runLifecycle, n
         `task_role=${resolveCurrentTaskRole(currentTaskCard)}`,
         `ownership=${resolveCurrentTaskExecutionOwner(currentTaskCard)}`,
         `trace_owner=${resolveCurrentTaskCodexUiTraceOwner(currentTaskCard)}`,
+        `truth_proof=${currentTaskCard?.specialist_execution_truth?.proof_state ?? resolveOperatorDisplayProofState(currentTaskCard)}`,
+        `truth_state=${currentTaskCard?.specialist_execution_truth?.state ?? 'none'}`,
+        `truth_owner=${currentTaskCard?.specialist_execution_truth?.owner ?? 'none'}`,
+        `truth_visibility=${currentTaskCard?.specialist_execution_truth?.visibility ?? 'none'}`,
+        `truth_launched=${currentTaskCard?.specialist_execution_truth?.launched_worker_id ?? 'none'}`,
+        `truth_observed_model=${currentTaskCard?.specialist_execution_truth?.observed_model ?? 'none'}`,
+        `truth_observed_variant=${currentTaskCard?.specialist_execution_truth?.observed_variant ?? 'none'}`,
         `config_drift=${currentTaskCard?.shared_config_drift?.state ?? 'none'}`,
         `model=${resolveCurrentTaskModel(currentTaskCard)}`,
         `variant=${resolveCurrentTaskVariant(currentTaskCard)}`,
@@ -3275,6 +3336,7 @@ function createQuietOperatorVisibilitySummary(currentTaskCard, runLifecycle, nex
         runLabel ? `Run: ${runLabel}` : null,
         createOperatorDisplayAgentLine(currentTaskCard),
         createOperatorDisplayModelLine(currentTaskCard),
+        `Truth: ${describeCurrentTaskSpecialistExecutionTruth(currentTaskCard)}`,
         `Lifecycle: ${describeRunLifecycle(runLifecycle)}`,
         `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `State: ${runTruthSurface ? `${runTruthSurface.boundary_state} / hold=${runTruthSurface.hold_state} / repair=${runTruthSurface.repair_state}` : 'none'}`,
@@ -3371,6 +3433,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, 
         createOperatorDisplayAgentLine(currentTaskCard),
         `Task: ${currentTaskCard?.title ?? 'none'}`,
         createOperatorDisplayModelLine(currentTaskCard),
+        `Truth: ${describeCurrentTaskSpecialistExecutionTruth(currentTaskCard)}`,
         latestAnswer,
         `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `State: ${runTruthSurface ? `${runTruthSurface.boundary_state} / next=${runTruthSurface.resume_action}` : 'none'}`,

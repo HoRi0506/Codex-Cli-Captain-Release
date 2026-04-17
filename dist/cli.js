@@ -809,8 +809,21 @@ function formatWatchRoutingSummary(status) {
     return `target=${targetRole} tier=${modelTier} route=${route} category=${category} skills=${compactWatchText(skills)} reason=${compactWatchRoutingReason(routingTrace?.selected_route_reason)}`;
 }
 function resolveWatchProofState(status) {
-    return (status.current_task_card?.execution_proof?.proof_state ??
-        'planned_assignment_only');
+    const specialistProofState = status.current_task_card?.specialist_execution_truth?.proof_state;
+    if (specialistProofState === 'foreman_worker_visible' ||
+        specialistProofState === 'captain_read_only_fallback' ||
+        specialistProofState === 'host_session_fallback' ||
+        specialistProofState === 'planned_assignment_only') {
+        return specialistProofState;
+    }
+    const executionProofState = status.current_task_card?.execution_proof?.proof_state;
+    if (executionProofState === 'foreman_worker_visible' ||
+        executionProofState === 'captain_read_only_fallback' ||
+        executionProofState === 'host_session_fallback' ||
+        executionProofState === 'planned_assignment_only') {
+        return executionProofState;
+    }
+    return 'planned_assignment_only';
 }
 function resolveWatchAgentAndRole(status) {
     const proofState = resolveWatchProofState(status);
@@ -875,6 +888,73 @@ function formatWatchModelLine(status) {
                 : 'assigned ';
     return `Model: ${prefix}${model} / ${variant}`;
 }
+function resolveWatchSpecialistTruth(status) {
+    const reportedTruth = status.current_task_card?.specialist_execution_truth;
+    const reportedTruthProofState = reportedTruth?.proof_state;
+    const proofState = reportedTruthProofState === 'foreman_worker_visible' ||
+        reportedTruthProofState === 'captain_read_only_fallback' ||
+        reportedTruthProofState === 'host_session_fallback' ||
+        reportedTruthProofState === 'planned_assignment_only'
+        ? reportedTruthProofState
+        : resolveWatchProofState(status);
+    if (reportedTruth) {
+        return {
+            proofState,
+            specialist: compactWatchText(reportedTruth.specialist_agent_id ?? reportedTruth.specialist_role),
+            state: reportedTruth.state,
+            owner: compactWatchText(reportedTruth.owner),
+            visibility: compactWatchText(reportedTruth.visibility),
+            launched: compactWatchText(reportedTruth.launched_worker_id),
+            observedModel: compactWatchText(reportedTruth.observed_model),
+            observedVariant: compactWatchText(reportedTruth.observed_variant),
+        };
+    }
+    const observationStatus = status.current_task_card?.observation_status ?? status.current_task_card?.actual_model_launch?.observation_status ?? 'not_started';
+    const fallbackState = proofState === 'host_session_fallback' || proofState === 'captain_read_only_fallback'
+        ? 'host_fallback'
+        : proofState === 'foreman_worker_visible' && observationStatus === 'observed'
+            ? 'observed'
+            : proofState === 'foreman_worker_visible'
+                ? 'launched'
+                : 'planned';
+    return {
+        proofState,
+        specialist: compactWatchText(status.current_task_card?.assigned_agent_id ??
+            status.current_task_card?.assigned_agent_config_summary?.roster_name ??
+            status.current_task_card?.assigned_role ??
+            status.active_agent_id),
+        state: fallbackState,
+        owner: compactWatchText(status.current_task_card?.execution_owner ?? 'host_session'),
+        visibility: compactWatchText(status.current_task_card?.ownership_guard?.verdict ?? 'ownership_unclear'),
+        launched: compactWatchText(status.current_task_card?.concrete_worker_id),
+        observedModel: compactWatchText(status.current_task_card?.observed_model ?? status.current_task_card?.actual_model_launch?.observed_model),
+        observedVariant: compactWatchText(status.current_task_card?.observed_variant ?? status.current_task_card?.actual_model_launch?.observed_variant),
+    };
+}
+function toWatchDisplayName(value) {
+    const normalized = value.replace(/[_-]+/g, ' ').trim();
+    if (normalized.length === 0 || normalized === 'none') {
+        return 'Specialist';
+    }
+    return normalized
+        .split(/\s+/)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(' ');
+}
+function describeWatchSpecialistProgress(truth) {
+    if (truth.proofState === 'foreman_worker_visible') {
+        return `Spawned ${toWatchDisplayName(truth.specialist)}`;
+    }
+    if (truth.proofState === 'planned_assignment_only') {
+        return 'Sent input';
+    }
+    return 'Waiting';
+}
+function formatWatchSpecialistTruthLine(status) {
+    const truth = resolveWatchSpecialistTruth(status);
+    const progress = describeWatchSpecialistProgress(truth);
+    return `Truth: ${truth.specialist} ${truth.state} [${progress}; proof=${truth.proofState}; visibility=${truth.visibility}]`;
+}
 function formatWatchLatestAnswerLine(status) {
     const trace = status.latest_entry_trace;
     if (!trace) {
@@ -900,6 +980,7 @@ function formatCompactWatchStatusLine(status) {
         formatWatchAgentLine(status),
         `Task: ${status.current_task_card?.title ?? 'none'}`,
         formatWatchModelLine(status),
+        formatWatchSpecialistTruthLine(status),
         formatWatchLatestAnswerLine(status),
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
     ]
@@ -910,6 +991,7 @@ function formatQuietWatchStatusLine(status) {
     return [
         formatWatchAgentLine(status),
         formatWatchModelLine(status),
+        formatWatchSpecialistTruthLine(status),
         formatWatchLatestAnswerLine(status),
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
@@ -965,6 +1047,7 @@ function formatWatchStatusLine(status, verbosity) {
     if (verbosity !== 'debug') {
         return formatCompactWatchStatusLine(status);
     }
+    const truth = resolveWatchSpecialistTruth(status);
     return [
         `Run ${status.run_id}`,
         `cwd=${quoteWatchText(status.cwd)}`,
@@ -985,6 +1068,14 @@ function formatWatchStatusLine(status, verbosity) {
         `task_source=${compactWatchText(status.current_task_card?.execution_source)}`,
         `task_execution_owner=${compactWatchText(status.current_task_card?.execution_owner)}`,
         `task_trace_owner=${compactWatchText(status.current_task_card?.codex_ui_trace_owner)}`,
+        `task_truth_proof_state=${truth.proofState}`,
+        `task_truth_state=${truth.state}`,
+        `task_truth_owner=${truth.owner}`,
+        `task_truth_visibility=${truth.visibility}`,
+        `task_truth_specialist=${truth.specialist}`,
+        `task_truth_launched=${truth.launched}`,
+        `task_truth_observed_model=${truth.observedModel}`,
+        `task_truth_observed_variant=${truth.observedVariant}`,
         `task_ownership_summary=${quoteWatchText(status.current_task_card?.ownership_summary)}`,
         `task_worker=${compactWatchText(status.current_task_card?.concrete_worker_id)}`,
         `task_config_drift_state=${compactWatchText(status.current_task_card?.shared_config_drift?.state)}`,
@@ -1092,6 +1183,7 @@ function createWatchSnapshot(status, activity) {
         },
     };
     const requestReport = resolveTaskCardRequestReporting(status);
+    const truth = resolveWatchSpecialistTruth(status);
     return {
         cwd: compactWatchText(status.cwd),
         status: compactWatchText(status.status),
@@ -1112,6 +1204,14 @@ function createWatchSnapshot(status, activity) {
         task_source: compactWatchText(status.current_task_card?.execution_source),
         task_execution_owner: compactWatchText(status.current_task_card?.execution_owner),
         task_trace_owner: compactWatchText(status.current_task_card?.codex_ui_trace_owner),
+        task_truth_proof_state: truth.proofState,
+        task_truth_state: truth.state,
+        task_truth_owner: truth.owner,
+        task_truth_visibility: truth.visibility,
+        task_truth_specialist: truth.specialist,
+        task_truth_launched: truth.launched,
+        task_truth_observed_model: truth.observedModel,
+        task_truth_observed_variant: truth.observedVariant,
         task_ownership_summary: compactWatchText(status.current_task_card?.ownership_summary),
         task_worker: compactWatchText(status.current_task_card?.concrete_worker_id),
         task_config_drift_state: compactWatchText(status.current_task_card?.shared_config_drift?.state),
