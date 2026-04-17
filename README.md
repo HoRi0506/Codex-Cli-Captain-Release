@@ -12,6 +12,7 @@ Use Codex-Foreman when you want one or more of these:
 
 - a captain-led intake before work begins
 - visible run, delegation, and fallback state
+- derived navigation bundles that captain, tactician, and scout can use as bounded read-first aids
 - role-shaped planning, exploration, implementation, or review
 - a bounded path that can stop, reroute, review, or continue instead of flattening everything into one response
 - clearer proof about whether work stayed local or used a configured specialist path
@@ -31,6 +32,7 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 - `captain` chooses the next bounded loop stage and path variant before specialist routing
 - Codex decides whether to answer locally or use a specialist role inside that bounded stage
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
+- when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged `$cap` work is `foreman_captain`
 - specialist results return through `captain`, which decides whether to continue, review, reroute, stop, or answer
 
@@ -72,6 +74,16 @@ Reach for Codex-Foreman when:
 - you want planning, exploration, implementation, and review to stay visible as one run
 - you care which role and model were selected
 - you want bounded fallback behavior instead of silent drift
+- you want bounded repo investigation to start from a cheap derived map instead of a full cold scan
+
+## Recommended MCPs
+
+- `context7` for current library and framework docs before planning or implementation
+- `filesystem` for bounded repository inspection when the client exposes filesystem MCP tools
+- `git` for provenance, diffs, branch state, and regression-oriented history checks
+- `fetch` for authoritative remote artifacts or docs during release and install work
+
+These remain companion surfaces, not hidden Foreman workers.
 
 ## Packaged Harness Surface
 
@@ -90,7 +102,7 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.14/codex-foreman-1.5.14.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.15/codex-foreman-1.5.15.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 ## What To Expect
@@ -98,9 +110,11 @@ Install codex-foreman on this machine from the GitHub release tarball https://gi
 - a more structured entry path for requests that need orchestration
 - visible run state instead of one opaque turn of work
 - a captain-led loop that can hand work off and bring it back
+- derived navigation bundles that captain, tactician, and scout can use as bounded read-first aids
 - visible loop stage and path variant on status surfaces
 - an active run truth surface that shows owner, selected specialist, boundary state, and resume action at a glance
 - explicit specialist protocol contracts that can surface degraded validation state
+- compact role framing so navigation and contract guidance stay bounded instead of bloating specialist prompts
 - room for planning and review before the final answer is synthesized
 - a clearer internal/public boundary for how the harness is meant to be used
 

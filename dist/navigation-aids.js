@@ -3,8 +3,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.resolveNavigationBundleHint = resolveNavigationBundleHint;
 exports.generateNavigationBundle = generateNavigationBundle;
 exports.validateNavigationBundle = validateNavigationBundle;
+const node_fs_1 = require("node:fs");
 const promises_1 = require("node:fs/promises");
 const node_path_1 = __importDefault(require("node:path"));
 const SUPPORTED_SOURCE_EXTENSIONS = new Set([
@@ -28,6 +30,18 @@ const EXCLUDED_DIRECTORY_NAMES = new Set([
     '.turbo',
 ]);
 const NAVIGATION_DIRECTORY_NAME = 'navigation';
+function pathExistsSync(targetPath) {
+    try {
+        (0, node_fs_1.statSync)(targetPath);
+        return true;
+    }
+    catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'ENOENT') {
+            return false;
+        }
+        throw error;
+    }
+}
 function createDefaultOutputDir(cwd, relativeTargetDir) {
     const slug = relativeTargetDir.replace(/[\\/]+/g, '__').replace(/[^A-Za-z0-9._-]/g, '_') || 'root';
     return node_path_1.default.join(cwd, '.foreman', NAVIGATION_DIRECTORY_NAME, slug);
@@ -81,6 +95,38 @@ async function collectSourceFiles(targetDir) {
         }
     }
     await visitDirectory(targetDir);
+    return collected;
+}
+function collectSourceFilesSync(targetDir) {
+    const collected = [];
+    function visitDirectory(directoryPath) {
+        const entries = (0, node_fs_1.readdirSync)(directoryPath, { withFileTypes: true });
+        for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name))) {
+            const absolutePath = node_path_1.default.join(directoryPath, entry.name);
+            if (entry.isDirectory()) {
+                if (!EXCLUDED_DIRECTORY_NAMES.has(entry.name)) {
+                    visitDirectory(absolutePath);
+                }
+                continue;
+            }
+            if (!entry.isFile()) {
+                continue;
+            }
+            const extension = node_path_1.default.extname(entry.name);
+            if (!SUPPORTED_SOURCE_EXTENSIONS.has(extension)) {
+                continue;
+            }
+            const fileStat = (0, node_fs_1.statSync)(absolutePath);
+            collected.push({
+                absolutePath,
+                relativePath: toPosixRelativePath(targetDir, absolutePath),
+                extension,
+                content: (0, node_fs_1.readFileSync)(absolutePath, 'utf8'),
+                updatedAt: fileStat.mtime.toISOString(),
+            });
+        }
+    }
+    visitDirectory(targetDir);
     return collected;
 }
 function listDirectoryNodes(relativeFilePaths) {
@@ -347,6 +393,123 @@ function compareSourceFilesAgainstMetadata(files, metadata) {
         staleReason: null,
         sourceLatestMtime: currentLatestMtime,
     };
+}
+function compareSourceFilesAgainstMetadataSync(files, metadata) {
+    const currentEntries = files
+        .map((file) => ({ relative_path: file.relativePath, updated_at: file.updatedAt }))
+        .sort((left, right) => left.relative_path.localeCompare(right.relative_path));
+    const storedEntries = [...metadata.source_files].sort((left, right) => left.relative_path.localeCompare(right.relative_path));
+    const currentLatestMtime = currentEntries.reduce((latest, entry) => (latest === null || entry.updated_at > latest ? entry.updated_at : latest), null);
+    if (currentEntries.length !== storedEntries.length) {
+        return {
+            stale: true,
+            staleReason: 'file set changed since the last navigation generation pass',
+            sourceLatestMtime: currentLatestMtime,
+        };
+    }
+    for (let index = 0; index < currentEntries.length; index += 1) {
+        const currentEntry = currentEntries[index];
+        const storedEntry = storedEntries[index];
+        if (!currentEntry || !storedEntry) {
+            continue;
+        }
+        if (currentEntry.relative_path !== storedEntry.relative_path || currentEntry.updated_at !== storedEntry.updated_at) {
+            return {
+                stale: true,
+                staleReason: 'source timestamps or relative paths changed since the last navigation generation pass',
+                sourceLatestMtime: currentLatestMtime,
+            };
+        }
+    }
+    return {
+        stale: false,
+        staleReason: null,
+        sourceLatestMtime: currentLatestMtime,
+    };
+}
+function sanitizeTaskToken(token) {
+    return token.replace(/^[`"'([{<]+/u, '').replace(/[`"',.;:)\]}>]+$/u, '').trim();
+}
+function addCandidateDirectoryAndAncestors(cwd, absoluteDirectoryPath, candidates) {
+    const absoluteCwd = node_path_1.default.resolve(cwd);
+    let current = node_path_1.default.resolve(absoluteDirectoryPath);
+    while (true) {
+        const relative = node_path_1.default.relative(absoluteCwd, current);
+        if (relative.startsWith('..') || node_path_1.default.isAbsolute(relative)) {
+            return;
+        }
+        candidates.add(relative.length === 0 ? '.' : relative.split(node_path_1.default.sep).join('/'));
+        if (current === absoluteCwd) {
+            return;
+        }
+        const parent = node_path_1.default.dirname(current);
+        if (parent === current) {
+            return;
+        }
+        current = parent;
+    }
+}
+function collectNavigationCandidateDirectories(cwd, taskTexts) {
+    const absoluteCwd = node_path_1.default.resolve(cwd);
+    const candidates = new Set();
+    for (const taskText of taskTexts) {
+        for (const rawToken of taskText.split(/\s+/u)) {
+            const token = sanitizeTaskToken(rawToken);
+            if (token.length === 0 || token.length > 180) {
+                continue;
+            }
+            const absoluteCandidatePath = node_path_1.default.resolve(absoluteCwd, token);
+            const relativeCandidatePath = node_path_1.default.relative(absoluteCwd, absoluteCandidatePath);
+            if (relativeCandidatePath.startsWith('..') || node_path_1.default.isAbsolute(relativeCandidatePath) || !pathExistsSync(absoluteCandidatePath)) {
+                continue;
+            }
+            const candidateStat = (0, node_fs_1.statSync)(absoluteCandidatePath);
+            const directoryPath = candidateStat.isDirectory() ? absoluteCandidatePath : node_path_1.default.dirname(absoluteCandidatePath);
+            addCandidateDirectoryAndAncestors(absoluteCwd, directoryPath, candidates);
+        }
+    }
+    return [...candidates].sort((left, right) => {
+        const depthDelta = right.split('/').length - left.split('/').length;
+        return depthDelta !== 0 ? depthDelta : left.localeCompare(right);
+    });
+}
+function resolveNavigationBundleHint(input) {
+    const absoluteCwd = node_path_1.default.resolve(input.cwd);
+    const candidateDirectories = collectNavigationCandidateDirectories(absoluteCwd, input.taskTexts);
+    for (const relativeTargetDir of candidateDirectories) {
+        const outputDir = createDefaultOutputDir(absoluteCwd, relativeTargetDir);
+        const metadataPath = node_path_1.default.join(outputDir, 'navigation-bundle.json');
+        const readmePath = node_path_1.default.join(outputDir, 'README.md');
+        if (!pathExistsSync(metadataPath) || !pathExistsSync(readmePath)) {
+            continue;
+        }
+        const absoluteTargetDir = node_path_1.default.resolve(absoluteCwd, relativeTargetDir);
+        if (!pathExistsSync(absoluteTargetDir)) {
+            continue;
+        }
+        const metadata = JSON.parse((0, node_fs_1.readFileSync)(metadataPath, 'utf8'));
+        const comparison = compareSourceFilesAgainstMetadataSync(collectSourceFilesSync(absoluteTargetDir), metadata);
+        const artifactConfidences = [...new Set(metadata.artifacts.map((artifact) => artifact.confidence))];
+        const bundleConfidence = comparison.stale ? 'stale' : 'exact';
+        const outputRelativePath = toPosixRelativePath(absoluteCwd, outputDir);
+        const readmeRelativePath = toPosixRelativePath(absoluteCwd, readmePath);
+        return {
+            relative_target_dir: relativeTargetDir,
+            output_dir: outputDir,
+            output_relative_path: outputRelativePath,
+            readme_path: readmePath,
+            readme_relative_path: readmeRelativePath,
+            metadata_path: metadataPath,
+            bundle_confidence: bundleConfidence,
+            artifact_confidences: artifactConfidences,
+            stale: comparison.stale,
+            stale_reason: comparison.staleReason,
+            summary: comparison.stale
+                ? `Navigation bundle ${readmeRelativePath} is stale for ${relativeTargetDir}: ${comparison.staleReason}.`
+                : `Navigation bundle ${readmeRelativePath} is available for ${relativeTargetDir} with artifact confidences ${artifactConfidences.join('/')}.`,
+        };
+    }
+    return null;
 }
 function buildBundleReadme(input) {
     return [

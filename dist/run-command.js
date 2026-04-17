@@ -63,6 +63,7 @@ const run_lifecycle_1 = require("./run-lifecycle");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
 const helper_agents_1 = require("./helper-agents");
+const navigation_aids_1 = require("./navigation-aids");
 const validation_1 = require("./validation");
 const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
@@ -1202,12 +1203,12 @@ function determineSynthesisAllowedActions(input) {
     }
     return [];
 }
-function buildExpectedExecutionRequest(orchestratorState, taskCard) {
+function buildExpectedExecutionRequest(cwd, orchestratorState, taskCard) {
     if (taskCard.owner_role === 'verifier') {
         return orchestratorState.execution_request;
     }
     const requestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-    return buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), requestSettings.profile, requestSettings.configEntries);
+    return buildExecutionRequest(buildTaskExecutionPrompt(cwd, taskCard), requestSettings.profile, requestSettings.configEntries);
 }
 function buildExpectedVerificationRequest(run, taskCard, orchestratorState) {
     if (!orchestratorState.verification_request) {
@@ -1215,14 +1216,31 @@ function buildExpectedVerificationRequest(run, taskCard, orchestratorState) {
     }
     return buildVerificationRequest(run, taskCard, orchestratorState.verification_request.profile, orchestratorState.verification_request.config_entries);
 }
-function syncOrchestratorStateRequests(orchestratorState, run, taskCard) {
+function syncOrchestratorStateRequests(orchestratorState, cwd, run, taskCard) {
     const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
     orchestratorState.task_card_id = taskCard.task_card_id;
-    orchestratorState.execution_request = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
+    orchestratorState.execution_request = buildExecutionRequest(buildTaskExecutionPrompt(cwd, taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
     if (!orchestratorState.verification_request) {
         return;
     }
     orchestratorState.verification_request = buildVerificationRequest(run, taskCard, orchestratorState.verification_request.profile, orchestratorState.verification_request.config_entries);
+}
+function shouldUseNavigationHintForTask(taskCard) {
+    return taskCard.task_kind === 'explore' || taskCard.task_kind === 'plan';
+}
+function resolveTaskNavigationHint(cwd, taskCard) {
+    if (!shouldUseNavigationHintForTask(taskCard)) {
+        return null;
+    }
+    return (0, navigation_aids_1.resolveNavigationBundleHint)({
+        cwd,
+        taskTexts: [taskCard.title, taskCard.scope, taskCard.acceptance, taskCard.execution_prompt],
+    });
+}
+function buildTaskExecutionPrompt(cwd, taskCard) {
+    return (0, helper_agents_1.buildFramedTaskPrompt)(taskCard, {
+        navigationHint: resolveTaskNavigationHint(cwd, taskCard),
+    });
 }
 function roleConfigSnapshotsMatch(left, right) {
     return (left.role === right.role &&
@@ -1253,7 +1271,7 @@ async function rebindExecutionConfigDriftAtSafeBoundary(input) {
     input.taskCard.model_tier_intent = (0, runtime_1.deriveTaskModelTierIntent)(currentSnapshot);
     input.taskCard.updated_at = (0, runtime_1.nowTimestamp)();
     input.run.updated_at = input.taskCard.updated_at;
-    syncOrchestratorStateRequests(input.orchestratorState, input.run, input.taskCard);
+    syncOrchestratorStateRequests(input.orchestratorState, input.cwd, input.run, input.taskCard);
 }
 async function rebindVerificationConfigDriftAtSafeBoundary(input) {
     if (!input.decision.can_advance ||
@@ -2142,7 +2160,7 @@ function createQueuedPrimaryExecutionDelegation(input) {
             delegation_id: input.delegationId,
             child_agent_id: childAgentId ?? input.taskCard.task_card_id,
         },
-        worker_request: createExecutionDelegationWorkerRequest(input.taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.taskCard)),
+        worker_request: createExecutionDelegationWorkerRequest(input.taskCard, buildTaskExecutionPrompt(input.cwd, input.taskCard)),
         worker_role_config_snapshot: input.taskCard.role_config_snapshot,
         worker_launch_evidence: null,
         worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
@@ -2185,7 +2203,7 @@ function createQueuedGraphChildDelegation(input) {
             delegation_id: input.delegationId,
             child_agent_id: childAgentId,
         },
-        worker_request: createExecutionDelegationWorkerRequest(input.sourceTaskCard, (0, helper_agents_1.buildFramedTaskPrompt)(input.sourceTaskCard)),
+        worker_request: createExecutionDelegationWorkerRequest(input.sourceTaskCard, buildTaskExecutionPrompt(input.cwd, input.sourceTaskCard)),
         worker_role_config_snapshot: input.sourceTaskCard.role_config_snapshot,
         worker_launch_evidence: null,
         worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
@@ -2304,6 +2322,7 @@ async function seedPrimaryExecutionDelegationIfEligible(input) {
         return [];
     }
     const delegation = createQueuedPrimaryExecutionDelegation({
+        cwd: input.cwd,
         delegationId: await (0, runtime_1.allocateDelegationId)(input.runPaths),
         run: input.run,
         taskCard: input.taskCard,
@@ -2544,7 +2563,7 @@ async function performExplicitDelegationFanIn(runPaths, run, taskCards, taskCard
     await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
     return verificationHandoff;
 }
-async function performExplicitVerificationReviewFanIn(runPaths, run, taskCards, taskCard, latestHandoff) {
+async function performExplicitVerificationReviewFanIn(cwd, runPaths, run, taskCards, taskCard, latestHandoff) {
     const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
     const reviewDelegationSummary = (0, runtime_1.summarizeTaskDelegations)(taskCard.task_card_id, reviewDelegations);
     if (reviewDelegationSummary.total === 0 ||
@@ -2564,7 +2583,7 @@ async function performExplicitVerificationReviewFanIn(runPaths, run, taskCards, 
             clearVerificationRequest: true,
         };
     }
-    const resolution = await applyVerificationOutcome(runPaths, run, taskCards, taskCard, latestHandoff, aggregatedOutcome);
+    const resolution = await applyVerificationOutcome(cwd, runPaths, run, taskCards, taskCard, latestHandoff, aggregatedOutcome);
     return {
         activeTaskCard: resolution.activeTaskCard,
         latestPersistedHandoff: resolution.latestPersistedHandoff,
@@ -2587,7 +2606,7 @@ function buildRepairDelegationSummary(taskCard, outcome) {
 function buildCancelledRepairDelegationSummary(taskCard) {
     return `Delegated repair follow-up was cancelled for task "${taskCard.title}" after operator chose replan.`;
 }
-async function syncDelegatedVerificationRepairArtifacts(runPaths, run, taskCard, outcome) {
+async function syncDelegatedVerificationRepairArtifacts(cwd, runPaths, run, taskCard, outcome) {
     if (outcome.outcome === 'passed') {
         return;
     }
@@ -2637,7 +2656,7 @@ async function syncDelegatedVerificationRepairArtifacts(runPaths, run, taskCard,
             delegation_id: repairDelegationId,
         },
         worker_request: sourceDelegation.worker_request ??
-            createExecutionDelegationWorkerRequest(taskCard, (0, helper_agents_1.buildFramedTaskPrompt)(taskCard)),
+            createExecutionDelegationWorkerRequest(taskCard, buildTaskExecutionPrompt(cwd, taskCard)),
         worker_launch_evidence: null,
         worker_lifecycle: (0, runtime_1.createDelegationWorkerLifecycleRecord)({
             createdAt: timestamp,
@@ -3428,7 +3447,7 @@ async function executeAdvisorCodex(options, advisorPrompt, advisorSettings) {
         summary: 'Advisor output validated successfully.',
     };
 }
-async function applyVerificationOutcome(runPaths, run, taskCards, taskCard, latestHandoff, outcome) {
+async function applyVerificationOutcome(cwd, runPaths, run, taskCards, taskCard, latestHandoff, outcome) {
     let activeTaskCard = taskCard;
     let latestPersistedHandoff = latestHandoff;
     if (outcome.outcome === 'passed') {
@@ -3449,6 +3468,7 @@ async function applyVerificationOutcome(runPaths, run, taskCards, taskCard, late
             let childIndex = 1;
             for (const sourceTaskCard of parallelFanInLaunch.sourceTaskCards) {
                 const delegation = createQueuedGraphChildDelegation({
+                    cwd,
                     delegationId: await (0, runtime_1.allocateDelegationId)(runPaths),
                     run,
                     fanInTaskCard: parallelFanInLaunch.fanInTaskCard,
@@ -3479,7 +3499,7 @@ async function applyVerificationOutcome(runPaths, run, taskCards, taskCard, late
         }
     }
     (0, runtime_1.applyVerificationResolution)(run, taskCard, outcome);
-    await syncDelegatedVerificationRepairArtifacts(runPaths, run, taskCard, outcome);
+    await syncDelegatedVerificationRepairArtifacts(cwd, runPaths, run, taskCard, outcome);
     return { activeTaskCard, latestPersistedHandoff };
 }
 async function planForemanRun(options) {
@@ -3566,7 +3586,7 @@ async function planForemanRun(options) {
         run.task_card_ids = taskCards.map((plannedTaskCard) => plannedTaskCard.task_card_id);
         (0, runtime_1.activatePlannedTask)(run, taskCard, handoff);
         const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-        const executionRequest = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
+        const executionRequest = buildExecutionRequest(buildTaskExecutionPrompt(options.cwd, taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
         const verificationRequest = buildVerificationRequest(run, taskCard, verificationSettings.profile, verificationSettings.config_entries);
         const decision = (0, orchestrator_1.decideOrchestratorNextStep)(run, taskCard, { verificationRequestAvailable: true });
         const orchestratorState = (0, runtime_1.createOrchestratorState)({
@@ -3702,7 +3722,7 @@ async function startForemanRun(options) {
     });
     (0, runtime_1.applyInitialTaskHandoff)(run, taskCard, initialHandoff);
     const executionRequestSettings = createRequestSettingsFromTaskRoleConfigSnapshot(taskCard);
-    const executionRequest = buildExecutionRequest((0, helper_agents_1.buildFramedTaskPrompt)(taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
+    const executionRequest = buildExecutionRequest(buildTaskExecutionPrompt(options.cwd, taskCard), executionRequestSettings.profile, executionRequestSettings.configEntries);
     const verificationRequest = buildVerificationRequest(run, taskCard, verificationSettings.profile, verificationSettings.config_entries);
     const initialDecision = (0, orchestrator_1.decideOrchestratorNextStep)(run, taskCard, { verificationRequestAvailable: true });
     const orchestratorState = (0, runtime_1.createOrchestratorState)({
@@ -3953,7 +3973,7 @@ async function advanceForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: decision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
@@ -3988,13 +4008,13 @@ async function advanceForemanRun(options) {
     }
     if (decision.next_step === 'await_fan_in' && decision.can_advance) {
         if (run.stage === 'verification' && taskCard.owner_role === 'verifier') {
-            const reviewFanIn = await performExplicitVerificationReviewFanIn(runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff);
+            const reviewFanIn = await performExplicitVerificationReviewFanIn(options.cwd, runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff);
             activeTaskCard = reviewFanIn.activeTaskCard;
             currentLatestHandoff = reviewFanIn.latestPersistedHandoff;
             if (reviewFanIn.clearVerificationRequest) {
                 orchestratorState.verification_request = null;
             }
-            syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
+            syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
         }
         else {
             currentLatestHandoff = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
@@ -4065,6 +4085,7 @@ async function advanceForemanRun(options) {
         });
     }
     const seededPrimaryExecutionDelegations = await seedPrimaryExecutionDelegationIfEligible({
+        cwd: options.cwd,
         runPaths,
         run,
         taskCard,
@@ -4446,7 +4467,7 @@ async function adviseForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: currentDecision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     if (allowedActions.length === 0) {
@@ -4481,7 +4502,7 @@ async function retryForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: currentDecision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     assertRepairDecisionAllowed(orchestratorState.current_decision, 'retry');
@@ -4495,7 +4516,7 @@ async function retryForemanRun(options) {
     });
     taskCard.review_pass_count += 1;
     (0, runtime_1.reactivateBlockedTask)(run, taskCard, retryHandoff);
-    syncOrchestratorStateRequests(orchestratorState, run, taskCard);
+    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, taskCard);
     const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, nextDecision);
     await (0, runtime_1.persistHandoffRecord)(runPaths, retryHandoff);
@@ -4539,7 +4560,7 @@ async function replanForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: currentDecision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     assertRepairDecisionAllowed(orchestratorState.current_decision, 'replan');
@@ -4586,7 +4607,7 @@ async function replanForemanRun(options) {
         hydratedTaskCards.push(...replannedTaskCards);
         run.task_card_ids = [...run.task_card_ids, ...replannedTaskCards.map((plannedTaskCard) => plannedTaskCard.task_card_id)];
         (0, runtime_1.activatePlannedTask)(run, nextTaskCard, plannerHandoff);
-        syncOrchestratorStateRequests(orchestratorState, run, nextTaskCard);
+        syncOrchestratorStateRequests(orchestratorState, options.cwd, run, nextTaskCard);
         const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, nextTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
         (0, runtime_1.setOrchestratorDecision)(orchestratorState, nextDecision);
         await (0, runtime_1.persistPlanningArtifact)(plannerAttemptPaths, plannerOutcome.planning);
@@ -4691,15 +4712,15 @@ async function resolveForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: currentDecision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     assertManualVerificationResolutionAllowed(currentDecision, run, taskCard);
-    const { activeTaskCard, latestPersistedHandoff } = await applyVerificationOutcome(runPaths, run, taskCards, taskCard, latestHandoff, {
+    const { activeTaskCard, latestPersistedHandoff } = await applyVerificationOutcome(options.cwd, runPaths, run, taskCards, taskCard, latestHandoff, {
         outcome: options.outcome,
         summary: options.summary,
     });
-    syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
+    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
     const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, nextDecision);
     await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
@@ -4747,7 +4768,7 @@ async function verifyForemanRun(options) {
         taskCard,
         orchestratorState,
         expectedDecision: decision,
-        expectedExecutionRequest: buildExpectedExecutionRequest(orchestratorState, taskCard),
+        expectedExecutionRequest: buildExpectedExecutionRequest(options.cwd, orchestratorState, taskCard),
         expectedVerificationRequest: buildExpectedVerificationRequest(run, taskCard, orchestratorState),
     });
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
@@ -4794,10 +4815,10 @@ async function verifyForemanRun(options) {
         });
         currentLatestHandoff = reviewerReturnHandoff;
         await (0, runtime_1.persistHandoffRecord)(runPaths, reviewerReturnHandoff);
-        const resolution = await applyVerificationOutcome(runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, aggregatedOutcome);
+        const resolution = await applyVerificationOutcome(options.cwd, runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, aggregatedOutcome);
         activeTaskCard = resolution.activeTaskCard;
         currentLatestHandoff = resolution.latestPersistedHandoff;
-        syncOrchestratorStateRequests(orchestratorState, run, activeTaskCard);
+        syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
     }
     else {
         const hasCancelledReviewer = reviewDelegations.some((delegation) => delegation.child_agent.status === 'cancelled');

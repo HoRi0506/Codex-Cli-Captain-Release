@@ -631,6 +631,7 @@ const FRAMING_SEED_MAX_CHARS = 180;
 const FRAMING_FOCUS_MAX_CHARS = 180;
 const FRAMING_SCOPE_MAX_CHARS = 220;
 const FRAMING_ACCEPTANCE_MAX_CHARS = 220;
+const FRAMING_NAVIGATION_MAX_CHARS = 260;
 function compactPromptField(value, maxChars) {
     const normalized = value.replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxChars) {
@@ -638,21 +639,26 @@ function compactPromptField(value, maxChars) {
     }
     return `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
 }
-function createTaskAssignmentFraming(taskCard) {
+function createTaskAssignmentFraming(taskCard, options) {
     const { source } = loadCatalog();
     const { contracts } = loadSpecialistContracts();
     const targetAgentId = deriveTargetAgentId(taskCard);
     const specialistEntry = getCatalogEntryForAgent(targetAgentId, taskCard.assigned_role);
     const specialistContract = isSpecialistRole(taskCard.assigned_role) ? contracts[taskCard.assigned_role] : null;
     const framerEntry = getHelperEntry('framer');
+    const navigationHint = options?.navigationHint ?? null;
     const focus = deriveTaskFocus(taskCard);
     const strengths = specialistEntry.strengths.slice(0, 2).join(' and ');
+    const navigationLine = navigationHint === null
+        ? null
+        : `Navigation aid: ${compactPromptField(`${navigationHint.readme_relative_path} for ${navigationHint.relative_target_dir} (bundle=${navigationHint.bundle_confidence}; artifacts=${navigationHint.artifact_confidences.join('/')}${navigationHint.stale_reason ? `; stale_reason=${navigationHint.stale_reason}` : ''}). Use only as a non-canonical starting index.`, FRAMING_NAVIGATION_MAX_CHARS)}`;
     const promptPrefix = [
         `Role: ${targetAgentId ?? taskCard.assigned_role} (${taskCard.assigned_role}).`,
         `Mode: ${compactPromptField(specialistEntry.framing_seed, FRAMING_SEED_MAX_CHARS)}`,
         `Focus: ${compactPromptField(focus, FRAMING_FOCUS_MAX_CHARS)}`,
         `Scope: ${compactPromptField(taskCard.scope, FRAMING_SCOPE_MAX_CHARS)}`,
         `Acceptance: ${compactPromptField(taskCard.acceptance, FRAMING_ACCEPTANCE_MAX_CHARS)}`,
+        ...(navigationLine ? [navigationLine] : []),
         `Return fields: ${specialistContract?.output_contract.required_fields.join(', ') ?? 'summary'}`,
         `Acceptance status: ${specialistContract?.output_contract.acceptance_status_values.join(', ') ?? 'n/a'}`,
     ].join('\n');
@@ -663,12 +669,13 @@ function createTaskAssignmentFraming(taskCard) {
         catalog_source: source,
         target_role: taskCard.assigned_role,
         target_agent_id: targetAgentId,
-        summary: `Framer helper projection emphasizes ${strengths} for ${targetAgentId ?? taskCard.assigned_role} on "${taskCard.title}".`,
+        navigation_hint: navigationHint,
+        summary: `Framer helper projection emphasizes ${strengths} for ${targetAgentId ?? taskCard.assigned_role} on "${taskCard.title}".${navigationHint ? ` Navigation aid available for ${navigationHint.relative_target_dir}.` : ''}`,
         prompt_prefix: promptPrefix,
     };
 }
-function buildFramedTaskPrompt(taskCard) {
-    const framing = createTaskAssignmentFraming(taskCard);
+function buildFramedTaskPrompt(taskCard, options) {
+    const framing = createTaskAssignmentFraming(taskCard, options);
     return `${framing.prompt_prefix}\n\n${taskCard.execution_prompt}`;
 }
 function createTaskOwnershipGuard(input) {

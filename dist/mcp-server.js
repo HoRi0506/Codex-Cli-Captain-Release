@@ -26,6 +26,7 @@ const canonical_loop_1 = require("./canonical-loop");
 const constants_1 = require("./constants");
 const entry_policy_1 = require("./entry-policy");
 const helper_agents_1 = require("./helper-agents");
+const navigation_aids_1 = require("./navigation-aids");
 const package_metadata_1 = require("./package-metadata");
 const orchestration_loop_1 = require("./orchestration-loop");
 const run_lifecycle_1 = require("./run-lifecycle");
@@ -1582,7 +1583,7 @@ function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     }
     return taskCard.owner_role === 'orchestrator' && taskCard.model_tier_intent === 'low_cost';
 }
-function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
+function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
     const taskLinkedDelegations = taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id);
     const activeDelegation = taskLinkedDelegations.find((delegation) => (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
     const latestTaskDelegation = taskLinkedDelegations
@@ -1595,6 +1596,12 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
     const ownerRolePlaybook = createRolePlaybookContractView(taskCard.owner_role, ownerAgentConfigSummary, taskCard.assigned_agent_id);
     const assignedRolePlaybook = createRolePlaybookContractView(taskCard.assigned_role ?? taskCard.owner_role, assignedAgentConfigSummary, taskCard.assigned_agent_id);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
+    const taskNavigationHint = taskCard.task_kind === 'explore' || taskCard.task_kind === 'plan'
+        ? (0, navigation_aids_1.resolveNavigationBundleHint)({
+            cwd,
+            taskTexts: [taskCard.title, taskCard.scope, taskCard.acceptance, taskCard.execution_prompt],
+        })
+        : null;
     const assignmentFraming = (0, helper_agents_1.createTaskAssignmentFraming)(taskCard.owner_role === 'verifier'
         ? {
             assigned_role: 'verifier',
@@ -1604,7 +1611,9 @@ function createCurrentTaskCardView(run, taskCard, decision, orchestratorState, m
             scope: taskCard.scope,
             acceptance: taskCard.acceptance,
         }
-        : taskCard);
+        : taskCard, {
+        navigationHint: taskNavigationHint,
+    });
     const ownershipChain = (0, helper_agents_1.createTaskOwnershipChain)({
         taskCard,
         taskDelegations,
@@ -2160,7 +2169,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
         (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
-    const currentTaskCard = createCurrentTaskCardView(run, taskCard, visibility.orchestrator, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig);
+    const currentTaskCard = createCurrentTaskCardView(cwd, run, taskCard, visibility.orchestrator, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig);
     const orchestrationPolicy = orchestratorState.orchestration_policy;
     const mutationGuardrailsMetadata = (0, orchestrator_1.derivePolicyAwareMutationGuardrailsMetadata)(orchestrationPolicy, visibility.orchestrator);
     const routingMetadata = (0, orchestrator_1.derivePolicyAwareRoutingMetadata)(run, taskCard, orchestrationPolicy, visibility.orchestrator);
