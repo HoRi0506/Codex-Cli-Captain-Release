@@ -90,7 +90,7 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.13/codex-foreman-1.5.13.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.14/codex-foreman-1.5.14.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 ## What To Expect
@@ -99,6 +99,7 @@ Install codex-foreman on this machine from the GitHub release tarball https://gi
 - visible run state instead of one opaque turn of work
 - a captain-led loop that can hand work off and bring it back
 - visible loop stage and path variant on status surfaces
+- an active run truth surface that shows owner, selected specialist, boundary state, and resume action at a glance
 - explicit specialist protocol contracts that can surface degraded validation state
 - room for planning and review before the final answer is synthesized
 - a clearer internal/public boundary for how the harness is meant to be used

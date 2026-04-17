@@ -243,6 +243,7 @@ ${codexPrompt}
 - visible run state instead of one opaque turn of work
 - a captain-led loop that can hand work off and bring it back
 - visible loop stage and path variant on status surfaces
+- an active run truth surface that shows owner, selected specialist, boundary state, and resume action at a glance
 - explicit specialist protocol contracts that can surface degraded validation state
 - room for planning and review before the final answer is synthesized
 - a clearer internal/public boundary for how the harness is meant to be used
