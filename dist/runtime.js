@@ -2189,6 +2189,7 @@ function createLegacyCompatibleAttemptRoutingMetadata(nextStep) {
                                 : nextStep === 'halt_failed'
                                     ? `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the run has failed and requires review before any further action. ${selectedRouteSummary}`
                                     : `${routingPrefix} ${neutralRecommendationSummary} ${budgetSummary} No specialist handoff target is derived because the run is cancelled. ${selectedRouteSummary}`;
+    const routeTargetRosterName = routeTargetRole === 'code specialist' ? 'raider' : routeTargetRole === 'verifier' ? 'arbiter' : null;
     return {
         routing_summary: routingSummary,
         routing_trace: {
@@ -2196,6 +2197,7 @@ function createLegacyCompatibleAttemptRoutingMetadata(nextStep) {
             route_preference: defaultPolicy.specialist_routing.route_preference,
             parallelism_mode: defaultPolicy.parallelism.mode,
             route_target_role: routeTargetRole,
+            route_target_roster_name: routeTargetRosterName,
             route_target_step: routeTargetStep,
             selected_route: routeSelection.route_id,
             selected_route_reason: routeSelection.reason,
@@ -2229,9 +2231,21 @@ function normalizeLoadedOrchestrationAttemptRoutingTrace(candidate) {
         candidate.route_target_step === null
         ? candidate.route_target_step
         : null;
+    const routeTargetRosterName = routeTargetRole === 'planner'
+        ? 'tactician'
+        : routeTargetRole === 'explorer'
+            ? 'scout'
+            : routeTargetRole === 'code specialist'
+                ? 'raider'
+                : routeTargetRole === 'verifier'
+                    ? 'arbiter'
+                    : null;
     return {
         ...candidate,
         route_target_role: routeTargetRole,
+        route_target_roster_name: typeof candidate.route_target_roster_name === 'string' || candidate.route_target_roster_name === null
+            ? candidate.route_target_roster_name
+            : routeTargetRosterName,
         route_target_step: routeTargetStep,
         selected_route: Object.prototype.hasOwnProperty.call(candidate, 'selected_route')
             ? candidate.selected_route

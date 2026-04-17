@@ -129,6 +129,7 @@
           "route_preference",
           "parallelism_mode",
           "route_target_role",
+          "route_target_roster_name",
           "route_target_step",
           "selected_route",
           "selected_route_reason",
@@ -160,6 +161,10 @@
         "route_target_role": {
           "type": ["string", "null"],
           "enum": ["planner", "explorer", "code specialist", "verifier", null]
+        },
+        "route_target_roster_name": {
+          "type": ["string", "null"],
+          "minLength": 1
         },
         "route_target_step": {
           "type": ["string", "null"],

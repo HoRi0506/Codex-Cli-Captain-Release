@@ -62,7 +62,7 @@ async function resolveSourceGitCommit(sourceRoot) {
 }
 function createReleaseInstallGuide(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the latest GitHub release tarball published under ${RELEASES_URL}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
@@ -144,8 +144,7 @@ Please restart Codex CLI.
 `;
 }
 function createReleaseReadme(input) {
-    const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} on this machine from the GitHub release tarball ${releaseTarballUrl}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = `Install ${input.packageName} on this machine from the latest GitHub release tarball published under ${RELEASES_URL}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
     return `# ${input.packageName}
 
 Captain-first Foreman toolbox for Codex CLI.
@@ -184,6 +183,8 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
 Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
+
+The MCP auto-entry surface can now report bounded elapsed timing as part of the operator-facing diagnostic path, which makes it easier to tell whether slowdown came from Foreman work itself or from outer session transport.
 
 \`codex-foreman status --run-id <id>\` is the one-shot CLI snapshot surface for that same truth. It uses the compact watch contract without the polling mental model and can show the latest answer path separately from the persisted current task when a reused implementation run receives a read-only follow-up.
 

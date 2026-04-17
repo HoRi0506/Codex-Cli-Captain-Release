@@ -754,7 +754,11 @@ function compactWatchRoutingReason(reason) {
 }
 function formatWatchRoutingSummary(status) {
     const routingTrace = status.routing_trace;
-    const targetRole = compactWatchText(routingTrace?.route_target_role ?? status.current_task_card?.assigned_role ?? status.current_task_card?.owner_role);
+    const targetRole = compactWatchText(routingTrace?.route_target_roster_name ??
+        routingTrace?.route_target_role ??
+        status.current_task_card?.assigned_agent_config_summary?.roster_name ??
+        status.current_task_card?.assigned_role ??
+        status.current_task_card?.owner_role);
     const modelTier = compactWatchText(status.current_task_card?.model_tier_intent);
     const route = compactWatchText(routingTrace?.selected_route);
     const category = compactWatchText(routingTrace?.recommended_category);
@@ -835,8 +839,18 @@ function formatWatchLatestAnswerLine(status) {
     if (!trace) {
         return null;
     }
-    const currentRole = formatWatchAgentLine(status).replace(/^Agent:\s*/u, '').trim();
-    const currentRoleSuffix = currentRole.length > 0 && currentRole !== trace.answer_trace.selected_role ? ` current=${currentRole}` : '';
+    const proofState = resolveWatchProofState(status);
+    const { agent: currentAgent } = resolveWatchAgentAndRole(status);
+    const currentProofSuffix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? '/captain_fallback'
+            : proofState === 'host_session_fallback'
+                ? '/host_fallback'
+                : '/planned';
+    const currentRoleSuffix = currentAgent.length > 0 && currentAgent !== trace.answer_trace.selected_role
+        ? ` current=${currentAgent}${currentProofSuffix}`
+        : '';
     return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
         ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
 }

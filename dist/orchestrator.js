@@ -497,7 +497,10 @@ function buildPolicyAwareRoutingSummary(input) {
         ? `Persisted route delegated_execute reuses delegated lower-tier execution because ${routeSelection.reason}.`
         : `Persisted route explicit_fallback keeps the explicit workflow because ${routeSelection.reason}.`;
     if (input.routeTargetRole && input.routeTargetStep) {
-        return `${basePolicySummary} Decision ${input.decision.next_step} maps advisory specialist routing to canonical ${input.routeTargetRole} for ${input.routeTargetStep}. ${recommendationVisibilitySummary} ${budgetSummary} ${selectedRouteSummary}`;
+        const routeTargetLabel = input.routeTargetRosterName
+            ? `${input.routeTargetRosterName} (${input.routeTargetRole})`
+            : input.routeTargetRole;
+        return `${basePolicySummary} Decision ${input.decision.next_step} maps advisory specialist routing to canonical ${routeTargetLabel} for ${input.routeTargetStep}. ${recommendationVisibilitySummary} ${budgetSummary} ${selectedRouteSummary}`;
     }
     switch (input.decision.next_step) {
         case 'await_fan_in':
@@ -639,6 +642,18 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
     const routeTargetStep = normalizedDecision.next_step === 'execute_task' || normalizedDecision.next_step === 'verify_task'
         ? normalizedDecision.next_step
         : null;
+    const defaultRouteTargetRosterName = routeTargetRole === 'planner'
+        ? 'tactician'
+        : routeTargetRole === 'explorer'
+            ? 'scout'
+            : routeTargetRole === 'code specialist'
+                ? 'raider'
+                : routeTargetRole === 'verifier'
+                    ? 'arbiter'
+                    : null;
+    const routeTargetRosterName = routeTargetRole === null
+        ? null
+        : taskCard.assigned_agent_id ?? defaultRouteTargetRosterName;
     const routeSelection = getOrchestratorRouteSelection(normalizedDecision);
     const budgetProfile = deriveRoutingBudgetProfile({
         taskCard,
@@ -651,6 +666,7 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
             policy,
             decision: normalizedDecision,
             routeTargetRole,
+            routeTargetRosterName,
             routeTargetStep,
             recommendedCategory,
             recommendedSkills,
@@ -667,6 +683,7 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
             route_preference: policy.specialist_routing.route_preference,
             parallelism_mode: policy.parallelism.mode,
             route_target_role: routeTargetRole,
+            route_target_roster_name: routeTargetRosterName,
             route_target_step: routeTargetStep,
             selected_route: routeSelection.route_id,
             selected_route_reason: routeSelection.reason,

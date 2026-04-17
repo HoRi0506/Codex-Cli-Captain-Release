@@ -37,6 +37,8 @@ Auto-entry is also reuse-first for lightweight read-heavy work. If one active ru
 
 Default operator views now prefer named roster labels such as `captain`, `scout`, `raider`, and `arbiter` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 
+The MCP auto-entry surface can now report bounded elapsed timing as part of the operator-facing diagnostic path, which makes it easier to tell whether slowdown came from Foreman work itself or from outer session transport.
+
 `codex-foreman status --run-id <id>` is the one-shot CLI snapshot surface for that same truth. It uses the compact watch contract without the polling mental model and can show the latest answer path separately from the persisted current task when a reused implementation run receives a read-only follow-up.
 
 ## How It Behaves
@@ -122,7 +124,7 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.21/codex-foreman-1.5.21.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the latest GitHub release tarball published under https://github.com/HoRi0506/Codex-Foreman-release/releases. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 ## What To Expect

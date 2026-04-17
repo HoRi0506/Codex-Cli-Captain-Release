@@ -3145,7 +3145,12 @@ function extractRoutingTraceFromGuidanceSource(guidanceSource) {
     return candidate.routing_trace ?? null;
 }
 function describeCurrentTaskRouting(currentTaskCard, routingTrace) {
-    const targetRole = routingTrace?.route_target_role ?? currentTaskCard?.assigned_role ?? currentTaskCard?.owner_role ?? 'none';
+    const targetRole = routingTrace?.route_target_roster_name ??
+        routingTrace?.route_target_role ??
+        currentTaskCard?.assigned_agent_config_summary?.roster_name ??
+        currentTaskCard?.assigned_role ??
+        currentTaskCard?.owner_role ??
+        'none';
     const modelTier = currentTaskCard?.model_tier_intent ?? 'none';
     const selectedRoute = routingTrace?.selected_route ?? 'none';
     const workloadClass = routingTrace?.workload_class ?? 'none';
@@ -3308,7 +3313,17 @@ function describeOperatorLatestAnswerPath(currentTaskCard, guidanceSource) {
         return null;
     }
     const currentRole = resolveOperatorDisplayAgentName(currentTaskCard);
-    const currentRoleSuffix = currentRole !== 'none' && currentRole !== trace.answer_trace.selected_role ? ` current=${currentRole}` : '';
+    const proofState = resolveOperatorDisplayProofState(currentTaskCard);
+    const currentProofSuffix = proofState === 'foreman_worker_visible'
+        ? ''
+        : proofState === 'captain_read_only_fallback'
+            ? '/captain_fallback'
+            : proofState === 'host_session_fallback'
+                ? '/host_fallback'
+                : '/planned';
+    const currentRoleSuffix = currentRole !== 'none' && currentRole !== trace.answer_trace.selected_role
+        ? ` current=${currentRole}${currentProofSuffix}`
+        : '';
     return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
         ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
 }
@@ -3859,16 +3874,22 @@ async function recommendForemanEntryForMcp(input) {
     });
 }
 async function autoEnterForemanForMcp(input) {
+    const startedAt = Date.now();
     return await withBoundedToolBudget({
         toolName: 'foreman_auto_entry',
         stage: 'hydration',
         work: async () => {
             const cwd = resolveCwd(input.cwd);
-            return (0, run_command_1.autoEnterForeman)({
+            const result = await (0, run_command_1.autoEnterForeman)({
                 cwd,
                 request: input.request,
                 codexPath: input.codex_bin ?? 'codex',
             });
+            return {
+                ...result,
+                mcp_elapsed_ms: Date.now() - startedAt,
+                mcp_budget_ms: FOREMAN_TOOL_TIMEOUT_BUDGET_MS,
+            };
         },
         onTimeout: (diagnosis) => ({
             cwd: resolveCwd(input.cwd),
@@ -3947,6 +3968,8 @@ async function autoEnterForemanForMcp(input) {
                 suggested_mcp_tool: null,
                 timeout_diagnosis: diagnosis,
             },
+            mcp_elapsed_ms: diagnosis.elapsed_ms,
+            mcp_budget_ms: diagnosis.budget_ms,
             timeout_diagnosis: diagnosis,
         }),
     });
@@ -4454,7 +4477,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                     const result = await autoEnterForemanForMcp(parseForemanAutoEntryArguments(value.params.arguments));
                     const visibilitySummary = `policy=${result.policy_mode}, entry_boundary=${result.entry_boundary}, ` +
                         `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}, ` +
-                        `fresh_active_runs=${result.fresh_active_run_count}, stale_active_runs=${result.stale_active_run_count}`;
+                        `fresh_active_runs=${result.fresh_active_run_count}, stale_active_runs=${result.stale_active_run_count}, ` +
+                        `elapsed_ms=${result.mcp_elapsed_ms ?? 'unknown'}, budget_ms=${result.mcp_budget_ms ?? 'unknown'}`;
                     const answerTraceSummary = (0, run_command_1.renderAutoEntryAnswerTrace)(result.answer_trace);
                     return createSuccessResponse(value.id, {
                         content: [
