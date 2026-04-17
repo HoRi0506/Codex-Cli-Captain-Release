@@ -119,13 +119,13 @@ async function inspectActiveRunHygiene(cwd) {
     if (lifecycleViews.length === 0) {
         return {
             status: 'clean',
-            summary: 'Run hygiene: clean; no persisted active runs are present in this workspace.',
+            summary: `Run hygiene: clean; workspace=${cwd} active=0 stale=0 resume=none.`,
             recommendedRunId: null,
         };
     }
     const summary = status === 'clean'
-        ? `Run hygiene: clean; fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'}.`
-        : `Run hygiene: warning; fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'} cleanup_candidates=${cleanupCandidates.length}. Auto-entry reuse may be ambiguous until older runs are archived or pruned.`;
+        ? `Run hygiene: clean; workspace=${cwd} fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'}.`
+        : `Run hygiene: warning; workspace=${cwd} fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'} cleanup_candidates=${cleanupCandidates.length}. Auto-entry reuse may be ambiguous until older runs are archived or pruned.`;
     return {
         status,
         summary,
@@ -813,6 +813,7 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         activeRunHygieneStatus: activeRunHygiene.status,
         activeRunHygieneSummary: activeRunHygiene.summary,
         activeRunRecommendedId: activeRunHygiene.recommendedRunId,
+        activeRunWorkspacePath: options.cwd,
         timeout_diagnosis: timeoutDiagnosis,
     };
 }

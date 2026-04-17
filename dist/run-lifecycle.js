@@ -7,6 +7,7 @@ exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = void 0;
 exports.classifyRunFreshness = classifyRunFreshness;
 exports.deriveRunLifecycleView = deriveRunLifecycleView;
 exports.inspectWorkspaceRunLifecycleViews = inspectWorkspaceRunLifecycleViews;
+exports.clearWorkspaceRuns = clearWorkspaceRuns;
 const promises_1 = require("node:fs/promises");
 const node_path_1 = __importDefault(require("node:path"));
 const runtime_1 = require("./runtime");
@@ -14,7 +15,6 @@ exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const ARCHIVE_CANDIDATE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
 const PRUNE_CANDIDATE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000;
 const SUPERSEDED_FRESH_ARCHIVE_THRESHOLD = 5;
-const MAX_LIFECYCLE_SCAN_RUNS = 50;
 function parseAgeMs(updatedAt, nowMs) {
     const updatedAtMs = Date.parse(updatedAt);
     if (!Number.isFinite(updatedAtMs)) {
@@ -137,9 +137,7 @@ async function inspectWorkspaceRunLifecycleViews(cwd) {
         }
     }));
     const allRuns = [];
-    for (const { runId } of scoredRunIds
-        .sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.runId.localeCompare(right.runId))
-        .slice(0, MAX_LIFECYCLE_SCAN_RUNS)) {
+    for (const { runId } of scoredRunIds.sort((left, right) => right.updatedAtMs - left.updatedAtMs || left.runId.localeCompare(right.runId))) {
         try {
             allRuns.push(await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(cwd, runId)));
         }
@@ -158,5 +156,64 @@ async function inspectWorkspaceRunLifecycleViews(cwd) {
         }
         return left.run_id.localeCompare(right.run_id);
     });
+}
+async function clearWorkspaceRuns(cwd, options = {}) {
+    const runsDirectory = (0, runtime_1.createRunPaths)(cwd, 'placeholder').runsDir;
+    const includeBlocked = options.includeBlocked ?? true;
+    let runIds = [];
+    try {
+        runIds = await (0, promises_1.readdir)(runsDirectory);
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            const timestamp = new Date().toISOString();
+            return {
+                cwd,
+                cleared_count: 0,
+                cleared_run_ids: [],
+                timestamp,
+                include_blocked: includeBlocked,
+                summary: `Cleared 0 persisted ${includeBlocked ? 'active or blocked' : 'active'} runs in ${cwd}.`,
+            };
+        }
+        throw error;
+    }
+    const now = new Date().toISOString();
+    const clearedRunIds = [];
+    for (const runId of runIds) {
+        const paths = (0, runtime_1.createRunPaths)(cwd, runId);
+        try {
+            const run = await (0, runtime_1.loadRunRecord)(paths);
+            const shouldClear = run.status === 'active' || (includeBlocked && run.status === 'blocked');
+            if (!shouldClear) {
+                continue;
+            }
+            run.status = 'cancelled';
+            run.completed_at = run.completed_at ?? now;
+            run.updated_at = now;
+            run.latest_failure = run.latest_failure ?? {
+                stage: run.stage,
+                reason: 'cancelled',
+                summary: 'Cleared through the explicit clear-runs maintenance command.',
+                recorded_at: now,
+            };
+            await (0, runtime_1.persistRunRecord)(paths, run);
+            clearedRunIds.push(runId);
+        }
+        catch {
+            continue;
+        }
+    }
+    return {
+        cwd,
+        cleared_count: clearedRunIds.length,
+        cleared_run_ids: clearedRunIds,
+        timestamp: now,
+        include_blocked: includeBlocked,
+        summary: `Cleared ${clearedRunIds.length} persisted ${includeBlocked ? 'active or blocked' : 'active'} runs in ${cwd}.`,
+    };
 }
 //# sourceMappingURL=run-lifecycle.js.map

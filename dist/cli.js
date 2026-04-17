@@ -6,6 +6,7 @@ const promises_1 = require("node:timers/promises");
 const cli_mutation_lease_1 = require("./cli-mutation-lease");
 const entry_policy_1 = require("./entry-policy");
 const navigation_aids_1 = require("./navigation-aids");
+const run_lifecycle_1 = require("./run-lifecycle");
 const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
 const mcp_server_1 = require("./mcp-server");
@@ -47,6 +48,8 @@ function usage() {
         '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill and custom-agent roster under the local Codex home, and add the MCP only when no conflicting registration exists.',
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
         '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
+        '  codex-foreman clear-runs [--cwd <path>] [--include-blocked]',
+        '    Cancel persisted active runs in one workspace through a bounded maintenance path so stale legacy runs do not keep polluting reuse and hygiene surfaces.',
         '  codex-foreman generate-navigation --target-dir <path> [--run-id <id>] [--output-dir <path>] [--validate-only] [--cwd <path>]',
         '    Generate or validate a bounded repository-local navigation bundle for one target directory under .foreman/navigation/. The generated artifacts are derived, non-canonical investigation aids for captain, tactician, and scout.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
@@ -814,7 +817,7 @@ function formatWatchAgentLine(status) {
             ? '; captain fallback'
             : proofState === 'host_session_fallback'
                 ? '; host fallback'
-                : '; planned';
+                : '; assigned';
     return `Agent: ${agent}${role !== 'none' ? ` (${role}${suffix})` : ''}`;
 }
 function formatWatchModelLine(status) {
@@ -831,7 +834,7 @@ function formatWatchModelLine(status) {
             ? 'captain fallback '
             : proofState === 'host_session_fallback'
                 ? 'host fallback '
-                : 'planned ';
+                : 'assigned ';
     return `Model: ${prefix}${model} / ${variant}`;
 }
 function formatWatchLatestAnswerLine(status) {
@@ -847,7 +850,7 @@ function formatWatchLatestAnswerLine(status) {
             ? '/captain_fallback'
             : proofState === 'host_session_fallback'
                 ? '/host_fallback'
-                : '/planned';
+                : '/assigned';
     const currentRoleSuffix = currentAgent.length > 0 && currentAgent !== trace.answer_trace.selected_role
         ? ` current=${currentAgent}${currentProofSuffix}`
         : '';
@@ -1419,6 +1422,27 @@ function parseCheckInstallOptions(rest) {
     }
     return options;
 }
+function parseClearRunsOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        includeBlocked: false,
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--include-blocked':
+                options.includeBlocked = true;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    return options;
+}
 function parseGenerateNavigationOptions(rest) {
     const options = {
         cwd: process.cwd(),
@@ -1507,6 +1531,9 @@ function parseCliArgs(argv) {
     }
     if (command === 'check-install') {
         return { command, options: parseCheckInstallOptions(rest) };
+    }
+    if (command === 'clear-runs') {
+        return { command, options: parseClearRunsOptions(rest) };
     }
     if (command === 'generate-navigation') {
         return { command, options: parseGenerateNavigationOptions(rest) };
@@ -1729,6 +1756,15 @@ async function runCli(argv) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} approval=${server.approvalExpectation} scope=${server.recommendationScope} hint=${server.usageHint}\n`);
             }
             return result.status === 'ok' ? 0 : 1;
+        }
+        if (parsed.command === 'clear-runs') {
+            const result = await (0, run_lifecycle_1.clearWorkspaceRuns)(parsed.options.cwd, {
+                includeBlocked: parsed.options.includeBlocked,
+            });
+            const hygieneViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(parsed.options.cwd);
+            process.stdout.write(`${result.summary}\n`);
+            process.stdout.write(`Post-clear hygiene: workspace=${parsed.options.cwd} active_candidates=${hygieneViews.length} include_blocked=${parsed.options.includeBlocked ? 'true' : 'false'}\n`);
+            return 0;
         }
         if (parsed.command === 'generate-navigation') {
             const result = parsed.options.validateOnly

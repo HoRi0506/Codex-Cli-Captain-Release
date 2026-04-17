@@ -22,7 +22,7 @@ function createHealthyCheckInstallExample(packageVersion) {
         `Current package: codex-foreman@${packageVersion}`,
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/high',
-        'Run hygiene: Run hygiene: clean; fresh=0 stale=0 resume=none.',
+        'Run hygiene: Run hygiene: clean; workspace=<cwd> fresh=0 stale=0 resume=none.',
     ].join('\n');
 }
 function toPosixRelativePath(filePath) {
@@ -122,6 +122,14 @@ codex-foreman check-install
 \`\`\`
 
 The tarball command refreshes the installed package version, and \`setup\` refreshes the MCP registration, packaged skill, and packaged custom agents.
+
+If a workspace already has stale persisted active runs outside the current \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` session-bound run, clear them with:
+
+\`\`\`bash
+codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
+\`\`\`
+
+That bounded maintenance path cancels legacy persisted runs for the target workspace and prints the post-clear hygiene summary right away.
 
 ## Local tarball fallback
 
@@ -313,6 +321,8 @@ ${codexPrompt}
 ## Update
 
 To update an existing install, copy the latest release README install block again and rerun it. The direct tarball install refreshes the package version, and \`codex-foreman setup\` refreshes MCP registration plus the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and custom agents.
+
+If a workspace has stale persisted run buildup outside the current session-bound \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` run, use \`codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked\` to cancel those legacy runs and print the refreshed hygiene summary.
 
 ## What To Expect
 

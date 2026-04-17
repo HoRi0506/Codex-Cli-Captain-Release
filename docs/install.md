@@ -9,7 +9,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.24/codex-foreman-1.5.24.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.25/codex-foreman-1.5.25.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -27,7 +27,7 @@ Codex should execute these steps for the preferred install path:
 Install from the exact release tarball:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.24/codex-foreman-1.5.24.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.25/codex-foreman-1.5.25.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -49,12 +49,20 @@ codex-foreman check-install
 To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.24/codex-foreman-1.5.24.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.25/codex-foreman-1.5.25.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
 
 The tarball command refreshes the installed package version, and `setup` refreshes the MCP registration, packaged skill, and packaged custom agents.
+
+If a workspace already has stale persisted active runs outside the current `$cap` session-bound run, clear them with:
+
+```bash
+codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
+```
+
+That bounded maintenance path cancels legacy persisted runs for the target workspace and prints the post-clear hygiene summary right away.
 
 ## Local tarball fallback
 
@@ -84,11 +92,11 @@ The install is in the expected state when:
 ## Healthy output example
 
 ```text
-Foreman install check: status=ok version=1.5.24 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
-Current package: codex-foreman@1.5.24
+Foreman install check: status=ok version=1.5.25 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
+Current package: codex-foreman@1.5.25
 Public entry: $cap (skill=cap)
 Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/high
-Run hygiene: Run hygiene: clean; fresh=0 stale=0 resume=none.
+Run hygiene: Run hygiene: clean; workspace=<cwd> fresh=0 stale=0 resume=none.
 ```
 
 ## Notes

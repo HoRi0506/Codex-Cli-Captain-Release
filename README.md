@@ -129,7 +129,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.24/codex-foreman-1.5.24.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.25/codex-foreman-1.5.25.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -141,6 +141,8 @@ Finish with exactly: Please restart Codex CLI.
 ## Update
 
 To update an existing install, copy the latest release README install block again and rerun it. The direct tarball install refreshes the package version, and `codex-foreman setup` refreshes MCP registration plus the packaged `$cap` skill and custom agents.
+
+If a workspace has stale persisted run buildup outside the current session-bound `$cap` run, use `codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked` to cancel those legacy runs and print the refreshed hygiene summary.
 
 ## What To Expect
 
