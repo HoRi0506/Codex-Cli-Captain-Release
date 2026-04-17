@@ -115,8 +115,28 @@ const AUTO_ENTRY_TOKEN_STOPWORDS = new Set([
 const WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES = 4000;
 const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules', '.sisyphus']);
 const WORKSPACE_MUTATION_EVIDENCE_EXCLUDE_FILES = new Set(['codex-args.json']);
+const autoEntrySessionGateTails = new Map();
 function isRecord(value) {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+async function withAutoEntrySessionGate(gateKey, work) {
+    const previousTail = autoEntrySessionGateTails.get(gateKey) ?? Promise.resolve();
+    let releaseCurrentTail;
+    const currentTail = new Promise((resolve) => {
+        releaseCurrentTail = resolve;
+    });
+    const queuedTail = previousTail.then(() => currentTail);
+    autoEntrySessionGateTails.set(gateKey, queuedTail);
+    await previousTail;
+    try {
+        return await work();
+    }
+    finally {
+        releaseCurrentTail();
+        if (autoEntrySessionGateTails.get(gateKey) === queuedTail) {
+            autoEntrySessionGateTails.delete(gateKey);
+        }
+    }
 }
 function buildCodexArgs(executionRequest) {
     const args = ['exec', '--json'];
@@ -4067,6 +4087,7 @@ function createAutoEntryAnswerTrace(input) {
     return {
         request_shape: input.recommendation.request_shape,
         mutation_intent: input.recommendation.mutation_intent,
+        workflow_variant_selection: input.recommendation.workflow_variant_selection,
         selected_role: selectedRole,
         execution_path: executionPath,
         budget_class: budgetClass,
@@ -4080,6 +4101,9 @@ function renderAutoEntryAnswerTrace(trace) {
     return [
         `request_shape=${trace.request_shape}`,
         `mutation_intent=${trace.mutation_intent}`,
+        `workflow_variant=${trace.workflow_variant_selection.workflow_variant}`,
+        `workflow_skill=${trace.workflow_variant_selection.workflow_skill_id}`,
+        `workflow_route=${trace.workflow_variant_selection.workflow_agent_route.join('>')}`,
         `selected_role=${trace.selected_role}`,
         `execution_path=${trace.execution_path}`,
         `budget_class=${trace.budget_class}`,
@@ -4143,7 +4167,7 @@ async function persistLatestAutoEntryTrace(input) {
     run.updated_at = recordedAt;
     await (0, runtime_1.persistRunRecord)(runPaths, run);
 }
-async function autoEnterForeman(options) {
+async function autoEnterForemanUnlocked(options) {
     const continuity = deriveAutoEntryContinuityMetadata(options);
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
@@ -4291,11 +4315,10 @@ async function autoEnterForeman(options) {
         const runDecisionReason = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
             ? 'current session already owns a persisted run, so Foreman kept reusing it until the operator asks for a new run or closes it'
             : reusableRun.lifecycle.decision_reason;
-        const summary = `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
-            `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} (${reusableRunLabel}) ` +
-            (sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
-                ? 'because the current Codex CLI session already owns that run.'
-                : 'because it was the only fresh active candidate in the workspace.');
+        const summary = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
+            ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) without generic workspace run inspection because the current Codex CLI session already owns that run.`
+            : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
+                `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} (${reusableRunLabel}) because it was the only fresh active candidate in the workspace.`;
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: reusableRun.snapshot.runId,
@@ -4580,6 +4603,13 @@ async function autoEnterForeman(options) {
         answer_trace: answerTrace,
         recommendation,
     };
+}
+async function autoEnterForeman(options) {
+    const gateKey = options.session ? `${options.cwd}::${options.session.sessionId}` : null;
+    if (gateKey === null) {
+        return autoEnterForemanUnlocked(options);
+    }
+    return withAutoEntrySessionGate(gateKey, async () => autoEnterForemanUnlocked(options));
 }
 async function advanceForemanRun(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);

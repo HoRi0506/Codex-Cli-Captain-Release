@@ -7,6 +7,7 @@ exports.recommendForemanEntry = recommendForemanEntry;
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const request_shape_1 = require("./request-shape");
+const workflow_variants_1 = require("./workflow-variants");
 const PLAN_KEYWORDS = ['plan', 'planner', 'roadmap', 'milestone', 'strategy', 'migration', 'phases', 'step-by-step'];
 const START_KEYWORDS = [
     'fix',
@@ -134,6 +135,14 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     };
     const entryBoundary = createEntryBoundary(policy);
     const suggestedMcpTool = recommendedEntrypoint === 'start' ? 'foreman_start' : null;
+    const workflowVariantSelection = (0, workflow_variants_1.deriveWorkflowVariantSelection)({
+        request: options.request,
+        recommendation: {
+            request_shape: requestClassification.requestShape,
+            mutation_intent: requestClassification.mutationIntent,
+            recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
+        },
+    });
     return {
         cwd: options.cwd,
         request: options.request,
@@ -165,6 +174,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         task_shape: taskShape,
         request_shape: requestClassification.requestShape,
         mutation_intent: requestClassification.mutationIntent,
+        workflow_variant_selection: workflowVariantSelection,
         recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
         confidence,
         summary,

@@ -110,6 +110,7 @@ const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const orchestrator_1 = require("./orchestrator");
+const workflow_variants_1 = require("./workflow-variants");
 const validation_1 = require("./validation");
 function writeJsonDocument(filePath, value) {
     return (0, promises_1.writeFile)(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
@@ -2672,6 +2673,70 @@ async function normalizeLoadedRunRecord(paths, candidate) {
             return null;
         }
         const answerTrace = value.answer_trace;
+        const workflowVariantSelection = (() => {
+            if (isRecord(answerTrace.workflow_variant_selection)) {
+                const candidate = answerTrace.workflow_variant_selection;
+                const workflowAgentRoute = Array.isArray(candidate.workflow_agent_route)
+                    ? candidate.workflow_agent_route.filter((step) => step === 'captain' ||
+                        step === 'tactician' ||
+                        step === 'scout' ||
+                        step === 'raider' ||
+                        step === 'arbiter' ||
+                        step === 'sentinel')
+                    : [];
+                if ((candidate.workflow_variant === 'investigate_only' ||
+                    candidate.workflow_variant === 'investigate_then_document' ||
+                    candidate.workflow_variant === 'diagnose_then_fix' ||
+                    candidate.workflow_variant === 'fix_only' ||
+                    candidate.workflow_variant === 'plan_then_implement' ||
+                    candidate.workflow_variant === 'implement_then_review' ||
+                    candidate.workflow_variant === 'verify_only' ||
+                    candidate.workflow_variant === 'ownership_drift_check' ||
+                    candidate.workflow_variant === 'parallel_fanout') &&
+                    (candidate.workflow_skill_id === 'captain_investigate_only' ||
+                        candidate.workflow_skill_id === 'captain_investigate_then_document' ||
+                        candidate.workflow_skill_id === 'captain_diagnose_then_fix' ||
+                        candidate.workflow_skill_id === 'captain_fix_only' ||
+                        candidate.workflow_skill_id === 'captain_plan_then_implement' ||
+                        candidate.workflow_skill_id === 'captain_implement_then_review' ||
+                        candidate.workflow_skill_id === 'captain_verify_only' ||
+                        candidate.workflow_skill_id === 'captain_ownership_drift_check' ||
+                        candidate.workflow_skill_id === 'captain_parallel_fanout') &&
+                    workflowAgentRoute.length > 0 &&
+                    typeof candidate.workflow_summary === 'string') {
+                    return {
+                        workflow_variant: candidate.workflow_variant,
+                        workflow_skill_id: candidate.workflow_skill_id,
+                        workflow_agent_route: workflowAgentRoute,
+                        workflow_summary: candidate.workflow_summary,
+                        operator_visible: false,
+                    };
+                }
+            }
+            return (0, workflow_variants_1.deriveWorkflowVariantSelection)({
+                request: typeof value.request === 'string' ? value.request : '',
+                recommendation: {
+                    request_shape: answerTrace.request_shape === 'existence_check' ||
+                        answerTrace.request_shape === 'lookup' ||
+                        answerTrace.request_shape === 'survey' ||
+                        answerTrace.request_shape === 'diagnosis' ||
+                        answerTrace.request_shape === 'planning' ||
+                        answerTrace.request_shape === 'mutation' ||
+                        answerTrace.request_shape === 'verification' ||
+                        answerTrace.request_shape === 'synthesis'
+                        ? answerTrace.request_shape
+                        : 'synthesis',
+                    mutation_intent: answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
+                        ? answerTrace.mutation_intent
+                        : 'none',
+                    recommended_task_kind: answerTrace.selected_role === 'raider'
+                        ? 'execution'
+                        : answerTrace.selected_role === 'arbiter'
+                            ? 'review'
+                            : 'explore',
+                },
+            });
+        })();
         return {
             request: typeof value.request === 'string' ? value.request : 'details recorded in persisted state.',
             run_selection: value.run_selection === 'new_run_created' ||
@@ -2708,6 +2773,7 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                 mutation_intent: answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
                     ? answerTrace.mutation_intent
                     : 'none',
+                workflow_variant_selection: workflowVariantSelection,
                 selected_role: answerTrace.selected_role === 'captain' ||
                     answerTrace.selected_role === 'tactician' ||
                     answerTrace.selected_role === 'scout' ||
@@ -3021,6 +3087,30 @@ function canHydrateProgressFromResumeCheckpoint(run, taskCard, checkpoint) {
         checkpoint.active_task_card.assigned_role === taskCard.assigned_role &&
         checkpoint.active_task_card.verification_state === taskCard.verification_state);
 }
+function canHydrateProgressFromSingleTaskHotContext(run, taskCard) {
+    return (run.task_card_ids.length === 1 &&
+        run.task_card_ids[0] === taskCard.task_card_id &&
+        run.active_task_card_id === taskCard.task_card_id &&
+        (run.stage === 'execution' || run.stage === 'verification'));
+}
+function createSingleTaskHotTaskCardIndexEntry(taskCard) {
+    return {
+        task_card_id: taskCard.task_card_id,
+        title: taskCard.title,
+        status: taskCard.status,
+        owner_role: taskCard.owner_role,
+        assigned_role: taskCard.assigned_role,
+        model_tier_intent: taskCard.model_tier_intent,
+        child_aggregation_contract: taskCard.child_aggregation_contract,
+        fan_in_barrier_semantics: taskCard.fan_in_barrier_semantics,
+        orchestrator_review_gate: taskCard.orchestrator_review_gate,
+        verification_state: taskCard.verification_state,
+        task_kind: taskCard.task_kind,
+        node_kind: taskCard.node_kind,
+        depends_on_task_card_ids: [...taskCard.depends_on_task_card_ids],
+        fan_in_from_task_card_ids: [...taskCard.fan_in_from_task_card_ids],
+    };
+}
 async function loadSelectiveProgressProjection(paths, run, taskCard, orchestratorDecision) {
     const resumeCheckpoint = await loadResumeCheckpointRecordIfPresent(paths);
     if (resumeCheckpoint && canHydrateProgressFromResumeCheckpoint(run, taskCard, resumeCheckpoint)) {
@@ -3034,6 +3124,18 @@ async function loadSelectiveProgressProjection(paths, run, taskCard, orchestrato
                 checkpoint_updated_at: resumeCheckpoint.updated_at,
                 hot_artifacts: resumeCheckpoint.hot_artifacts,
                 on_demand_artifacts: resumeCheckpoint.on_demand_artifacts,
+            },
+        };
+    }
+    if (canHydrateProgressFromSingleTaskHotContext(run, taskCard)) {
+        return {
+            progress: createDerivedProgressProjection(run, [taskCard], taskCard, orchestratorDecision),
+            hydration: {
+                mode: 'single_task_hot',
+                summary: 'Status and activity derived progress directly from the active single-task run context without reloading the full persisted task-card set.',
+                checkpoint_updated_at: resumeCheckpoint?.updated_at ?? null,
+                hot_artifacts: resumeCheckpoint?.hot_artifacts ?? null,
+                on_demand_artifacts: resumeCheckpoint?.on_demand_artifacts ?? null,
             },
         };
     }
@@ -3059,6 +3161,9 @@ async function loadSelectiveTaskCardIndex(paths, run, taskCard) {
             depends_on_task_card_ids: [...taskCardIndexEntry.depends_on_task_card_ids],
             fan_in_from_task_card_ids: [...taskCardIndexEntry.fan_in_from_task_card_ids],
         }));
+    }
+    if (canHydrateProgressFromSingleTaskHotContext(run, taskCard)) {
+        return [createSingleTaskHotTaskCardIndexEntry(taskCard)];
     }
     const fullContext = await loadRunContext(paths);
     return fullContext.run.task_card_ids.map((taskCardId) => {

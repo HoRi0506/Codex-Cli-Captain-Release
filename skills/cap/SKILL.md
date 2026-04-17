@@ -15,6 +15,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - treat `$cap` as the user-facing trigger that hands the operator request to the host Codex session acting as `captain`, not as a worker itself
 - do not treat `foreman_captain` as the first public receiver for `$cap`; the host Codex session is captain for this skill
 - keep the public entry surface narrow: the operator uses `$cap`, while worker-to-worker progression stays internal to Foreman
+- treat one `$cap` request as one captain-owned workstream that may require multiple internal Foreman specialist passes before the operator-facing answer is ready
 - keep one current Foreman run per Codex CLI session unless the operator explicitly asks to close it or start a new one
 - treat the Codex session id as the primary continuity key for `$cap`; a persisted run is an internal Foreman artifact, not the operator-facing identity anchor
 - prefer persisted Foreman state, status, orchestration, and delegation visibility over ad hoc host-session improvisation
@@ -31,6 +32,10 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - do not spend host-local tokens searching generic workspace runs for `$cap` continuity when Foreman already has the current requester session id; prefer session-bound continuity first
 - do not perform broad host-local file survey when `scout` or `tactician` can gather the bounded evidence more cheaply
 - do not spend host-local high-tier tokens on mutation or verification work that has a matching Foreman specialist path
+- do not let host Codex turn read-only specialist findings directly into host-local mutation or review work; if the next move is implementation or verification, route back through Foreman to the matching specialist
+- do not treat the first specialist response as completion unless the acceptance target has actually been satisfied; if the result is partial, ambiguous, or only advances the workflow, continue through Foreman instead of replying as though the request is done
+- prefer the compact workflow truth already exposed by `foreman_status` such as workflow skill, workflow progress, requester-session continuity, and worker-session alignment before paying for deeper activity inspection
+- if `foreman_orchestrate` returns `timeout_acknowledged`, inspect status first and retry only when the next bounded move is still pending
 - when specialist routing is chosen, pass the narrowest task scope that still preserves title, scope, acceptance, and the result contract
 - if the request decomposes into independent bounded subtasks, prefer bounded parallel specialist fan-out within the configured worker cap, then wait and synthesize once all required subtasks finish
 
@@ -43,7 +48,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 5. Treat the host Codex session as `captain` for work that entered through this skill. Use packaged custom agents only as internal specialist targets, not as the public `$cap` receiver.
 6. Use `mcp__codex_foreman__foreman_status`, `mcp__codex_foreman__foreman_activity`, `mcp__codex_foreman__foreman_orchestrate`, and delegation visibility surfaces to keep the run inspectable.
 7. If the current routing question can be answered from `foreman_status`, do not add deeper visibility reads yet. Escalate to `foreman_activity` only when delegation state, attempt history, or companion-loop detail is actually needed.
-8. When Foreman exposes a current run label, include `Current run: <label>` once near the top or bottom of the answer so the operator can see which persisted run is active. If no run exists yet, keep the session boundary visible instead of inventing a run-first story.
+8. Mention the current run label only when the operator explicitly asks for run diagnostics or when disambiguation is necessary for the next bounded step. Do not append habitual `Current run:` footer text to ordinary `$cap` answers.
 9. Treat these operator phrases as explicit session-run controls:
    - `$cap close current run`
    - `$cap clear run session`
@@ -61,12 +66,20 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
    - use `foreman_raider` for code changes, file edits, doc authoring, release-note authoring, and other explicit mutation work
    - use `foreman_arbiter` for acceptance review, regression judgment, and repair-or-pass decisions
    - use `foreman_sentinel` only for ownership classification or drift checks
-12. If a mutation-capable or review-capable specialist is selected but Foreman still shows `planned_assignment_only` / `host_session_fallback` with no worker launch proof, surface that degraded truth instead of silently continuing as host-local specialist work.
-13. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
+12. After any bounded exploration, planning, or diagnosis result returns, decide the next step from that evidence. If the next step is mutation, verification, or another scoped investigation pass, send that next step back through Foreman to the matching specialist instead of doing the work directly in the host Codex session.
+13. Treat host Codex synthesis as the last step, not the default continuation step. Host-local synthesis is for operator updates, explicit hold decisions, and final answers after the required specialist passes have completed or a degraded boundary has been surfaced.
+14. One operator `$cap` request may require multiple internal Foreman hops. Do not require the operator to repeat `$cap` just because one specialist pass finished. Keep routing inside Foreman until acceptance is met, a manual boundary is reached, or degraded truth must be surfaced.
+15. The default after an intermediate specialist result is to continue orchestrating through Foreman, not to answer. Reply only when the request is actually complete, explicitly blocked, or waiting on an operator decision that cannot be inferred safely.
+16. If a mutation-capable or review-capable specialist is selected but Foreman still shows `planned_assignment_only` / `host_session_fallback` with no worker launch proof, surface that degraded truth instead of silently continuing as host-local specialist work.
+17. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
 
 ## Captain-directed loop
 
 - the common review path is `captain -> assigned agent -> arbiter -> captain`
+- the common repair path should read as `captain -> scout/tactician -> raider -> arbiter -> captain`
+- if `scout` or `tactician` returns evidence that implies a code change, do not let `captain` implement from that evidence directly; `captain` should route the bounded implementation task to `raider`
+- if `raider` returns implementation results that need acceptance judgment, do not let `captain` self-certify the change; `captain` should route the bounded review task to `arbiter`
+- one pass through `scout`, `tactician`, `raider`, or `arbiter` is not by itself a reason to end the `$cap` request; `captain` keeps the workstream open until the request is complete, explicitly blocked, or awaiting operator input
 - the actual loop is not fixed; `captain` may continue, reroute, request another bounded pass, hold for operator input, or synthesize the final response
 - when review is needed, keep it visible through Foreman state instead of inventing a parallel public worker command surface
 - if multiple independent bounded subtasks can proceed in parallel, `captain` may dispatch them in parallel through Foreman specialists, wait for the required results, then synthesize or reroute

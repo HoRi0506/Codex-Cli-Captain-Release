@@ -80,8 +80,8 @@ function buildLauncherPrompt(result, request) {
         : `Foreman auto-entry already created run ${runLabel}.`;
     return [
         firstLine,
-        `Current run: ${runLabel}`,
         'Continue through the persisted Foreman workflow for that run instead of re-scoping the request from scratch.',
+        `Hidden route: ${result.answer_trace.workflow_variant_selection.workflow_skill_id} (${result.answer_trace.workflow_variant_selection.workflow_agent_route.join(' -> ')})`,
         `Run decision: ${result.run_decision_reason}`,
         `Auto-entry summary: ${result.summary}`,
         `Original operator request: ${request}`,

@@ -999,6 +999,7 @@ function formatWatchLatestAnswerLine(status) {
         ? ` current=${currentAgent}${currentProofSuffix}`
         : '';
     return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
+        ` [${trace.answer_trace.workflow_variant_selection.workflow_skill_id}]` +
         ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
 }
 function formatCompactWatchStatusLine(status) {
@@ -1155,6 +1156,8 @@ function formatWatchStatusLine(status, verbosity) {
         `answer_role=${compactWatchText(status.latest_entry_trace?.answer_trace.selected_role)}`,
         `answer_path=${compactWatchText(status.latest_entry_trace?.answer_trace.execution_path)}`,
         `answer_shape=${compactWatchText(status.latest_entry_trace?.answer_trace.request_shape)}`,
+        `answer_workflow_variant=${compactWatchText(status.latest_entry_trace?.answer_trace.workflow_variant_selection.workflow_variant)}`,
+        `answer_workflow_skill=${compactWatchText(status.latest_entry_trace?.answer_trace.workflow_variant_selection.workflow_skill_id)}`,
         `answer_budget=${compactWatchText(status.latest_entry_trace?.answer_trace.budget_class)}`,
         `always_on=${compactWatchText(status.always_on_mode?.status)}`,
         formatAlwaysOnOperatorSummary(status),
