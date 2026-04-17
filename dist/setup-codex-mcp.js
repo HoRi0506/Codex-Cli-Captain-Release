@@ -12,8 +12,10 @@ const promises_1 = require("node:fs/promises");
 const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
 const public_surface_1 = require("./public-surface");
+const run_lifecycle_1 = require("./run-lifecycle");
 const runtime_1 = require("./runtime");
 const DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS = 8_000;
+const RUN_HYGIENE_WARNING_THRESHOLD = 1;
 class CodexMcpSetupConflictError extends Error {
     constructor(message) {
         super(message);
@@ -59,6 +61,76 @@ async function listPackagedForemanCustomAgentFiles(packageRoot = defaultPackageR
     const entries = await (0, promises_1.readdir)(agentsDir, { withFileTypes: true });
     const presentFiles = new Set(entries.filter((entry) => entry.isFile()).map((entry) => entry.name));
     return public_surface_1.FOREMAN_PACKAGED_CUSTOM_AGENT_FILES.filter((fileName) => presentFiles.has(fileName));
+}
+function createConfiguredRoleModelsSummary(config) {
+    const entries = [
+        {
+            role: 'captain',
+            rosterName: config.agents.orchestrator.name,
+            model: config.agents.orchestrator.model,
+            variant: config.agents.orchestrator.variant,
+        },
+        {
+            role: 'tactician',
+            rosterName: config.agents.planner.name,
+            model: config.agents.planner.model,
+            variant: config.agents.planner.variant,
+        },
+        ...(config.agents.explorer
+            ? [
+                {
+                    role: 'scout',
+                    rosterName: config.agents.explorer.name,
+                    model: config.agents.explorer.model,
+                    variant: config.agents.explorer.variant,
+                },
+            ]
+            : []),
+        {
+            role: 'raider',
+            rosterName: config.agents['code specialist'].name,
+            model: config.agents['code specialist'].model,
+            variant: config.agents['code specialist'].variant,
+        },
+        {
+            role: 'arbiter',
+            rosterName: config.agents.verifier.name,
+            model: config.agents.verifier.model,
+            variant: config.agents.verifier.variant,
+        },
+    ];
+    const status = entries.every((entry) => entry.model && entry.variant) ? 'coherent' : 'warning';
+    const summary = entries
+        .map((entry) => `${entry.role}=${entry.model ?? 'none'}/${entry.variant ?? 'none'}`)
+        .join(' ');
+    return {
+        status,
+        summary: `Configured role-model policy: ${summary}`,
+        entries,
+    };
+}
+async function inspectActiveRunHygiene(cwd) {
+    const lifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
+    const freshCount = lifecycleViews.filter((view) => view.freshness === 'fresh').length;
+    const staleCount = lifecycleViews.filter((view) => view.freshness === 'stale').length;
+    const cleanupCandidates = lifecycleViews.filter((view) => view.cleanup_action !== 'retain');
+    const recommendedRunId = lifecycleViews.find((view) => view.resume_recommended)?.run_id ?? lifecycleViews[0]?.run_id ?? null;
+    const status = freshCount > RUN_HYGIENE_WARNING_THRESHOLD || cleanupCandidates.length > 0 ? 'warning' : 'clean';
+    if (lifecycleViews.length === 0) {
+        return {
+            status: 'clean',
+            summary: 'Run hygiene: clean; no persisted active runs are present in this workspace.',
+            recommendedRunId: null,
+        };
+    }
+    const summary = status === 'clean'
+        ? `Run hygiene: clean; fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'}.`
+        : `Run hygiene: warning; fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'} cleanup_candidates=${cleanupCandidates.length}. Auto-entry reuse may be ambiguous until older runs are archived or pruned.`;
+    return {
+        status,
+        summary,
+        recommendedRunId,
+    };
 }
 async function readInstalledPackageManifest(packageRoot = defaultPackageRoot()) {
     try {
@@ -581,6 +653,19 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const expectedEntrypointPath = launchTarget.args[0] ?? null;
     const configPath = (0, runtime_1.resolveForemanConfigFilePath)();
     const configExists = await pathExists(configPath);
+    let modelPolicyAudit = null;
+    try {
+        const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
+        modelPolicyAudit = createConfiguredRoleModelsSummary(foremanConfig);
+    }
+    catch (error) {
+        modelPolicyAudit = {
+            status: 'warning',
+            summary: `Configured role-model policy could not be loaded: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+            entries: [],
+        };
+    }
+    const activeRunHygiene = await inspectActiveRunHygiene(options.cwd);
     let registrationStatus = 'missing_registration';
     let registrationSummary = createRegistrationSummary(registrationStatus, options.serverName);
     let registeredLaunchCommand = null;
@@ -722,6 +807,12 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         customAgentFileCount: customAgents.fileCount,
         customAgentStatus: customAgents.status,
         customAgentSummary: customAgents.summary,
+        modelPolicyStatus: modelPolicyAudit.status,
+        modelPolicySummary: modelPolicyAudit.summary,
+        configuredRoleModels: modelPolicyAudit.entries,
+        activeRunHygieneStatus: activeRunHygiene.status,
+        activeRunHygieneSummary: activeRunHygiene.summary,
+        activeRunRecommendedId: activeRunHygiene.recommendedRunId,
         timeout_diagnosis: timeoutDiagnosis,
     };
 }

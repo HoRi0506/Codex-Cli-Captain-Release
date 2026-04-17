@@ -2011,6 +2011,12 @@ async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CON
             customAgentFileCount: 0,
             customAgentStatus: 'unreadable_install',
             customAgentSummary: diagnosis.summary,
+            modelPolicyStatus: 'warning',
+            modelPolicySummary: diagnosis.summary,
+            configuredRoleModels: [],
+            activeRunHygieneStatus: 'warning',
+            activeRunHygieneSummary: diagnosis.summary,
+            activeRunRecommendedId: null,
             timeout_diagnosis: diagnosis,
         }),
     });

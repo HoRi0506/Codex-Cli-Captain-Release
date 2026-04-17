@@ -13,6 +13,7 @@ const runtime_1 = require("./runtime");
 exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = 24 * 60 * 60 * 1000;
 const ARCHIVE_CANDIDATE_THRESHOLD_MS = 3 * 24 * 60 * 60 * 1000;
 const PRUNE_CANDIDATE_THRESHOLD_MS = 14 * 24 * 60 * 60 * 1000;
+const SUPERSEDED_FRESH_ARCHIVE_THRESHOLD = 5;
 const MAX_LIFECYCLE_SCAN_RUNS = 50;
 function parseAgeMs(updatedAt, nowMs) {
     const updatedAtMs = Date.parse(updatedAt);
@@ -53,9 +54,15 @@ function deriveRunLifecycleView(run, activeWorkspaceRuns, nowMs = Date.now()) {
     }
     else if (newerFreshActiveRuns.length > 0) {
         state = 'superseded';
-        cleanupAction = freshness === 'stale' ? 'archive_candidate' : 'retain';
+        cleanupAction =
+            freshness === 'stale' || sameWorkspaceActiveRuns >= SUPERSEDED_FRESH_ARCHIVE_THRESHOLD
+                ? 'archive_candidate'
+                : 'retain';
         decisionReason = 'A newer fresh active run exists in the same workspace, so this run should not be the default resume target.';
-        recoveryHint = 'Inspect this run explicitly if it still matters; otherwise prefer the newer active run.';
+        recoveryHint =
+            cleanupAction === 'archive_candidate'
+                ? 'Inspect this run explicitly if it still matters; otherwise archive it out of the active working set and prefer the newer active run.'
+                : 'Inspect this run explicitly if it still matters; otherwise prefer the newer active run.';
     }
     else if (ageMs !== null && ageMs >= PRUNE_CANDIDATE_THRESHOLD_MS) {
         state = 'prune_candidate';
