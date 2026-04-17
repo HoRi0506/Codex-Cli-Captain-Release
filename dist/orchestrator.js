@@ -12,6 +12,7 @@ exports.classifyContinueStep = classifyContinueStep;
 exports.getAllowedExplicitCommandsForDecision = getAllowedExplicitCommandsForDecision;
 exports.decideOrchestratorNextStep = decideOrchestratorNextStep;
 const constants_1 = require("./constants");
+const workflow_variants_1 = require("./workflow-variants");
 const DEFAULT_EXPLICIT_REVIEW_POLICY = {
     mode: 'explicit_only',
     max_review_passes: 1,
@@ -537,9 +538,16 @@ function deriveRouteSelection(input) {
             input.taskCard.assigned_role === 'code specialist' &&
             input.taskCard.model_tier_intent !== 'low_cost' &&
             recommendedCategory !== 'writing';
+        const isWorkflowEntryLaunchCandidate = (0, workflow_variants_1.doesWorkflowRouteRequireDelegatedEntryLaunch)({
+            selection: input.run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null,
+            taskKind: input.taskCard.task_kind,
+            assignedRole: input.taskCard.assigned_role,
+            ownerRole: input.taskCard.owner_role,
+        });
         if (!isPlannedFanInChildSet &&
             !isPartitionedInvestigationSet &&
             !isPrimaryWorkerLaunchCandidate &&
+            !isWorkflowEntryLaunchCandidate &&
             !supportsDelegatedLowerTierExecution(recommendedCategory)) {
             return createExplicitFallbackRouteSelection('delegated lower-tier execution currently supports only clearly documentation or writing-shaped tasks');
         }
@@ -558,7 +566,9 @@ function deriveRouteSelection(input) {
                 ? `explore task "${input.taskCard.title}" has ${counts.total} queued bounded investigation worker slice${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`
                 : isPrimaryWorkerLaunchCandidate
                     ? `captain selected a bounded worker launch for task "${input.taskCard.title}" because it is a non-low-cost code-specialist execution task`
-                    : `task "${input.taskCard.title}" has ${counts.total} queued bounded child delegation${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`);
+                    : isWorkflowEntryLaunchCandidate
+                        ? `captain selected a route-contract worker launch for task "${input.taskCard.title}" because the hidden workflow entry step requires a real specialist pass`
+                        : `task "${input.taskCard.title}" has ${counts.total} queued bounded child delegation${counts.total === 1 ? '' : 's'} within the worker cap of ${input.policy.parallelism.max_active_workers}`);
     }
     switch (input.decision.next_step) {
         case 'verify_task':

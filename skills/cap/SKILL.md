@@ -38,6 +38,8 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - if `foreman_orchestrate` returns `timeout_acknowledged`, inspect status first and retry only when the next bounded move is still pending
 - when specialist routing is chosen, pass the narrowest task scope that still preserves title, scope, acceptance, and the result contract
 - if the request decomposes into independent bounded subtasks, prefer bounded parallel specialist fan-out within the configured worker cap, then wait and synthesize once all required subtasks finish
+- do not treat unrelated MCP servers, OpenAI documentation surfaces, SDK helpers, or generic Codex-native helper agents as substitutes for a selected Foreman specialist role when the packaged Foreman specialist roster is available
+- companion MCPs such as docs, fetch, filesystem, git, or OpenAI reference surfaces are subordinate tools that an assigned Foreman specialist may use; they are not the worker route themselves
 
 ## Required workflow
 
@@ -60,6 +62,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
    - `foreman_raider` for implementation
    - `foreman_arbiter` for review
    - `foreman_sentinel` for ownership classification
+10a. If a matching packaged Foreman specialist exists, do not satisfy that role by routing to generic Codex `explorer` / `worker` agents or to unrelated MCP servers instead. Those surfaces may support the specialist as tools, but they are not the selected specialist path for `$cap`.
 11. Route specialist work deliberately:
    - use `foreman_tactician` when the next bounded move, scope, or acceptance is still ambiguous
    - use `foreman_scout` for repository inspection, evidence gathering, read-only diagnosis, and documentation lookup
@@ -91,6 +94,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - the packaged install surface may also ship matching Codex custom-agent files for internal harness routing, but `$cap` remains the only public operator entrypoint and the host Codex session remains captain for this skill
 - a packaged `foreman_captain` definition may still exist for internal or future compatibility, but it is not the default public `$cap` receiver
 - those custom agents or subagents are bounded specialist executors that Codex chooses deliberately; they are not hidden always-on workers
+- unrelated MCP servers or OpenAI reference surfaces may still exist in the same Codex session, but under `$cap` they should remain subordinate tool surfaces rather than replacements for the packaged Foreman specialist roster
 - packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, code specialist, and verifier; those are internal specialist contracts, not public operator commands
 - upstream lifecycle commands such as `/spec`, `/plan`, `/build`, `/test`, `/review`, and `/ship` are playbook inspiration only here, not the public Codex-Foreman operator surface
 - if the packaged custom-agent roster is unavailable, stay on the persisted Foreman MCP path rather than inventing a public worker command surface

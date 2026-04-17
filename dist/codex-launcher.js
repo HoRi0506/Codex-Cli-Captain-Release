@@ -6,6 +6,7 @@ const node_child_process_1 = require("node:child_process");
 const cli_mutation_lease_1 = require("./cli-mutation-lease");
 const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
+const workflow_variants_1 = require("./workflow-variants");
 class LauncherUsageError extends Error {
 }
 function usage() {
@@ -81,7 +82,7 @@ function buildLauncherPrompt(result, request) {
     return [
         firstLine,
         'Continue through the persisted Foreman workflow for that run instead of re-scoping the request from scratch.',
-        `Hidden route: ${result.answer_trace.workflow_variant_selection.workflow_skill_id} (${result.answer_trace.workflow_variant_selection.workflow_agent_route.join(' -> ')})`,
+        `Workflow path: ${(0, workflow_variants_1.getWorkflowPublicLabel)(result.answer_trace.workflow_variant_selection)}.`,
         `Run decision: ${result.run_decision_reason}`,
         `Auto-entry summary: ${result.summary}`,
         `Original operator request: ${request}`,

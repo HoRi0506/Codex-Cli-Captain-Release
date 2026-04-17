@@ -62,6 +62,7 @@ const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
 const request_shape_1 = require("./request-shape");
 const run_lifecycle_1 = require("./run-lifecycle");
+const workflow_variants_1 = require("./workflow-variants");
 const session_run_binding_1 = require("./session-run-binding");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
@@ -562,7 +563,358 @@ function createAutoEntryStartOptions(options, recommendation) {
         acceptance: `Complete the operator request within the stated scope and leave the result ready for explicit verification against "${title}".`,
         prompt: createAutoEntryExecutionPrompt(normalizedRequest),
         taskKind,
+        workflowVariantSelection: recommendation.workflow_variant_selection,
     };
+}
+function mapRoleToWorkflowRouteStep(role) {
+    switch (role) {
+        case 'orchestrator':
+            return 'captain';
+        case 'planner':
+            return 'tactician';
+        case 'explorer':
+            return 'scout';
+        case 'code specialist':
+            return 'raider';
+        case 'verifier':
+            return 'arbiter';
+        default:
+            return null;
+    }
+}
+function createWorkflowRouteStepTitle(step, title) {
+    switch (step) {
+        case 'tactician':
+            return `Prepare the next scoped move for ${title}`;
+        case 'scout':
+            return `Inspect the minimum source context for ${title}`;
+        case 'raider':
+            return `Deliver the requested scoped result for ${title}`;
+        case 'arbiter':
+            return `Verify the requested scoped result for ${title}`;
+    }
+}
+function createWorkflowRouteStepIntent(step, title) {
+    switch (step) {
+        case 'tactician':
+            return `Prepare the next scoped move for "${title}" before wider work continues.`;
+        case 'scout':
+            return `Inspect only the smallest source context needed for "${title}".`;
+        case 'raider':
+            return `Produce only the requested scoped implementation or authored result for "${title}".`;
+        case 'arbiter':
+            return `Judge whether the requested scoped result for "${title}" satisfies the acceptance target.`;
+    }
+}
+function createWorkflowRouteStepScope(step, request) {
+    switch (step) {
+        case 'tactician':
+            return `Keep planning limited to the next scoped move only. Request: ${request}`;
+        case 'scout':
+            return `Inspect only the smallest repository context needed for the request: ${request}`;
+        case 'raider':
+            return `Produce only the scoped mutation or authored result needed for the request: ${request}`;
+        case 'arbiter':
+            return `Review only the scoped result against the request and acceptance target: ${request}`;
+    }
+}
+function createWorkflowRouteStepAcceptance(input) {
+    switch (input.step) {
+        case 'tactician':
+            return input.nextStep === 'captain'
+                ? input.originalAcceptance
+                : 'Return a bounded plan that is specific enough for the next route step without widening scope.';
+        case 'scout':
+            return input.nextStep === 'captain'
+                ? 'Return the bounded repository evidence needed for captain synthesis without mutating files.'
+                : 'Return only the bounded evidence needed for the next route step without mutating files.';
+        case 'raider':
+            return input.nextStep === 'captain'
+                ? input.originalAcceptance
+                : 'Produce a bounded result that is ready for the next route step and stays inside the original request.';
+        case 'arbiter':
+            return `Decide whether the bounded result satisfies the original acceptance target: ${input.originalAcceptance}`;
+    }
+}
+function createWorkflowRouteStepPrompt(input) {
+    const compactRequest = compactAutoEntryPrompt(input.request);
+    switch (input.step) {
+        case 'tactician':
+            return `Plan only the next bounded move for this request and keep the route ready for the next specialist step: ${compactRequest}`;
+        case 'scout':
+            return `Inspect only the bounded evidence needed for this request before the next route step: ${compactRequest}`;
+        case 'raider':
+            return input.nextStep === 'captain'
+                ? compactRequest
+                : `Implement only the bounded result needed for this request and leave it ready for the next route step: ${compactRequest}`;
+        case 'arbiter':
+            return `Review the bounded result against the request and acceptance target: ${compactRequest}`;
+    }
+}
+function createQueuedWorkflowReviewTask(input) {
+    return (0, runtime_1.createQueuedTaskCardRecord)({
+        taskCardId: input.taskCardId,
+        runId: input.runId,
+        title: createWorkflowRouteStepTitle('arbiter', input.title),
+        intent: createWorkflowRouteStepIntent('arbiter', input.title),
+        scope: createWorkflowRouteStepScope('arbiter', input.request),
+        acceptance: createWorkflowRouteStepAcceptance({
+            step: 'arbiter',
+            nextStep: 'captain',
+            originalAcceptance: input.acceptance,
+        }),
+        executionPrompt: createWorkflowRouteStepPrompt({
+            step: 'arbiter',
+            request: input.request,
+            nextStep: 'captain',
+        }),
+        taskKind: 'review',
+        acceptanceChecks: [input.acceptance],
+        reviewOfTaskCardIds: [input.dependsOnTaskCardId],
+        dependsOnTaskCardIds: [input.dependsOnTaskCardId],
+        nodeKind: 'execution',
+        roleConfigSnapshot: input.roleConfigSnapshot,
+    });
+}
+function createWorkflowRouteStartTaskCards(input) {
+    const contract = (0, workflow_variants_1.getWorkflowRouteContract)(input.workflowVariantSelection);
+    if (!contract) {
+        return null;
+    }
+    const specialistSteps = contract.workflow_agent_route.filter((step) => step !== 'captain');
+    if (specialistSteps.length === 0) {
+        return null;
+    }
+    if (contract.execution_mode === 'parallel') {
+        const firstStep = specialistSteps[0];
+        if (firstStep === 'tactician') {
+            const firstTaskId = (0, node_crypto_1.randomUUID)();
+            const scoutChildId = (0, node_crypto_1.randomUUID)();
+            const raiderChildId = (0, node_crypto_1.randomUUID)();
+            const fanInTaskId = (0, node_crypto_1.randomUUID)();
+            const reviewTaskId = specialistSteps.includes('arbiter') ? (0, node_crypto_1.randomUUID)() : null;
+            const firstTask = (0, runtime_1.createInitialTaskCardRecord)({
+                taskCardId: firstTaskId,
+                runId: input.runId,
+                title: createWorkflowRouteStepTitle('tactician', input.title),
+                intent: createWorkflowRouteStepIntent('tactician', input.title),
+                scope: createWorkflowRouteStepScope('tactician', input.request),
+                acceptance: createWorkflowRouteStepAcceptance({
+                    step: 'tactician',
+                    nextStep: 'raider',
+                    originalAcceptance: input.acceptance,
+                }),
+                executionPrompt: createWorkflowRouteStepPrompt({
+                    step: 'tactician',
+                    request: input.request,
+                    nextStep: 'raider',
+                }),
+                taskKind: 'plan',
+                ownerRole: 'orchestrator',
+                roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+            });
+            const scoutChild = (0, runtime_1.createQueuedTaskCardRecord)({
+                taskCardId: scoutChildId,
+                runId: input.runId,
+                title: 'Inspect one scoped evidence slice',
+                intent: 'Gather one scoped evidence slice that can be merged with sibling work.',
+                scope: `Inspect one scoped repository evidence slice for the request: ${input.request}`,
+                acceptance: 'Return one bounded evidence slice that can be merged at explicit fan-in.',
+                executionPrompt: `Inspect one bounded evidence slice for this request: ${compactAutoEntryPrompt(input.request)}`,
+                taskKind: 'explore',
+                dependsOnTaskCardIds: [firstTaskId],
+                nodeKind: 'execution',
+                roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+            });
+            const raiderChild = (0, runtime_1.createQueuedTaskCardRecord)({
+                taskCardId: raiderChildId,
+                runId: input.runId,
+                title: 'Prepare one scoped implementation slice',
+                intent: 'Prepare one scoped implementation-oriented slice that can be merged with sibling work.',
+                scope: `Implement or author one scoped slice for the request: ${input.request}`,
+                acceptance: 'Return one bounded implementation slice that can be merged at explicit fan-in.',
+                executionPrompt: `Implement one bounded slice for this request: ${compactAutoEntryPrompt(input.request)}`,
+                taskKind: 'execution',
+                dependsOnTaskCardIds: [firstTaskId],
+                nodeKind: 'execution',
+                roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+            });
+            const fanInTask = (0, runtime_1.createQueuedTaskCardRecord)({
+                taskCardId: fanInTaskId,
+                runId: input.runId,
+                title: 'Integrate the scoped child results',
+                intent: 'Perform one explicit fan-in pass over the scoped child results.',
+                scope: `Merge the scoped child results without widening scope. Request: ${input.request}`,
+                acceptance: reviewTaskId === null ? input.acceptance : 'Produce one bounded integrated result that is ready for explicit review.',
+                executionPrompt: `Integrate the bounded parallel child results for this request: ${compactAutoEntryPrompt(input.request)}`,
+                taskKind: 'execution',
+                dependsOnTaskCardIds: [firstTaskId],
+                fanInFromTaskCardIds: [scoutChildId, raiderChildId],
+                nodeKind: 'fan_in',
+                roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+            });
+            const taskCards = [firstTask, scoutChild, raiderChild, fanInTask];
+            if (reviewTaskId !== null) {
+                taskCards.push(createQueuedWorkflowReviewTask({
+                    runId: input.runId,
+                    taskCardId: reviewTaskId,
+                    title: input.title,
+                    request: input.request,
+                    acceptance: input.acceptance,
+                    dependsOnTaskCardId: fanInTaskId,
+                    roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                }));
+            }
+            return taskCards;
+        }
+        const firstTaskId = (0, node_crypto_1.randomUUID)();
+        const scoutChildId = (0, node_crypto_1.randomUUID)();
+        const planChildId = (0, node_crypto_1.randomUUID)();
+        const fanInTaskId = (0, node_crypto_1.randomUUID)();
+        const firstTask = (0, runtime_1.createInitialTaskCardRecord)({
+            taskCardId: firstTaskId,
+            runId: input.runId,
+            title: createWorkflowRouteStepTitle('scout', input.title),
+            intent: createWorkflowRouteStepIntent('scout', input.title),
+            scope: createWorkflowRouteStepScope('scout', input.request),
+            acceptance: createWorkflowRouteStepAcceptance({
+                step: 'scout',
+                nextStep: 'tactician',
+                originalAcceptance: input.acceptance,
+            }),
+            executionPrompt: createWorkflowRouteStepPrompt({
+                step: 'scout',
+                request: input.request,
+                nextStep: 'tactician',
+            }),
+            taskKind: 'explore',
+            ownerRole: 'orchestrator',
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+        });
+        const scoutChild = (0, runtime_1.createQueuedTaskCardRecord)({
+            taskCardId: scoutChildId,
+            runId: input.runId,
+            title: 'Inspect one scoped evidence slice',
+            intent: 'Gather one additional scoped evidence slice that can be merged with sibling work.',
+            scope: `Inspect one scoped evidence slice for the request: ${input.request}`,
+            acceptance: 'Return one bounded evidence slice that can be merged at explicit fan-in.',
+            executionPrompt: `Inspect one bounded evidence slice for this request: ${compactAutoEntryPrompt(input.request)}`,
+            taskKind: 'explore',
+            dependsOnTaskCardIds: [firstTaskId],
+            nodeKind: 'execution',
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+        });
+        const planChild = (0, runtime_1.createQueuedTaskCardRecord)({
+            taskCardId: planChildId,
+            runId: input.runId,
+            title: 'Summarize one scoped evidence slice',
+            intent: 'Shape one scoped synthesis-ready summary that can be merged with sibling work.',
+            scope: `Summarize one scoped evidence slice for the request: ${input.request}`,
+            acceptance: 'Return one bounded summary slice that can be merged at explicit fan-in.',
+            executionPrompt: `Summarize one bounded evidence slice for this request: ${compactAutoEntryPrompt(input.request)}`,
+            taskKind: 'plan',
+            dependsOnTaskCardIds: [firstTaskId],
+            nodeKind: 'execution',
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+        });
+        const fanInTask = (0, runtime_1.createQueuedTaskCardRecord)({
+            taskCardId: fanInTaskId,
+            runId: input.runId,
+            title: 'Synthesize the scoped evidence',
+            intent: 'Perform one explicit fan-in pass over the scoped evidence slices.',
+            scope: `Synthesize the scoped evidence without widening scope. Request: ${input.request}`,
+            acceptance: input.acceptance,
+            executionPrompt: `Synthesize the bounded parallel evidence for this request: ${compactAutoEntryPrompt(input.request)}`,
+            taskKind: 'plan',
+            dependsOnTaskCardIds: [firstTaskId],
+            fanInFromTaskCardIds: [scoutChildId, planChildId],
+            nodeKind: 'fan_in',
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+        });
+        return [firstTask, scoutChild, planChild, fanInTask];
+    }
+    const serialSteps = specialistSteps.filter((step) => step !== 'sentinel');
+    if (serialSteps.length === 0) {
+        return null;
+    }
+    const taskCards = [];
+    let previousTaskCardId = null;
+    for (let index = 0; index < serialSteps.length; index += 1) {
+        const step = serialSteps[index];
+        const taskCardId = (0, node_crypto_1.randomUUID)();
+        const nextStep = serialSteps[index + 1] ?? 'captain';
+        if (step === 'arbiter') {
+            if (!previousTaskCardId) {
+                taskCards.push((0, runtime_1.createInitialTaskCardRecord)({
+                    taskCardId,
+                    runId: input.runId,
+                    title: createWorkflowRouteStepTitle('arbiter', input.title),
+                    intent: createWorkflowRouteStepIntent('arbiter', input.title),
+                    scope: createWorkflowRouteStepScope('arbiter', input.request),
+                    acceptance: createWorkflowRouteStepAcceptance({
+                        step: 'arbiter',
+                        nextStep: 'captain',
+                        originalAcceptance: input.acceptance,
+                    }),
+                    executionPrompt: createWorkflowRouteStepPrompt({
+                        step: 'arbiter',
+                        request: input.request,
+                        nextStep: 'captain',
+                    }),
+                    taskKind: 'review',
+                    acceptanceChecks: [input.acceptance],
+                    ownerRole: 'orchestrator',
+                    roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                }));
+            }
+            else {
+                taskCards.push(createQueuedWorkflowReviewTask({
+                    runId: input.runId,
+                    taskCardId,
+                    title: input.title,
+                    request: input.request,
+                    acceptance: input.acceptance,
+                    dependsOnTaskCardId: previousTaskCardId,
+                    roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                }));
+            }
+            previousTaskCardId = taskCardId;
+            continue;
+        }
+        const taskKindForStep = step === 'tactician' ? 'plan' : step === 'scout' ? 'explore' : 'execution';
+        const roleForStep = step === 'tactician' ? 'planner' : step === 'scout' ? 'explorer' : 'code specialist';
+        const recordInput = {
+            taskCardId,
+            runId: input.runId,
+            title: createWorkflowRouteStepTitle(step, input.title),
+            intent: createWorkflowRouteStepIntent(step, input.title),
+            scope: createWorkflowRouteStepScope(step, input.request),
+            acceptance: createWorkflowRouteStepAcceptance({
+                step,
+                nextStep,
+                originalAcceptance: input.acceptance,
+            }),
+            executionPrompt: createWorkflowRouteStepPrompt({
+                step,
+                request: input.request,
+                nextStep,
+            }),
+            taskKind: taskKindForStep,
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)(roleForStep, input.foremanConfig),
+        };
+        taskCards.push(previousTaskCardId === null
+            ? (0, runtime_1.createInitialTaskCardRecord)({
+                ...recordInput,
+                ownerRole: 'orchestrator',
+            })
+            : (0, runtime_1.createQueuedTaskCardRecord)({
+                ...recordInput,
+                dependsOnTaskCardIds: [previousTaskCardId],
+                nodeKind: 'execution',
+            }));
+        previousTaskCardId = taskCardId;
+    }
+    return taskCards;
 }
 function createAdvanceRunResult(input) {
     const routingMetadata = (0, orchestrator_1.derivePolicyAwareRoutingMetadata)(input.run, input.taskCard, input.orchestrationPolicy, input.decision);
@@ -2276,7 +2628,7 @@ function findParallelFanInLaunchCandidate(run, taskCards) {
         if (!fanInTaskCard ||
             fanInTaskCard.status !== 'queued' ||
             fanInTaskCard.node_kind !== 'fan_in' ||
-            fanInTaskCard.task_kind !== 'execution' ||
+            fanInTaskCard.task_kind === 'review' ||
             fanInTaskCard.fan_in_from_task_card_ids.length < 2) {
             continue;
         }
@@ -2294,6 +2646,145 @@ function findParallelFanInLaunchCandidate(run, taskCards) {
         }
     }
     return null;
+}
+function createCompletedTaskShadow(taskCard) {
+    return {
+        ...taskCard,
+        status: 'completed',
+        owner_role: taskCard.assigned_role,
+        assigned_agent_id: null,
+        verification_state: 'passed',
+        completed_by_agent_id: (0, runtime_1.getAgentIdForRole)(taskCard.assigned_role),
+        completed_at: taskCard.updated_at,
+    };
+}
+function finalizeCompletedWorkflowTask(taskCard, timestamp) {
+    taskCard.status = 'completed';
+    taskCard.owner_role = taskCard.assigned_role;
+    taskCard.assigned_agent_id = null;
+    taskCard.verification_state = 'passed';
+    taskCard.latest_failure = null;
+    taskCard.completed_by_agent_id = (0, runtime_1.getAgentIdForRole)(taskCard.assigned_role);
+    taskCard.updated_at = timestamp;
+    taskCard.completed_at = timestamp;
+}
+function promoteWorkflowRouteTask(run, completedTaskCard, nextTaskCard, handoff) {
+    (0, runtime_1.activatePlannedTask)(run, nextTaskCard, handoff);
+    finalizeCompletedWorkflowTask(completedTaskCard, handoff.created_at);
+}
+function completeWorkflowRouteAtCaptain(run, taskCard, handoff, summary) {
+    finalizeCompletedWorkflowTask(taskCard, handoff.created_at);
+    run.status = 'completed';
+    run.stage = taskCard.task_kind === 'review' ? 'verification' : 'execution';
+    run.active_role = null;
+    run.active_agent_id = null;
+    run.active_task_card_id = taskCard.task_card_id;
+    run.latest_handoff_id = handoff.handoff_id;
+    run.latest_verified_checkpoint = {
+        task_card_id: taskCard.task_card_id,
+        title: taskCard.title,
+        summary,
+        recorded_at: handoff.created_at,
+    };
+    run.latest_verification =
+        taskCard.task_kind === 'review'
+            ? {
+                state: 'passed',
+                summary,
+                recorded_at: handoff.created_at,
+            }
+            : null;
+    run.latest_failure = null;
+    run.updated_at = handoff.created_at;
+    run.completed_at = handoff.created_at;
+}
+async function progressWorkflowRouteAfterSuccessfulExecution(input) {
+    const selection = getRunWorkflowVariantSelection(input.run);
+    const contract = (0, workflow_variants_1.getWorkflowRouteContract)(selection);
+    if (!selection || !contract) {
+        return {
+            handled: false,
+            activeTaskCard: input.taskCard,
+            latestPersistedHandoff: null,
+        };
+    }
+    const completedTaskCards = input.taskCards.map((candidate) => candidate.task_card_id === input.taskCard.task_card_id ? createCompletedTaskShadow(candidate) : candidate);
+    if (contract.execution_mode === 'parallel') {
+        const parallelFanInLaunch = findParallelFanInLaunchCandidate(input.run, completedTaskCards);
+        if (parallelFanInLaunch) {
+            const promotionHandoff = (0, runtime_1.createHandoffRecord)({
+                handoffId: (0, node_crypto_1.randomUUID)(),
+                runId: input.run.run_id,
+                taskCardId: parallelFanInLaunch.fanInTaskCard.task_card_id,
+                fromRole: 'orchestrator',
+                toRole: parallelFanInLaunch.fanInTaskCard.assigned_role,
+                summary: 'Captain promoted the bounded parallel fan-in task after the entry route step completed.',
+            });
+            promoteWorkflowRouteTask(input.run, input.taskCard, parallelFanInLaunch.fanInTaskCard, promotionHandoff);
+            await (0, runtime_1.persistHandoffRecord)(input.runPaths, promotionHandoff);
+            let childIndex = 1;
+            for (const sourceTaskCard of parallelFanInLaunch.sourceTaskCards) {
+                const delegation = createQueuedGraphChildDelegation({
+                    cwd: input.cwd,
+                    delegationId: await (0, runtime_1.allocateDelegationId)(input.runPaths),
+                    run: input.run,
+                    fanInTaskCard: parallelFanInLaunch.fanInTaskCard,
+                    sourceTaskCard,
+                    childIndex,
+                });
+                childIndex += 1;
+                await (0, runtime_1.persistDelegationArtifact)(input.runPaths, delegation);
+                syncDelegationChildAgent(input.run, delegation);
+            }
+            return {
+                handled: true,
+                activeTaskCard: parallelFanInLaunch.fanInTaskCard,
+                latestPersistedHandoff: promotionHandoff,
+            };
+        }
+    }
+    const nextQueuedTaskCard = (0, runtime_1.findNextQueuedTaskCard)(input.run, completedTaskCards);
+    if (nextQueuedTaskCard && nextQueuedTaskCard.task_card_id !== input.taskCard.task_card_id) {
+        const promotionHandoff = (0, runtime_1.createHandoffRecord)({
+            handoffId: (0, node_crypto_1.randomUUID)(),
+            runId: input.run.run_id,
+            taskCardId: nextQueuedTaskCard.task_card_id,
+            fromRole: 'orchestrator',
+            toRole: nextQueuedTaskCard.assigned_role,
+            summary: 'Captain promoted the next strict workflow route step after the prior step completed.',
+        });
+        promoteWorkflowRouteTask(input.run, input.taskCard, nextQueuedTaskCard, promotionHandoff);
+        await (0, runtime_1.persistHandoffRecord)(input.runPaths, promotionHandoff);
+        return {
+            handled: true,
+            activeTaskCard: nextQueuedTaskCard,
+            latestPersistedHandoff: promotionHandoff,
+        };
+    }
+    const currentStep = mapRoleToWorkflowRouteStep(input.taskCard.assigned_role);
+    const nextRouteStep = (0, workflow_variants_1.getWorkflowRouteNextStep)(selection, currentStep);
+    if (nextRouteStep === 'captain' || nextRouteStep === null) {
+        const captainReturnHandoff = (0, runtime_1.createHandoffRecord)({
+            handoffId: (0, node_crypto_1.randomUUID)(),
+            runId: input.run.run_id,
+            taskCardId: input.taskCard.task_card_id,
+            fromRole: input.taskCard.assigned_role,
+            toRole: 'orchestrator',
+            summary: 'Configured worker execution returned to captain for final bounded synthesis.',
+        });
+        completeWorkflowRouteAtCaptain(input.run, input.taskCard, captainReturnHandoff, input.completionSummary);
+        await (0, runtime_1.persistHandoffRecord)(input.runPaths, captainReturnHandoff);
+        return {
+            handled: true,
+            activeTaskCard: input.taskCard,
+            latestPersistedHandoff: captainReturnHandoff,
+        };
+    }
+    return {
+        handled: false,
+        activeTaskCard: input.taskCard,
+        latestPersistedHandoff: null,
+    };
 }
 function getCurrentReviewRoundDelegations(taskCard, taskDelegations) {
     return taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id &&
@@ -2374,7 +2865,8 @@ async function seedExploreInvestigationDelegationsIfEligible(input) {
 async function seedPrimaryExecutionDelegationIfEligible(input) {
     if (input.run.stage !== 'execution' ||
         input.taskCard.status !== 'active' ||
-        !requiresConcreteWorkerLaunch(input.taskCard) ||
+        (!requiresConcreteWorkerLaunch(input.taskCard) &&
+            !requiresDelegatedEntryLaunchForWorkflowRoute(input.run, input.taskCard)) ||
         input.taskCard.owner_role !== input.taskCard.assigned_role) {
         return [];
     }
@@ -2543,7 +3035,10 @@ async function performExplicitDelegationFanIn(runPaths, run, taskCards, taskCard
             syncDelegationChildAgent(run, delegation);
         }
         blockRunForFailedDelegatedFanIn(run, taskCard, selectBlockingFanInDelegation(taskDelegationSummary.delegations));
-        return null;
+        return {
+            activeTaskCard: taskCard,
+            latestPersistedHandoff: null,
+        };
     }
     const graphDelegations = taskDelegationSummary.delegations.filter((delegation) => delegation.source_task_card_id !== null && delegation.source_task_card_id !== undefined);
     if (graphDelegations.length > 0) {
@@ -2578,30 +3073,32 @@ async function performExplicitDelegationFanIn(runPaths, run, taskCards, taskCard
             toRole: taskCard.assigned_role,
             summary: 'Orchestrator collapsed the bounded graph child set and resumed the fan-in task for explicit execution.',
         });
-        run.status = 'active';
-        run.stage = 'execution';
-        run.active_role = taskCard.assigned_role;
-        run.active_agent_id = taskCard.assigned_agent_id;
-        run.active_task_card_id = taskCard.task_card_id;
-        run.active_thread_id = null;
-        run.latest_handoff_id = resumeHandoff.handoff_id;
-        run.latest_failure = null;
-        run.latest_verification = null;
-        run.updated_at = resumeHandoff.created_at;
-        run.completed_at = null;
-        taskCard.status = 'active';
-        taskCard.owner_role = taskCard.assigned_role;
-        taskCard.assigned_agent_id = taskCard.assigned_agent_id;
-        taskCard.verification_state = 'pending';
-        taskCard.latest_failure = null;
-        taskCard.updated_at = resumeHandoff.created_at;
-        taskCard.completed_at = null;
+        (0, runtime_1.activatePlannedTask)(run, taskCard, resumeHandoff);
         await (0, runtime_1.persistHandoffRecord)(runPaths, resumeHandoff);
-        return resumeHandoff;
+        return {
+            activeTaskCard: taskCard,
+            latestPersistedHandoff: resumeHandoff,
+        };
     }
     const exploreArtifact = createExploreArtifactFromDelegationResults(run, taskCard, taskDelegationSummary.delegations);
     if (exploreArtifact !== null) {
         await (0, runtime_1.persistExploreArtifact)(runPaths, exploreArtifact);
+    }
+    const workflowProgress = await progressWorkflowRouteAfterSuccessfulExecution({
+        cwd: runPaths.workspaceDir,
+        runPaths,
+        run,
+        taskCards,
+        taskCard,
+        completionSummary: taskDelegationSummary.delegations
+            .map((delegation) => delegation.worker_result?.summary ?? delegation.result_summary ?? delegation.summary)
+            .join(' ') || `Configured worker execution completed for "${taskCard.title}".`,
+    });
+    if (workflowProgress.handled) {
+        return {
+            activeTaskCard: workflowProgress.activeTaskCard,
+            latestPersistedHandoff: workflowProgress.latestPersistedHandoff,
+        };
     }
     const workerReturnHandoff = (0, runtime_1.createHandoffRecord)({
         handoffId: (0, node_crypto_1.randomUUID)(),
@@ -2622,7 +3119,10 @@ async function performExplicitDelegationFanIn(runPaths, run, taskCards, taskCard
     });
     (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
     await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
-    return verificationHandoff;
+    return {
+        activeTaskCard: taskCard,
+        latestPersistedHandoff: verificationHandoff,
+    };
 }
 async function performExplicitVerificationReviewFanIn(cwd, runPaths, run, taskCards, taskCard, latestHandoff) {
     const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
@@ -3756,32 +4256,87 @@ async function planForemanRun(options) {
 }
 async function startForemanRun(options) {
     const runId = (0, node_crypto_1.randomUUID)();
-    const taskCardId = (0, node_crypto_1.randomUUID)();
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, runId);
     const { config: foremanConfig } = await (0, runtime_1.ensureForemanConfig)(options.cwd);
     const verificationSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)((0, runtime_1.getForemanAgentConfigForRole)(foremanConfig, 'verifier'));
-    const run = (0, runtime_1.createInitialRunRecord)({ runId, goal: options.goal, taskCardId });
     const taskKind = options.taskKind ?? 'execution';
-    const assignedRole = (0, runtime_1.getAssignedRoleForTaskKind)(taskKind);
-    const taskCard = (0, runtime_1.createInitialTaskCardRecord)({
-        taskCardId,
-        runId,
-        title: options.title,
-        intent: options.intent,
-        scope: options.scope,
-        acceptance: options.acceptance,
-        executionPrompt: options.prompt,
-        taskKind,
-        ownerRole: 'orchestrator',
-        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)(assignedRole, foremanConfig),
-    });
+    const workflowRouteTaskCards = options.workflowVariantSelection === undefined
+        ? null
+        : createWorkflowRouteStartTaskCards({
+            runId,
+            title: options.title,
+            request: options.goal,
+            acceptance: options.acceptance,
+            taskKind,
+            workflowVariantSelection: options.workflowVariantSelection,
+            foremanConfig,
+        });
+    const taskCard = workflowRouteTaskCards?.[0]
+        ? workflowRouteTaskCards[0]
+        : (0, runtime_1.createInitialTaskCardRecord)({
+            taskCardId: (0, node_crypto_1.randomUUID)(),
+            runId,
+            title: options.title,
+            intent: options.intent,
+            scope: options.scope,
+            acceptance: options.acceptance,
+            executionPrompt: options.prompt,
+            taskKind,
+            ownerRole: 'orchestrator',
+            roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)((0, runtime_1.getAssignedRoleForTaskKind)(taskKind), foremanConfig),
+        });
+    const taskCards = workflowRouteTaskCards?.length ? workflowRouteTaskCards : [taskCard];
+    const run = (0, runtime_1.createInitialRunRecord)({ runId, goal: options.goal, taskCardId: taskCard.task_card_id });
+    run.task_card_ids = taskCards.map((candidate) => candidate.task_card_id);
+    if (options.workflowVariantSelection) {
+        const requestClassification = (0, request_shape_1.classifyForemanRequest)({ request: options.goal });
+        const firstRouteStep = (0, workflow_variants_1.getWorkflowRouteContract)(options.workflowVariantSelection)?.workflow_agent_route.find((step) => step !== 'captain') ?? null;
+        const selectedRole = mapWorkflowRouteStepToSelectedRole(firstRouteStep);
+        run.latest_entry_trace = {
+            request: options.goal,
+            run_selection: 'new_run_created',
+            requester_session_id: null,
+            continuity_strategy: 'workspace_run_search',
+            continuity_summary: 'Explicit start invoked without requester-session continuity binding.',
+            entry_boundary: 'explicit_cli_or_mcp',
+            upstream_codex_binary_intercept_supported: false,
+            run_decision_reason: 'explicit start created a route-driven run with persisted workflow selection metadata',
+            summary: 'Explicit start created a route-driven run.',
+            answer_trace: {
+                request_shape: requestClassification.requestShape,
+                mutation_intent: requestClassification.mutationIntent,
+                workflow_variant_selection: options.workflowVariantSelection,
+                selected_role: selectedRole,
+                execution_path: 'new_run',
+                budget_class: deriveAutoEntryBudgetClass({
+                    selectedRole,
+                    recommendation: {
+                        ...(0, entry_policy_1.recommendForemanEntry)({
+                            cwd: options.cwd,
+                            request: options.goal,
+                        }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator),
+                        workflow_variant_selection: options.workflowVariantSelection,
+                    },
+                }),
+                review_requirement: options.workflowVariantSelection.workflow_agent_route.includes('arbiter')
+                    ? 'required'
+                    : selectedRole === 'scout' || selectedRole === 'tactician'
+                        ? 'optional'
+                        : 'none',
+                why_selected: 'explicit start selected the first hidden workflow route step as the bounded execution entry.',
+                why_not_local: 'explicit start asked Foreman to persist bounded state instead of keeping work captain-local.',
+                why_not_heavier_role: 'the hidden workflow route contract controls the next specialist boundary.',
+            },
+            recorded_at: (0, runtime_1.nowTimestamp)(),
+        };
+    }
     run.active_role = 'orchestrator';
     run.active_agent_id = (0, runtime_1.getRunActiveAgentIdForRole)('orchestrator');
     run.updated_at = taskCard.updated_at;
     const initialHandoff = (0, runtime_1.createHandoffRecord)({
         handoffId: (0, node_crypto_1.randomUUID)(),
         runId,
-        taskCardId,
+        taskCardId: taskCard.task_card_id,
         fromRole: 'orchestrator',
         toRole: 'orchestrator',
         summary: 'Orchestrator accepted the active task and is preparing the specialist handoff boundary.',
@@ -3793,7 +4348,7 @@ async function startForemanRun(options) {
     const initialDecision = (0, orchestrator_1.decideOrchestratorNextStep)(run, taskCard, { verificationRequestAvailable: true });
     const orchestratorState = (0, runtime_1.createOrchestratorState)({
         runId,
-        taskCardId,
+        taskCardId: taskCard.task_card_id,
         executionRequest,
         verificationRequest,
         decision: initialDecision,
@@ -3803,7 +4358,7 @@ async function startForemanRun(options) {
     await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
     await persistRunArtifactsAndProgress(runPaths, {
         run,
-        taskCards: [taskCard],
+        taskCards,
         taskCard,
         latestHandoff: initialHandoff,
         decision: initialDecision,
@@ -3811,7 +4366,7 @@ async function startForemanRun(options) {
     });
     return {
         runId,
-        taskCardId,
+        taskCardId: taskCard.task_card_id,
         runDirectory: runPaths.runDir,
         status: run.status,
         stage: run.stage,
@@ -3870,7 +4425,21 @@ function isReadOnlyAutoEntryCandidate(recommendation) {
         AUTO_ENTRY_REUSABLE_NON_MUTATION_REQUEST_SHAPES.has(recommendation.request_shape));
 }
 function shouldSuppressNewRunCreationForAutoEntry(recommendation) {
-    return isReadOnlyAutoEntryCandidate(recommendation) && recommendation.request_shape === 'synthesis';
+    return (isReadOnlyAutoEntryCandidate(recommendation) &&
+        (recommendation.request_shape === 'synthesis' ||
+            ((recommendation.request_shape === 'lookup' || recommendation.request_shape === 'existence_check') &&
+                recommendation.workflow_variant_selection.workflow_skill_id === 'captain_investigate_only')));
+}
+function getRunWorkflowVariantSelection(run) {
+    return run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
+}
+function requiresDelegatedEntryLaunchForWorkflowRoute(run, taskCard) {
+    return (0, workflow_variants_1.doesWorkflowRouteRequireDelegatedEntryLaunch)({
+        selection: getRunWorkflowVariantSelection(run),
+        taskKind: taskCard.task_kind,
+        assignedRole: taskCard.assigned_role,
+        ownerRole: taskCard.owner_role,
+    });
 }
 function deriveAutoEntryContinuityMetadata(options) {
     if (options.session) {
@@ -3970,13 +4539,24 @@ function deriveAutoEntrySelectedRole(input) {
     if (input.runSelection === 'no_run_created') {
         return 'captain';
     }
-    if (input.recommendation.mutation_intent === 'explicit_or_strong') {
-        return 'raider';
-    }
     if (input.runSelection === 'existing_run_reused' &&
         input.selectedRun &&
         !isReadOnlyAutoEntryCandidate(input.recommendation)) {
         return mapRoleToAutoEntrySelectedRole(input.selectedRun.snapshot.assignedRole);
+    }
+    const firstRouteStep = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection)?.workflow_agent_route.find((step) => step !== 'captain');
+    switch (firstRouteStep) {
+        case 'tactician':
+            return 'tactician';
+        case 'scout':
+            return 'scout';
+        case 'raider':
+            return 'raider';
+        case 'arbiter':
+            return 'arbiter';
+    }
+    if (input.recommendation.mutation_intent === 'explicit_or_strong') {
+        return 'raider';
     }
     if (input.recommendation.recommended_entrypoint === 'plan') {
         return 'tactician';
@@ -4020,6 +4600,20 @@ function deriveAutoEntryReviewRequirement(selectedRole) {
         case 'captain':
         default:
             return 'none';
+    }
+}
+function mapWorkflowRouteStepToSelectedRole(step) {
+    switch (step) {
+        case 'tactician':
+            return 'tactician';
+        case 'scout':
+            return 'scout';
+        case 'raider':
+            return 'raider';
+        case 'arbiter':
+            return 'arbiter';
+        default:
+            return 'captain';
     }
 }
 function createAutoEntryAnswerTrace(input) {
@@ -4101,9 +4695,7 @@ function renderAutoEntryAnswerTrace(trace) {
     return [
         `request_shape=${trace.request_shape}`,
         `mutation_intent=${trace.mutation_intent}`,
-        `workflow_variant=${trace.workflow_variant_selection.workflow_variant}`,
-        `workflow_skill=${trace.workflow_variant_selection.workflow_skill_id}`,
-        `workflow_route=${trace.workflow_variant_selection.workflow_agent_route.join('>')}`,
+        `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `selected_role=${trace.selected_role}`,
         `execution_path=${trace.execution_path}`,
         `budget_class=${trace.budget_class}`,
@@ -4625,7 +5217,7 @@ async function advanceForemanRun(options) {
     if (run.stage === 'execution' &&
         taskCard.status === 'active' &&
         taskCard.owner_role === 'orchestrator' &&
-        requiresConcreteWorkerLaunch(taskCard) &&
+        (requiresConcreteWorkerLaunch(taskCard) || requiresDelegatedEntryLaunchForWorkflowRoute(run, taskCard)) &&
         run.active_role !== 'orchestrator') {
         run.active_role = 'orchestrator';
         run.active_agent_id = (0, runtime_1.getRunActiveAgentIdForRole)('orchestrator');
@@ -4690,7 +5282,10 @@ async function advanceForemanRun(options) {
             syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
         }
         else {
-            currentLatestHandoff = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
+            const executionFanIn = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
+            activeTaskCard = executionFanIn.activeTaskCard;
+            currentLatestHandoff = executionFanIn.latestPersistedHandoff;
+            syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
         }
         ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
         (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
@@ -4719,9 +5314,9 @@ async function advanceForemanRun(options) {
     if (!decision.can_advance || decision.next_step !== 'execute_task') {
         return createAdvanceRunResult({
             run,
-            taskCard,
+            taskCard: activeTaskCard,
             orchestrationPolicy: orchestratorState.orchestration_policy,
-            taskCardId: taskCard.task_card_id,
+            taskCardId: activeTaskCard.task_card_id,
             runDirectory: runPaths.runDir,
             status: run.status,
             stage: run.stage,
@@ -4895,7 +5490,9 @@ async function advanceForemanRun(options) {
     if (delegationAlreadyFinalized) {
         // already closed through the delegation lifecycle path above
     }
-    else if (!executionDelegation && requiresConcreteWorkerLaunch(taskCard) && !isReadOnlyFallbackAllowed(taskCard)) {
+    else if (!executionDelegation &&
+        (requiresConcreteWorkerLaunch(taskCard) || requiresDelegatedEntryLaunchForWorkflowRoute(run, taskCard)) &&
+        !isReadOnlyFallbackAllowed(taskCard)) {
         outcome = createPolicyOverrideRequiredOutcome(taskCard);
     }
     else if (!executionDelegation && directExecutionLaunchEvidence.match_state === 'mismatch') {
@@ -5028,17 +5625,34 @@ async function advanceForemanRun(options) {
                 (0, runtime_1.updateExecutionThread)(run, taskCard, outcome.threadId);
             }
             if (outcome.kind === 'completed') {
-                const verificationHandoff = (0, runtime_1.createHandoffRecord)({
-                    handoffId: (0, node_crypto_1.randomUUID)(),
-                    runId: run.run_id,
-                    taskCardId: taskCard.task_card_id,
-                    fromRole: taskCard.assigned_role,
-                    toRole: 'verifier',
-                    summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+                const workflowProgress = await progressWorkflowRouteAfterSuccessfulExecution({
+                    cwd: options.cwd,
+                    runPaths,
+                    run,
+                    taskCards: await ensureTaskCards(),
+                    taskCard,
+                    completionSummary: outcome.summary,
                 });
-                currentLatestHandoff = verificationHandoff;
-                (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
-                await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
+                if (workflowProgress.handled) {
+                    activeTaskCard = workflowProgress.activeTaskCard;
+                    currentLatestHandoff = workflowProgress.latestPersistedHandoff;
+                    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
+                }
+                else {
+                    const verificationHandoff = (0, runtime_1.createHandoffRecord)({
+                        handoffId: (0, node_crypto_1.randomUUID)(),
+                        runId: run.run_id,
+                        taskCardId: taskCard.task_card_id,
+                        fromRole: taskCard.assigned_role,
+                        toRole: 'verifier',
+                        summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+                    });
+                    currentLatestHandoff = verificationHandoff;
+                    (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
+                    await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
+                    activeTaskCard = taskCard;
+                    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
+                }
             }
             else if (outcome.kind === 'compatibility_failed') {
                 (0, runtime_1.markRunTerminalState)(run, taskCard, {
@@ -5080,22 +5694,22 @@ async function advanceForemanRun(options) {
                     verificationState: 'blocked',
                 });
             }
-            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
             (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
             await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
             await persistRunArtifactsAndProgress(runPaths, {
                 run,
                 taskCards: await ensureTaskCards(),
-                taskCard,
+                taskCard: activeTaskCard,
                 latestHandoff: currentLatestHandoff,
                 decision,
                 orchestrationPolicy: orchestratorState.orchestration_policy,
             });
             return createAdvanceRunResult({
                 run,
-                taskCard,
+                taskCard: activeTaskCard,
                 orchestrationPolicy: orchestratorState.orchestration_policy,
-                taskCardId: taskCard.task_card_id,
+                taskCardId: activeTaskCard.task_card_id,
                 runDirectory: runPaths.runDir,
                 status: run.status,
                 stage: run.stage,
@@ -5106,15 +5720,18 @@ async function advanceForemanRun(options) {
         }
         ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
         if (decision.next_step === 'await_fan_in' && decision.can_advance) {
-            currentLatestHandoff = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
-            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+            const executionFanIn = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
+            activeTaskCard = executionFanIn.activeTaskCard;
+            currentLatestHandoff = executionFanIn.latestPersistedHandoff;
+            syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
+            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
         }
         (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
         await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
         await persistRunArtifactsAndProgress(runPaths, {
             run,
             taskCards: await ensureTaskCards(),
-            taskCard,
+            taskCard: activeTaskCard,
             latestHandoff: currentLatestHandoff,
             decision,
             orchestrationPolicy: orchestratorState.orchestration_policy,
@@ -5137,17 +5754,34 @@ async function advanceForemanRun(options) {
         if (exploreArtifact !== null) {
             await (0, runtime_1.persistExploreArtifact)(runPaths, exploreArtifact);
         }
-        const verificationHandoff = (0, runtime_1.createHandoffRecord)({
-            handoffId: (0, node_crypto_1.randomUUID)(),
-            runId: run.run_id,
-            taskCardId: taskCard.task_card_id,
-            fromRole: taskCard.assigned_role,
-            toRole: 'verifier',
-            summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+        const workflowProgress = await progressWorkflowRouteAfterSuccessfulExecution({
+            cwd: options.cwd,
+            runPaths,
+            run,
+            taskCards: await ensureTaskCards(),
+            taskCard,
+            completionSummary: outcome.summary,
         });
-        currentLatestHandoff = verificationHandoff;
-        (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
-        await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
+        if (workflowProgress.handled) {
+            activeTaskCard = workflowProgress.activeTaskCard;
+            currentLatestHandoff = workflowProgress.latestPersistedHandoff;
+            syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
+        }
+        else {
+            const verificationHandoff = (0, runtime_1.createHandoffRecord)({
+                handoffId: (0, node_crypto_1.randomUUID)(),
+                runId: run.run_id,
+                taskCardId: taskCard.task_card_id,
+                fromRole: taskCard.assigned_role,
+                toRole: 'verifier',
+                summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+            });
+            currentLatestHandoff = verificationHandoff;
+            (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
+            await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
+            activeTaskCard = taskCard;
+            syncOrchestratorStateRequests(orchestratorState, options.cwd, run, activeTaskCard);
+        }
     }
     else if (outcome.kind === 'compatibility_failed') {
         (0, runtime_1.markRunTerminalState)(run, taskCard, {
@@ -5189,22 +5823,22 @@ async function advanceForemanRun(options) {
             verificationState: 'blocked',
         });
     }
-    ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+    ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, activeTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
     await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
     await persistRunArtifactsAndProgress(runPaths, {
         run,
         taskCards: await ensureTaskCards(),
-        taskCard,
+        taskCard: activeTaskCard,
         latestHandoff: currentLatestHandoff,
         decision,
         orchestrationPolicy: orchestratorState.orchestration_policy,
     });
     return createAdvanceRunResult({
         run,
-        taskCard,
+        taskCard: activeTaskCard,
         orchestrationPolicy: orchestratorState.orchestration_policy,
-        taskCardId: taskCard.task_card_id,
+        taskCardId: activeTaskCard.task_card_id,
         runDirectory: runPaths.runDir,
         status: run.status,
         stage: run.stage,

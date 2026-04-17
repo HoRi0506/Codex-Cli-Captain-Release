@@ -2196,6 +2196,70 @@ function deriveWorkerSessionAlignment(input) {
     }
     return 'not_applicable';
 }
+function mapWorkflowRoleToStep(role) {
+    switch (role) {
+        case 'orchestrator':
+            return 'captain';
+        case 'planner':
+            return 'tactician';
+        case 'explorer':
+            return 'scout';
+        case 'code specialist':
+            return 'raider';
+        case 'verifier':
+            return 'arbiter';
+        default:
+            return null;
+    }
+}
+function deriveWorkflowRouteContractState(input) {
+    if (!input.workflowVariantSelection) {
+        return {
+            routeContractState: 'not_applicable',
+            currentRouteStep: 'none',
+            nextRouteStep: 'none',
+        };
+    }
+    const firstSpecialistStep = (0, workflow_variants_1.getWorkflowRouteFirstSpecialistStep)(input.workflowVariantSelection);
+    if (input.status === 'completed') {
+        return {
+            routeContractState: 'completed',
+            currentRouteStep: 'captain',
+            nextRouteStep: 'none',
+        };
+    }
+    const proofState = input.currentTaskCard?.specialist_execution_truth?.proof_state ?? null;
+    const currentSpecialistStep = mapWorkflowRoleToStep(input.currentTaskCard?.specialist_execution_truth?.specialist_role ?? null);
+    const activeRouteStep = currentSpecialistStep ?? firstSpecialistStep ?? 'captain';
+    const nextRouteStep = (0, workflow_variants_1.getWorkflowRouteNextStep)(input.workflowVariantSelection, activeRouteStep);
+    const workerCount = input.currentTaskCard?.ownership_chain?.worker_count ?? 0;
+    if (proofState === 'foreman_worker_visible') {
+        return {
+            routeContractState: 'in_progress',
+            currentRouteStep: activeRouteStep,
+            nextRouteStep: nextRouteStep ?? 'none',
+        };
+    }
+    if (proofState === 'host_session_fallback' || proofState === 'captain_read_only_fallback') {
+        return {
+            routeContractState: 'degraded',
+            currentRouteStep: activeRouteStep,
+            nextRouteStep: nextRouteStep ?? 'captain',
+        };
+    }
+    if (proofState === 'planned_assignment_only') {
+        return {
+            routeContractState: workerCount > 0 ? 'launching' : 'declared_only',
+            currentRouteStep: activeRouteStep,
+            nextRouteStep: nextRouteStep ?? activeRouteStep,
+        };
+    }
+    return {
+        routeContractState: 'declared_only',
+        currentRouteStep: firstSpecialistStep ?? 'captain',
+        nextRouteStep: firstSpecialistStep ?? 'captain',
+    };
+}
 async function createWorkflowOperatorStateView(input) {
     const runPaths = (0, runtime_1.createRunPaths)(input.cwd, input.run.run_id);
     const plannerAttemptId = input.taskCard?.planner_attempt_id ?? input.run.planning_clarification_request?.planner_attempt_id ?? null;
@@ -2217,6 +2281,11 @@ async function createWorkflowOperatorStateView(input) {
     const workflowVariantSelection = input.run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
     const sessionBinding = await (0, session_run_binding_1.loadSessionRunBinding)(input.cwd, input.run.run_id);
     const requesterSessionContinuity = sessionBinding?.state === 'active' ? 'session_bound' : sessionBinding?.state === 'released' ? 'released' : 'workspace_unbound';
+    const routeContract = deriveWorkflowRouteContractState({
+        workflowVariantSelection,
+        currentTaskCard: input.currentTaskCard,
+        status: input.run.status,
+    });
     const workflowProgress = deriveWorkflowProgress({
         taskCard: input.taskCard,
         currentTaskCard: input.currentTaskCard,
@@ -2236,8 +2305,11 @@ async function createWorkflowOperatorStateView(input) {
     return {
         phase: workflowPhase,
         summary: `${phaseSummary} ` +
-            `workflow_skill=${workflowVariantSelection?.workflow_skill_id ?? 'none'} ` +
+            `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(workflowVariantSelection)} ` +
             `workflow_progress=${workflowProgress} ` +
+            `route_contract=${routeContract.routeContractState} ` +
+            `current_route_step=${routeContract.currentRouteStep} ` +
+            `next_route_step=${routeContract.nextRouteStep} ` +
             `session_continuity=${requesterSessionContinuity} ` +
             `worker_alignment=${workerSessionAlignment} ` +
             `plan_update=${latestPlanUpdate.artifact === null ? 'missing' : 'recorded'} ` +
@@ -2251,6 +2323,9 @@ async function createWorkflowOperatorStateView(input) {
         workflow_skill_id: workflowVariantSelection?.workflow_skill_id ?? 'none',
         workflow_agent_route: workflowVariantSelection?.workflow_agent_route ? [...workflowVariantSelection.workflow_agent_route] : [],
         workflow_progress: workflowProgress,
+        route_contract_state: routeContract.routeContractState,
+        current_route_step: routeContract.currentRouteStep,
+        next_route_step: routeContract.nextRouteStep,
         requester_session_continuity: requesterSessionContinuity,
         worker_session_alignment: workerSessionAlignment,
     };
@@ -3500,7 +3575,7 @@ function describeOperatorLatestAnswerPath(currentTaskCard, guidanceSource) {
         ? ` current=${currentRole}${currentProofSuffix}`
         : '';
     return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
-        ` [${trace.answer_trace.workflow_variant_selection.workflow_skill_id}]` +
+        ` [${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.answer_trace.workflow_variant_selection)}]` +
         ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
 }
 function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, loopState, runTruthSurface, _workflowOperatorState, taskGraphSummary, guidanceSource) {
@@ -3587,13 +3662,16 @@ function createTaskGraphOperatorVisibilitySummary(input) {
 }
 function createWorkflowOperatorVisibilitySummary(input) {
     if (!input.workflow_operator_state) {
-        return 'workflow_phase=none workflow_next=none workflow_skill=none workflow_progress=captain_synthesis workflow_session=workspace_unbound workflow_alignment=not_applicable explore_evidence=none plan_update=missing';
+        return 'workflow_phase=none workflow_next=none workflow_path=none workflow_progress=captain_synthesis workflow_route_contract=not_applicable workflow_current_step=none workflow_next_step=none workflow_session=workspace_unbound workflow_alignment=not_applicable explore_evidence=none plan_update=missing';
     }
     return [
         `workflow_phase=${input.workflow_operator_state.phase}`,
         `workflow_next=${input.workflow_operator_state.recommended_operator_action}`,
-        `workflow_skill=${input.workflow_operator_state.workflow_skill_id}`,
+        `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(input.workflow_operator_state)}`,
         `workflow_progress=${input.workflow_operator_state.workflow_progress}`,
+        `workflow_route_contract=${input.workflow_operator_state.route_contract_state ?? 'not_applicable'}`,
+        `workflow_current_step=${input.workflow_operator_state.current_route_step ?? 'none'}`,
+        `workflow_next_step=${input.workflow_operator_state.next_route_step ?? 'none'}`,
         `workflow_session=${input.workflow_operator_state.requester_session_continuity}`,
         `workflow_alignment=${input.workflow_operator_state.worker_session_alignment}`,
         `explore_evidence=${input.workflow_operator_state.explore_evidence_state}`,
@@ -3604,12 +3682,9 @@ function createWorkflowOperatorDisplayLine(workflowOperatorState) {
     if (!workflowOperatorState) {
         return null;
     }
-    const route = workflowOperatorState.workflow_agent_route.length > 0
-        ? workflowOperatorState.workflow_agent_route.join(' -> ')
-        : 'none';
-    return (`Workflow: ${workflowOperatorState.workflow_skill_id} ` +
-        `(${workflowOperatorState.phase}, ${workflowOperatorState.workflow_progress}, ${workflowOperatorState.requester_session_continuity}, ${workflowOperatorState.worker_session_alignment}) ` +
-        `route=${route}`);
+    return (`Workflow: ${(0, workflow_variants_1.getWorkflowPublicLabel)(workflowOperatorState)} ` +
+        `(${workflowOperatorState.phase}, ${workflowOperatorState.workflow_progress}, ${workflowOperatorState.route_contract_state ?? 'not_applicable'}, ${workflowOperatorState.requester_session_continuity}, ${workflowOperatorState.worker_session_alignment}) ` +
+        `step=${workflowOperatorState.current_route_step ?? 'none'}->${workflowOperatorState.next_route_step ?? 'none'}`);
 }
 function createCaptainLoopOperatorVisibilitySummary(input) {
     if (!input.current_task_card) {
@@ -3896,7 +3971,7 @@ function buildForemanOrchestrateDispatchedSummary(input) {
 }
 function renderCompactAutoEntryAnswerTrace(trace) {
     return [
-        `workflow=${trace.workflow_variant_selection.workflow_skill_id}`,
+        `workflow=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `role=${trace.selected_role}`,
         `path=${trace.execution_path}`,
         `budget=${trace.budget_class}`,

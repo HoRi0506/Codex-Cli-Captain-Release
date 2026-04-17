@@ -11,6 +11,7 @@ const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
 const mcp_server_1 = require("./mcp-server");
 const setup_codex_mcp_1 = require("./setup-codex-mcp");
+const workflow_variants_1 = require("./workflow-variants");
 class UsageError extends Error {
 }
 function usage() {
@@ -999,7 +1000,7 @@ function formatWatchLatestAnswerLine(status) {
         ? ` current=${currentAgent}${currentProofSuffix}`
         : '';
     return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
-        ` [${trace.answer_trace.workflow_variant_selection.workflow_skill_id}]` +
+        ` [${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.answer_trace.workflow_variant_selection)}]` +
         ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
 }
 function formatCompactWatchStatusLine(status) {
@@ -1156,8 +1157,7 @@ function formatWatchStatusLine(status, verbosity) {
         `answer_role=${compactWatchText(status.latest_entry_trace?.answer_trace.selected_role)}`,
         `answer_path=${compactWatchText(status.latest_entry_trace?.answer_trace.execution_path)}`,
         `answer_shape=${compactWatchText(status.latest_entry_trace?.answer_trace.request_shape)}`,
-        `answer_workflow_variant=${compactWatchText(status.latest_entry_trace?.answer_trace.workflow_variant_selection.workflow_variant)}`,
-        `answer_workflow_skill=${compactWatchText(status.latest_entry_trace?.answer_trace.workflow_variant_selection.workflow_skill_id)}`,
+        `answer_workflow_path=${compactWatchText((0, workflow_variants_1.getWorkflowPublicLabel)(status.latest_entry_trace?.answer_trace.workflow_variant_selection))}`,
         `answer_budget=${compactWatchText(status.latest_entry_trace?.answer_trace.budget_class)}`,
         `always_on=${compactWatchText(status.always_on_mode?.status)}`,
         formatAlwaysOnOperatorSummary(status),

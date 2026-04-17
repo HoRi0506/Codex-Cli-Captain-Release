@@ -1,5 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getWorkflowRouteContract = getWorkflowRouteContract;
+exports.getWorkflowRouteEntryTaskKind = getWorkflowRouteEntryTaskKind;
+exports.getWorkflowRouteFirstSpecialistStep = getWorkflowRouteFirstSpecialistStep;
+exports.getWorkflowRouteNextStep = getWorkflowRouteNextStep;
+exports.getWorkflowPublicLabel = getWorkflowPublicLabel;
+exports.doesWorkflowRouteRequireDelegatedEntryLaunch = doesWorkflowRouteRequireDelegatedEntryLaunch;
 exports.deriveWorkflowVariantSelection = deriveWorkflowVariantSelection;
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
 const DRIFT_HINTS = [
@@ -40,6 +46,180 @@ function createSelection(input) {
 }
 function isDocShapedMutation(requestShape, normalizedRequest) {
     return requestShape === 'mutation' && includesAnyKeyword(normalizedRequest, DOC_HINTS);
+}
+const WORKFLOW_ROUTE_CONTRACTS = [
+    {
+        workflow_variant: 'investigate_only',
+        workflow_skill_id: 'captain_investigate_only',
+        workflow_agent_route: ['captain', 'scout', 'captain'],
+        entry_task_kind: 'explore',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'investigate_then_document',
+        workflow_skill_id: 'captain_investigate_then_document',
+        workflow_agent_route: ['captain', 'scout', 'raider', 'captain'],
+        entry_task_kind: 'explore',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'diagnose_then_fix',
+        workflow_skill_id: 'captain_diagnose_then_fix',
+        workflow_agent_route: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
+        entry_task_kind: 'explore',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'fix_only',
+        workflow_skill_id: 'captain_fix_only',
+        workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'],
+        entry_task_kind: 'execution',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'plan_then_implement',
+        workflow_skill_id: 'captain_plan_then_implement',
+        workflow_agent_route: ['captain', 'tactician', 'raider', 'arbiter', 'captain'],
+        entry_task_kind: 'plan',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'implement_then_review',
+        workflow_skill_id: 'captain_implement_then_review',
+        workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'],
+        entry_task_kind: 'execution',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'verify_only',
+        workflow_skill_id: 'captain_verify_only',
+        workflow_agent_route: ['captain', 'arbiter', 'captain'],
+        entry_task_kind: 'review',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'ownership_drift_check',
+        workflow_skill_id: 'captain_ownership_drift_check',
+        workflow_agent_route: ['captain', 'scout', 'arbiter', 'captain'],
+        entry_task_kind: 'explore',
+        execution_mode: 'serial',
+        release_visibility: 'internal_only',
+    },
+    {
+        workflow_variant: 'parallel_fanout',
+        workflow_skill_id: 'captain_parallel_fanout',
+        workflow_agent_route: ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'captain'],
+        entry_task_kind: null,
+        execution_mode: 'parallel',
+        release_visibility: 'internal_only',
+    },
+];
+function mapRoleToInternalRouteStep(role) {
+    switch (role) {
+        case 'orchestrator':
+            return 'captain';
+        case 'planner':
+            return 'tactician';
+        case 'explorer':
+            return 'scout';
+        case 'code specialist':
+            return 'raider';
+        case 'verifier':
+            return 'arbiter';
+        default:
+            return null;
+    }
+}
+function getWorkflowRouteContract(selection) {
+    if (!selection) {
+        return null;
+    }
+    const baseContract = WORKFLOW_ROUTE_CONTRACTS.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ?? null;
+    if (!baseContract) {
+        return null;
+    }
+    return {
+        ...baseContract,
+        workflow_agent_route: selection.workflow_agent_route && selection.workflow_agent_route.length > 0
+            ? [...selection.workflow_agent_route]
+            : [...baseContract.workflow_agent_route],
+    };
+}
+function getWorkflowRouteEntryTaskKind(selection, fallbackTaskKind) {
+    const contract = getWorkflowRouteContract(selection);
+    if (!contract) {
+        return fallbackTaskKind;
+    }
+    if (contract.workflow_skill_id === 'captain_parallel_fanout') {
+        return fallbackTaskKind;
+    }
+    if (contract.entry_task_kind === 'plan' && fallbackTaskKind !== 'plan') {
+        return fallbackTaskKind;
+    }
+    return contract.entry_task_kind ?? fallbackTaskKind;
+}
+function getWorkflowRouteFirstSpecialistStep(selection) {
+    const contract = getWorkflowRouteContract(selection);
+    if (!contract) {
+        return null;
+    }
+    return contract.workflow_agent_route.find((step) => step !== 'captain') ?? null;
+}
+function getWorkflowRouteNextStep(selection, currentStep) {
+    const contract = getWorkflowRouteContract(selection);
+    if (!contract || !currentStep) {
+        return null;
+    }
+    const currentIndex = contract.workflow_agent_route.indexOf(currentStep);
+    if (currentIndex === -1 || currentIndex >= contract.workflow_agent_route.length - 1) {
+        return null;
+    }
+    return contract.workflow_agent_route[currentIndex + 1] ?? null;
+}
+function getWorkflowPublicLabel(selection) {
+    if (!selection || selection.workflow_variant === 'none' || selection.workflow_skill_id === 'none') {
+        return 'none';
+    }
+    switch (selection.workflow_variant) {
+        case 'investigate_only':
+            return 'bounded_investigation';
+        case 'investigate_then_document':
+            return 'evidence_then_document';
+        case 'diagnose_then_fix':
+            return 'diagnose_then_fix';
+        case 'fix_only':
+            return 'direct_fix_with_review';
+        case 'plan_then_implement':
+            return 'plan_then_implement';
+        case 'implement_then_review':
+            return 'implementation_with_review';
+        case 'verify_only':
+            return 'verification_only';
+        case 'ownership_drift_check':
+            return 'ownership_or_drift_check';
+        case 'parallel_fanout':
+            return 'bounded_parallel_work';
+    }
+}
+function doesWorkflowRouteRequireDelegatedEntryLaunch(input) {
+    const contract = getWorkflowRouteContract(input.selection);
+    if (!contract) {
+        return false;
+    }
+    const firstStep = getWorkflowRouteFirstSpecialistStep(input.selection);
+    const assignedStep = mapRoleToInternalRouteStep(input.assignedRole);
+    const entryTaskKind = getWorkflowRouteEntryTaskKind(input.selection, input.taskKind);
+    return (firstStep !== null &&
+        assignedStep === firstStep &&
+        entryTaskKind === input.taskKind &&
+        input.ownerRole !== 'verifier');
 }
 function deriveWorkflowVariantSelection(input) {
     const normalizedRequest = input.request.trim().toLowerCase();
@@ -119,8 +299,8 @@ function deriveWorkflowVariantSelection(input) {
         return createSelection({
             workflowVariant: 'parallel_fanout',
             workflowSkillId: 'captain_parallel_fanout',
-            workflowAgentRoute: ['captain', 'tactician', 'scout', 'captain'],
-            workflowSummary: 'Captain should use the hidden bounded parallel fan-out route so exploration can stay split into small evidence passes before synthesis.',
+            workflowAgentRoute: ['captain', 'scout', 'tactician', 'captain'],
+            workflowSummary: 'Captain should use the hidden bounded parallel fan-out route so exploration can split into parallel evidence passes and one bounded synthesis handoff before the final answer.',
         });
     }
     return createSelection({

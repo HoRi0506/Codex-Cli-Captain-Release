@@ -143,6 +143,19 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
             recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
         },
     });
+    if (recommendedEntrypoint === 'start') {
+        recommendedTaskKind = (0, workflow_variants_1.getWorkflowRouteEntryTaskKind)(workflowVariantSelection, recommendedTaskKind);
+        if (recommendedTaskKind === 'explore') {
+            summary =
+                requestClassification.requestShape === 'synthesis'
+                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through explorer evidence and captain synthesis first.'
+                    : 'Recommend `start` because the selected hidden route begins with bounded explorer evidence before later synthesis, mutation, or review.';
+        }
+        else if (recommendedTaskKind === 'review') {
+            summary =
+                'Recommend `start` because the selected hidden route begins at a bounded verification or review step.';
+        }
+    }
     return {
         cwd: options.cwd,
         request: options.request,
