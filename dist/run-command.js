@@ -69,6 +69,47 @@ const validation_1 = require("./validation");
 const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
 const MAX_CONTINUE_MAX_STEPS = 4;
+const AUTO_ENTRY_REUSE_SCORE_MINIMUM = 3;
+const AUTO_ENTRY_READ_ONLY_REQUEST_SHAPES = new Set([
+    'existence_check',
+    'lookup',
+    'survey',
+    'diagnosis',
+    'synthesis',
+    'verification',
+]);
+const AUTO_ENTRY_TOKEN_STOPWORDS = new Set([
+    'the',
+    'and',
+    'that',
+    'this',
+    'with',
+    'from',
+    'into',
+    'through',
+    'current',
+    'please',
+    'check',
+    'whether',
+    'exists',
+    'files',
+    'file',
+    'readme',
+    'read',
+    'only',
+    'change',
+    'changes',
+    'without',
+    'any',
+    'does',
+    'keep',
+    'using',
+    'bounded',
+    'captain',
+    'foreman',
+    'task',
+    'work',
+]);
 const WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES = 4000;
 const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules', '.sisyphus']);
 const WORKSPACE_MUTATION_EVIDENCE_EXCLUDE_FILES = new Set(['codex-args.json']);
@@ -1324,6 +1365,10 @@ async function loadContinueRunSnapshot(options) {
         runId: run.run_id,
         taskCardId: taskCard.task_card_id,
         runDirectory: runPaths.runDir,
+        goal: run.goal,
+        taskTitle: taskCard.title,
+        taskKind: taskCard.task_kind,
+        assignedRole: taskCard.assigned_role,
         status: run.status,
         stage: run.stage,
         verificationState: taskCard.verification_state,
@@ -1339,6 +1384,10 @@ function buildContinueRunSnapshotFromLoopResult(result) {
         runId: result.runId,
         taskCardId: result.finalSnapshot.task_card_id,
         runDirectory: result.runDirectory,
+        goal: '',
+        taskTitle: result.finalSnapshot.task_card_id,
+        taskKind: result.finalSnapshot.next_step === 'verify_task' ? 'review' : 'execution',
+        assignedRole: result.finalSnapshot.next_step === 'verify_task' ? 'verifier' : 'code specialist',
         status: result.finalSnapshot.status,
         stage: result.finalSnapshot.stage,
         verificationState: result.finalSnapshot.verification_state,
@@ -3716,6 +3765,89 @@ async function startForemanRun(options) {
         canAdvance: initialDecision.can_advance,
     };
 }
+function extractAutoEntryPathMentions(text) {
+    const matches = text.match(/\b[\w./-]+\.[A-Za-z0-9]+\b/g);
+    if (!matches) {
+        return [];
+    }
+    return Array.from(new Set(matches.map((match) => node_path_1.default.normalize(match.toLowerCase()))));
+}
+function tokenizeAutoEntryText(text) {
+    const normalizedText = text.toLowerCase();
+    const matches = normalizedText.match(/[a-z0-9_.-]+/g);
+    if (!matches) {
+        return [];
+    }
+    return Array.from(new Set(matches.filter((token) => token.length >= 3 && !AUTO_ENTRY_TOKEN_STOPWORDS.has(token))));
+}
+function computeAutoEntryReuseScore(request, candidate) {
+    const requestPaths = new Set(extractAutoEntryPathMentions(request));
+    const candidatePaths = new Set(extractAutoEntryPathMentions([candidate.snapshot.goal, candidate.snapshot.taskTitle].filter((value) => value.trim().length > 0).join('\n')));
+    let score = 0;
+    for (const requestPath of requestPaths) {
+        if (candidatePaths.has(requestPath)) {
+            score += 3;
+        }
+    }
+    const requestTokens = tokenizeAutoEntryText(request);
+    const candidateTokens = new Set(tokenizeAutoEntryText([candidate.snapshot.goal, candidate.snapshot.taskTitle].filter((value) => value.trim().length > 0).join('\n')));
+    for (const token of requestTokens) {
+        if (candidateTokens.has(token)) {
+            score += 1;
+        }
+    }
+    if (candidate.snapshot.taskKind === 'explore' &&
+        candidate.snapshot.assignedRole === 'explorer' &&
+        requestPaths.size > 0) {
+        score += 1;
+    }
+    return score;
+}
+function isReadOnlyAutoEntryCandidate(recommendation) {
+    const normalizedRequest = recommendation.request.trim().toLowerCase();
+    const explicitlyRequestsFreshState = normalizedRequest.includes('start a new') ||
+        normalizedRequest.includes('create a new') ||
+        normalizedRequest.includes('new bounded task') ||
+        normalizedRequest.includes('new run');
+    return (!explicitlyRequestsFreshState &&
+        recommendation.recommended_entrypoint === 'start' &&
+        recommendation.mutation_intent === 'none' &&
+        recommendation.recommended_task_kind !== 'execution' &&
+        AUTO_ENTRY_READ_ONLY_REQUEST_SHAPES.has(recommendation.request_shape));
+}
+function selectReusableAutoEntryRun(input) {
+    if (input.activeRunInspection.fresh.length === 1) {
+        return input.activeRunInspection.fresh[0] ?? null;
+    }
+    if (!isReadOnlyAutoEntryCandidate(input.recommendation)) {
+        return null;
+    }
+    const rankedCandidates = input.activeRunInspection.fresh
+        .filter((candidate) => candidate.lifecycle.state !== 'manual_hold')
+        .map((candidate) => ({
+        candidate,
+        score: computeAutoEntryReuseScore(input.request, candidate),
+    }))
+        .sort((left, right) => {
+        if (right.score !== left.score) {
+            return right.score - left.score;
+        }
+        return Date.parse(right.candidate.lifecycle.updated_at) - Date.parse(left.candidate.lifecycle.updated_at);
+    });
+    if (rankedCandidates.length === 0) {
+        return null;
+    }
+    const bestCandidate = rankedCandidates[0];
+    const secondBestCandidate = rankedCandidates[1];
+    if (!bestCandidate) {
+        return null;
+    }
+    if (bestCandidate.score >= AUTO_ENTRY_REUSE_SCORE_MINIMUM &&
+        (!secondBestCandidate || bestCandidate.score > secondBestCandidate.score)) {
+        return bestCandidate.candidate;
+    }
+    return null;
+}
 async function inspectPersistedActiveRunsForAutoEntry(cwd) {
     const lifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const candidates = [];
@@ -3759,7 +3891,13 @@ async function autoEnterForeman(options) {
         : { fresh: [], stale: [] };
     const inspectedActiveRunCount = activeRunInspection.fresh.length + activeRunInspection.stale.length;
     const activeRunCandidates = [...activeRunInspection.fresh, ...activeRunInspection.stale].map((candidate) => candidate.lifecycle);
-    const reusableRun = recommendation.automatic_entry_supported && activeRunInspection.fresh.length === 1 ? activeRunInspection.fresh[0] : null;
+    const reusableRun = recommendation.automatic_entry_supported
+        ? selectReusableAutoEntryRun({
+            recommendation,
+            activeRunInspection,
+            request: options.request,
+        })
+        : null;
     if (!recommendation.automatic_entry_supported) {
         return {
             cwd: options.cwd,
@@ -3821,6 +3959,43 @@ async function autoEnterForeman(options) {
             summary: `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
                 `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
                 'because it was the only fresh active candidate in the workspace.',
+            recommendation,
+        };
+    }
+    if (isReadOnlyAutoEntryCandidate(recommendation)) {
+        const noRunReason = activeRunInspection.fresh.length > 1
+            ? 'multiple fresh active runs were present, but none matched this read-only request safely enough to reuse'
+            : activeRunInspection.stale.length > 0
+                ? 'only stale active runs were available, so Foreman suppressed a new run for this read-only request'
+                : 'no active run matched this read-only request, so Foreman suppressed new run creation';
+        return {
+            cwd: options.cwd,
+            request: options.request,
+            policy_mode: recommendation.policy_mode,
+            automatic_entry_supported: true,
+            entry_boundary: recommendation.entry_boundary,
+            entry_boundary_summary: recommendation.entry_boundary_summary,
+            upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
+            upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            created: false,
+            run_selection: 'no_run_created',
+            inspected_active_run_count: inspectedActiveRunCount,
+            fresh_active_run_count: activeRunInspection.fresh.length,
+            stale_active_run_count: activeRunInspection.stale.length,
+            entrypoint_used: null,
+            scoping_source: null,
+            run_decision_reason: noRunReason,
+            active_run_candidates: activeRunCandidates,
+            selected_run_lifecycle: null,
+            run_id: null,
+            task_card_id: null,
+            run_directory: null,
+            status: null,
+            stage: null,
+            next_step: null,
+            can_advance: null,
+            summary: 'Foreman-first auto-entry suppressed new run creation for a bounded read-only request. ' +
+                'Captain should answer locally, reuse an explicitly chosen active run, or accept an explicit start if persisted run state is still desired.',
             recommendation,
         };
     }

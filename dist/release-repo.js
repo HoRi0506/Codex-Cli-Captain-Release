@@ -181,6 +181,8 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 
 The packaged routing pass is request-shape-aware before it becomes mutation-shaped. Existence checks, lookup, survey, diagnosis, planning, verification, and synthesis can stay on cheaper \`captain\`, \`scout\`, or \`tactician\` routes, while \`raider\` stays behind an explicit mutation-intent gate.
 
+Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
+
 ## How It Behaves
 
 - you send a request with \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <request>\`
@@ -190,6 +192,7 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
 - the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
+- bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` work is \`foreman_captain\`

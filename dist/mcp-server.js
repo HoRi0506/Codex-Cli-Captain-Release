@@ -4424,8 +4424,10 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     ? `Foreman auto-entry reused active run ${result.run_id} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
                                     : result.created
                                         ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
-                                        : `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.` +
-                                            `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`,
+                                        : result.policy_mode === 'guided_explicit'
+                                            ? `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.` +
+                                                `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`
+                                            : `Foreman auto-entry suppressed new run creation with ${visibilitySummary} because ${result.run_decision_reason}. ${result.summary}`,
                             },
                         ],
                         structuredContent: result,
