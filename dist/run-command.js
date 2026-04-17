@@ -59,6 +59,7 @@ const promises_2 = require("node:stream/promises");
 const promises_3 = require("node:timers/promises");
 const entry_policy_1 = require("./entry-policy");
 const orchestration_loop_1 = require("./orchestration-loop");
+const request_shape_1 = require("./request-shape");
 const run_lifecycle_1 = require("./run-lifecycle");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
@@ -448,39 +449,6 @@ function trimAutoEntryTitle(request) {
     }
     return `${normalized.slice(0, AUTO_ENTRY_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
 }
-const AUTO_ENTRY_MUTATION_VERBS = [
-    'fix',
-    'write',
-    'create',
-    'edit',
-    'update',
-    'modify',
-    'patch',
-    'implement',
-    'change',
-    'rename',
-    'remove',
-    'delete',
-];
-const AUTO_ENTRY_MUTATION_TARGET_HINTS = [
-    'readme',
-    '.md',
-    '.ts',
-    '.tsx',
-    '.js',
-    '.jsx',
-    '.json',
-    '.yaml',
-    '.yml',
-    '.toml',
-    '.css',
-    '.html',
-    '.py',
-    '.go',
-    '.rs',
-    '.java',
-    '.swift',
-];
 const EXPLICIT_MUTATION_EVIDENCE_VERBS = [
     'write',
     'create',
@@ -493,47 +461,35 @@ const EXPLICIT_MUTATION_EVIDENCE_VERBS = [
     'delete',
     'append',
 ];
-function requestLooksLikeMutationTask(normalizedRequest) {
-    const lowerRequest = normalizedRequest.toLowerCase();
-    const hasMutationVerb = AUTO_ENTRY_MUTATION_VERBS.some((verb) => lowerRequest.includes(verb));
-    const hasMutationTargetHint = AUTO_ENTRY_MUTATION_TARGET_HINTS.some((hint) => lowerRequest.includes(hint)) ||
-        /(?:^|[\s`'"])(?:src|docs|tests|README)[/A-Za-z0-9_.-]*/u.test(normalizedRequest) ||
-        /\b[a-z0-9_.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|go|rs|java|swift)\b/iu.test(normalizedRequest);
-    return hasMutationVerb && hasMutationTargetHint;
-}
-function requestLooksLikeExploreTask(lowerRequest) {
-    return (lowerRequest.includes('inspect') ||
-        lowerRequest.includes('trace') ||
-        lowerRequest.includes('map') ||
-        lowerRequest.includes('locate') ||
-        lowerRequest.includes('find') ||
-        lowerRequest.includes('summarize') ||
-        lowerRequest.includes('explain'));
-}
 function taskLooksLikeExplicitFileMutation(text) {
     const lowerText = text.toLowerCase();
     const hasMutationVerb = EXPLICIT_MUTATION_EVIDENCE_VERBS.some((verb) => lowerText.includes(verb));
-    const hasMutationTargetHint = AUTO_ENTRY_MUTATION_TARGET_HINTS.some((hint) => lowerText.includes(hint)) ||
-        /(?:^|[\s`'"])(?:src|docs|tests|readme)[/a-z0-9_.-]*/u.test(lowerText) ||
-        /\b[a-z0-9_.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|go|rs|java|swift)\b/u.test(lowerText);
-    return hasMutationVerb && hasMutationTargetHint;
+    return hasMutationVerb && (0, request_shape_1.detectMutationIntent)(lowerText) === 'explicit_or_strong';
+}
+const AUTO_ENTRY_EXECUTION_PROMPT_MAX_CHARS = 320;
+function compactAutoEntryPrompt(normalizedRequest) {
+    if (normalizedRequest.length <= AUTO_ENTRY_EXECUTION_PROMPT_MAX_CHARS) {
+        return normalizedRequest;
+    }
+    return `${normalizedRequest.slice(0, AUTO_ENTRY_EXECUTION_PROMPT_MAX_CHARS - 3).trimEnd()}...`;
+}
+function createAutoEntryExecutionPrompt(normalizedRequest) {
+    const classification = (0, request_shape_1.classifyForemanRequest)({ request: normalizedRequest });
+    const compactRequest = compactAutoEntryPrompt(normalizedRequest);
+    switch (classification.recommendedTaskKind) {
+        case 'review':
+            return `Review the bounded request and verify it without widening scope: ${compactRequest}`;
+        case 'explore':
+            return `Inspect only the evidence needed to answer this bounded request without mutating files: ${compactRequest}`;
+        case 'execution':
+        default:
+            return compactRequest;
+    }
 }
 function createAutoEntryStartOptions(options, recommendation) {
     const normalizedRequest = normalizeInlinePromptText(options.request);
     const title = trimAutoEntryTitle(normalizedRequest);
-    const lowerRequest = normalizedRequest.toLowerCase();
-    const taskKind = recommendation.recommended_entrypoint === 'plan'
-        ? 'plan'
-        : lowerRequest.includes('review') ||
-            lowerRequest.includes('verify') ||
-            lowerRequest.includes('validation') ||
-            lowerRequest.includes('regression')
-            ? 'review'
-            : requestLooksLikeMutationTask(normalizedRequest)
-                ? 'execution'
-                : requestLooksLikeExploreTask(lowerRequest)
-                    ? 'explore'
-                    : 'execution';
+    const taskKind = recommendation.recommended_entrypoint === 'plan' ? 'plan' : recommendation.recommended_task_kind ?? 'execution';
     return {
         cwd: options.cwd,
         goal: normalizedRequest,
@@ -541,7 +497,7 @@ function createAutoEntryStartOptions(options, recommendation) {
         intent: 'Handle the operator request through the bounded Foreman-first auto-entry surface.',
         scope: normalizedRequest,
         acceptance: `Complete the operator request within the stated scope and leave the result ready for explicit verification against "${title}".`,
-        prompt: options.request,
+        prompt: createAutoEntryExecutionPrompt(normalizedRequest),
         taskKind,
     };
 }

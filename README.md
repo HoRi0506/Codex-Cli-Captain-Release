@@ -23,11 +23,15 @@ Use Codex-Foreman when you want one or more of these:
 
 It is most useful for multi-step work, repository investigation, scoped implementation, verification-sensitive tasks, and any request where you want the path of work to stay inspectable.
 
+It is also useful when you want read-heavy repository questions, doc lookups, or bounded explanation work to stay on a cheaper explorer-first path unless mutation is explicitly requested.
+
 For trivial answers or short conversational turns, the normal Codex path is often enough.
 
 ## What Captain Does
 
 `captain` is the orchestrator. It receives the request, checks the current Foreman state, decides whether to stay local or choose a specialist role, keeps the work bounded, and pulls the result back into one visible run.
+
+The packaged routing pass is request-shape-aware before it becomes mutation-shaped. Existence checks, lookup, survey, diagnosis, planning, verification, and synthesis can stay on cheaper `captain`, `scout`, or `tactician` routes, while `raider` stays behind an explicit mutation-intent gate.
 
 ## How It Behaves
 
@@ -37,6 +41,7 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 - Codex decides whether to answer locally or use a specialist role inside that bounded stage
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
 - the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
+- read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
 - `codex-foreman check-install` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - when the packaged custom-agent roster is available, the first Codex-native receiver for packaged `$cap` work is `foreman_captain`
@@ -108,7 +113,7 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.17/codex-foreman-1.5.17.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.18/codex-foreman-1.5.18.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 ## What To Expect

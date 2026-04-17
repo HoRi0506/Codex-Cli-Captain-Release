@@ -6,32 +6,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recommendForemanEntry = recommendForemanEntry;
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
-const runtime_1 = require("./runtime");
-const PLAN_KEYWORDS = [
-    'plan',
-    'planner',
-    'roadmap',
-    'milestone',
-    'strategy',
-    'investigate',
-    'investigation',
-    'explore',
-    'analysis',
-    'analyze',
-    'research',
-    'audit',
-    'architecture',
-    'design',
-    'mindmap',
-    'mermaid',
-    'multiple',
-    'across',
-    'series of',
-    'step-by-step',
-    'phases',
-    'migration',
-    'codebase',
-];
+const request_shape_1 = require("./request-shape");
+const PLAN_KEYWORDS = ['plan', 'planner', 'roadmap', 'milestone', 'strategy', 'migration', 'phases', 'step-by-step'];
 const START_KEYWORDS = [
     'fix',
     'update',
@@ -47,7 +23,6 @@ const START_KEYWORDS = [
     'single file',
 ];
 const REVIEW_KEYWORDS = ['review', 'verify', 'verification', 'validate', 'validation', 'check', 'regression'];
-const EXPLORE_KEYWORDS = ['inspect', 'trace', 'map', 'locate', 'find', 'summarize', 'explain', 'read-only', 'read only'];
 function countKeywordMatches(normalizedRequest, keywords) {
     let matchCount = 0;
     for (const keyword of keywords) {
@@ -99,28 +74,17 @@ function createOrchestratorScopeSummary() {
     return ('Orchestrator settings stay bounded to persisted synthesis/decision work plus one read-only advisory Codex pass and visibility surfaces. ' +
         'Today advise consumes them for one advisory Codex pass, while latest_orchestrator_synthesis and status/watch surfaces expose the bounded decision-and-response layer without turning the orchestrator into a generic execution worker or a general orchestration loop.');
 }
-function deriveBoundedStartTaskKind(normalizedRequest) {
-    const reviewKeywordMatches = countKeywordMatches(normalizedRequest, REVIEW_KEYWORDS);
-    const exploreKeywordMatches = countKeywordMatches(normalizedRequest, EXPLORE_KEYWORDS);
-    const startKeywordMatches = countKeywordMatches(normalizedRequest, START_KEYWORDS);
-    if (reviewKeywordMatches > 0 && startKeywordMatches === 0) {
-        return 'review';
-    }
-    if (exploreKeywordMatches > 0 && startKeywordMatches === 0) {
-        return 'explore';
-    }
-    return 'execution';
-}
 function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig) {
     const normalizedRequest = options.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(options.request);
     const planKeywordMatches = countKeywordMatches(normalizedRequest, PLAN_KEYWORDS);
     const startKeywordMatches = countKeywordMatches(normalizedRequest, START_KEYWORDS);
+    const requestClassification = (0, request_shape_1.classifyForemanRequest)({ request: options.request });
     const rationale = [];
-    let recommendedEntrypoint = 'start';
-    let taskShape = 'single_scoped_task';
+    let recommendedEntrypoint = requestClassification.recommendedEntrypoint;
+    let taskShape = requestClassification.taskShape;
     let confidence = 'medium';
-    let recommendedTaskKind = 'execution';
+    let recommendedTaskKind = requestClassification.recommendedTaskKind;
     let summary = 'Recommend `start` because the request reads like one bounded task that can be expressed directly as a single execution-ready task-card.';
     if (filePathMentions.length >= 4) {
         rationale.push(`The request already touches ${filePathMentions.length} distinct file paths, which usually means broader scoping or sequencing work.`);
@@ -134,13 +98,11 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     if (startKeywordMatches > 0) {
         rationale.push(`The request contains ${startKeywordMatches} implementation signal${startKeywordMatches === 1 ? '' : 's'}.`);
     }
-    if (planKeywordMatches >= 2 ||
-        filePathMentions.length >= 4 ||
-        normalizedRequest.includes('how') ||
-        normalizedRequest.includes('what should') ||
-        normalizedRequest.includes('which')) {
-        recommendedEntrypoint = 'plan';
-        taskShape = 'multi_step_or_unclear';
+    rationale.push(`Request shape classified as ${requestClassification.requestShape}.`);
+    rationale.push(requestClassification.mutationIntent === 'explicit_or_strong'
+        ? 'Mutation intent is explicit or strongly implied, so the bounded mutation path is allowed.'
+        : 'Mutation intent is not explicit, so bounded read-only, explorer-first, or synthesis-first routing is preferred.');
+    if (requestClassification.recommendedEntrypoint === 'plan') {
         confidence = planKeywordMatches >= 2 || filePathMentions.length >= 4 ? 'high' : 'medium';
         summary =
             'Recommend `plan` because the request looks multi-step, investigative, or not yet scoped enough for one execution-ready task-card.';
@@ -149,10 +111,11 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         confidence = startKeywordMatches > 1 || filePathMentions.length > 0 ? 'high' : 'medium';
     }
     if (recommendedEntrypoint === 'start') {
-        recommendedTaskKind = deriveBoundedStartTaskKind(normalizedRequest);
         if (recommendedTaskKind === 'explore') {
             summary =
-                'Recommend `start` because the request looks like one bounded investigation task that captain can route to the explorer path first.';
+                requestClassification.requestShape === 'synthesis'
+                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through explorer evidence and captain synthesis first.'
+                    : 'Recommend `start` because the request looks like one bounded read-heavy or investigation-first task that captain can route to the explorer path first.';
         }
         else if (recommendedTaskKind === 'review') {
             summary =
@@ -170,9 +133,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         config_entries: [],
     };
     const entryBoundary = createEntryBoundary(policy);
-    const suggestedMcpTool = recommendedEntrypoint === 'start' && (0, runtime_1.getAssignedRoleForTaskKind)(recommendedTaskKind) === 'code specialist'
-        ? 'foreman_start'
-        : null;
+    const suggestedMcpTool = recommendedEntrypoint === 'start' ? 'foreman_start' : null;
     return {
         cwd: options.cwd,
         request: options.request,
@@ -202,6 +163,9 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         },
         recommended_entrypoint: recommendedEntrypoint,
         task_shape: taskShape,
+        request_shape: requestClassification.requestShape,
+        mutation_intent: requestClassification.mutationIntent,
+        recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
         confidence,
         summary,
         rationale,
