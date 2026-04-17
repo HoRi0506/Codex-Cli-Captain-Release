@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.planForemanRun = planForemanRun;
 exports.startForemanRun = startForemanRun;
+exports.renderAutoEntryAnswerTrace = renderAutoEntryAnswerTrace;
 exports.autoEnterForeman = autoEnterForeman;
 exports.advanceForemanRun = advanceForemanRun;
 exports.adviseForemanRun = adviseForemanRun;
@@ -3880,6 +3881,160 @@ function summarizeNewAutoEntryRunCreation(input) {
     }
     return input.routedSummary;
 }
+function mapRoleToAutoEntrySelectedRole(role) {
+    switch (role) {
+        case 'planner':
+            return 'tactician';
+        case 'explorer':
+            return 'scout';
+        case 'code specialist':
+            return 'raider';
+        case 'verifier':
+            return 'arbiter';
+        case 'orchestrator':
+        default:
+            return 'captain';
+    }
+}
+function deriveAutoEntrySelectedRole(input) {
+    if (input.runSelection === 'existing_run_reused' &&
+        input.selectedRun &&
+        !isReadOnlyAutoEntryCandidate(input.recommendation)) {
+        return mapRoleToAutoEntrySelectedRole(input.selectedRun.snapshot.assignedRole);
+    }
+    if (input.runSelection === 'no_run_created') {
+        return 'captain';
+    }
+    if (input.recommendation.recommended_entrypoint === 'plan') {
+        return 'tactician';
+    }
+    switch (input.recommendation.recommended_task_kind) {
+        case 'explore':
+            return 'scout';
+        case 'review':
+            return 'arbiter';
+        case 'execution':
+            return 'raider';
+        default:
+            return input.recommendation.request_shape === 'planning' ? 'tactician' : 'captain';
+    }
+}
+function deriveAutoEntryBudgetClass(input) {
+    switch (input.selectedRole) {
+        case 'captain':
+            return 'low_cost_read_only';
+        case 'scout':
+            return 'low_cost_investigation';
+        case 'tactician':
+            return 'planning_budget';
+        case 'arbiter':
+            return 'verification_budget';
+        case 'raider':
+        default:
+            return input.recommendation.mutation_intent === 'explicit_or_strong'
+                ? 'implementation_budget'
+                : 'low_cost_investigation';
+    }
+}
+function deriveAutoEntryReviewRequirement(selectedRole) {
+    switch (selectedRole) {
+        case 'raider':
+        case 'arbiter':
+            return 'required';
+        case 'tactician':
+        case 'scout':
+            return 'optional';
+        case 'captain':
+        default:
+            return 'none';
+    }
+}
+function createAutoEntryAnswerTrace(input) {
+    const selectedRole = deriveAutoEntrySelectedRole(input);
+    const executionPath = input.runSelection === 'existing_run_reused'
+        ? 'run_reused'
+        : input.runSelection === 'new_run_created'
+            ? 'new_run'
+            : 'captain_local';
+    const budgetClass = deriveAutoEntryBudgetClass({
+        selectedRole,
+        recommendation: input.recommendation,
+    });
+    const reviewRequirement = deriveAutoEntryReviewRequirement(selectedRole);
+    let whySelected = 'captain kept the request on the local synthesis path.';
+    let whyNotLocal = 'captain local path already won for this bounded request.';
+    if (executionPath === 'run_reused' && input.selectedRun) {
+        whySelected =
+            `${selectedRole} kept control because Foreman reused the freshest matching active run ` +
+                `${input.selectedRun.snapshot.runId} instead of creating another run.`;
+        whyNotLocal = 'persisted run context already existed and was safe to continue.';
+    }
+    else if (executionPath === 'new_run') {
+        whyNotLocal = 'this request needed persisted bounded state instead of a no-run captain-local answer.';
+        switch (selectedRole) {
+            case 'tactician':
+                whySelected = 'tactician won because the request is multi-step or unclear and needs bounded planning first.';
+                break;
+            case 'scout':
+                whySelected = 'scout won because the request is read-heavy and is better served by cheap investigation than by mutation.';
+                break;
+            case 'arbiter':
+                whySelected = 'arbiter won because the request is verification-shaped and fits the review path.';
+                break;
+            case 'raider':
+                whySelected = 'raider won because explicit mutation intent requires a bounded implementation path.';
+                break;
+            case 'captain':
+            default:
+                whySelected = 'captain kept control while Foreman still created a bounded run for persisted state.';
+                break;
+        }
+    }
+    else if (selectedRole === 'captain') {
+        whySelected = 'captain kept the request local because it was bounded read-only or synthesis-first work.';
+    }
+    let whyNotHeavierRole = 'no heavier specialist path was needed.';
+    switch (selectedRole) {
+        case 'captain':
+        case 'scout':
+        case 'tactician':
+            whyNotHeavierRole =
+                input.recommendation.mutation_intent === 'explicit_or_strong'
+                    ? 'heavier implementation routing did not win because planning or bounded investigation was still the safer next step.'
+                    : 'no explicit mutation intent required the heavier implementation route.';
+            break;
+        case 'arbiter':
+            whyNotHeavierRole = 'review already won, so a heavier implementation route was not the active answer path.';
+            break;
+        case 'raider':
+            whyNotHeavierRole = 'a heavier reviewed path waits until implementation results exist and need verification.';
+            break;
+    }
+    return {
+        request_shape: input.recommendation.request_shape,
+        mutation_intent: input.recommendation.mutation_intent,
+        selected_role: selectedRole,
+        execution_path: executionPath,
+        budget_class: budgetClass,
+        review_requirement: reviewRequirement,
+        why_selected: whySelected,
+        why_not_local: whyNotLocal,
+        why_not_heavier_role: whyNotHeavierRole,
+    };
+}
+function renderAutoEntryAnswerTrace(trace) {
+    return [
+        `request_shape=${trace.request_shape}`,
+        `mutation_intent=${trace.mutation_intent}`,
+        `selected_role=${trace.selected_role}`,
+        `execution_path=${trace.execution_path}`,
+        `budget_class=${trace.budget_class}`,
+        `review_requirement=${trace.review_requirement}`,
+        `why_selected=${trace.why_selected}`,
+        `why_not_local=${trace.why_not_local}`,
+        `why_not_heavier_role=${trace.why_not_heavier_role}`,
+    ].join(' | ');
+}
 async function autoEnterForeman(options) {
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
@@ -3926,6 +4081,11 @@ async function autoEnterForeman(options) {
             next_step: null,
             can_advance: null,
             summary: 'Automatic Foreman-first entry is not enabled for the current shared config policy. Use recommend-entry, start, or plan explicitly, or opt into foreman_first_bounded first.',
+            answer_trace: createAutoEntryAnswerTrace({
+                recommendation,
+                runSelection: 'no_run_created',
+                selectedRun: null,
+            }),
             recommendation,
         };
     }
@@ -3959,6 +4119,11 @@ async function autoEnterForeman(options) {
             summary: `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
                 `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
                 'because it was the only fresh active candidate in the workspace.',
+            answer_trace: createAutoEntryAnswerTrace({
+                recommendation,
+                runSelection: 'existing_run_reused',
+                selectedRun: reusableRun,
+            }),
             recommendation,
         };
     }
@@ -3996,6 +4161,11 @@ async function autoEnterForeman(options) {
             can_advance: null,
             summary: 'Foreman-first auto-entry suppressed new run creation for a bounded read-only request. ' +
                 'Captain should answer locally, reuse an explicitly chosen active run, or accept an explicit start if persisted run state is still desired.',
+            answer_trace: createAutoEntryAnswerTrace({
+                recommendation,
+                runSelection: 'no_run_created',
+                selectedRun: null,
+            }),
             recommendation,
         };
     }
@@ -4043,6 +4213,11 @@ async function autoEnterForeman(options) {
                     ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
                     : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
             }),
+            answer_trace: createAutoEntryAnswerTrace({
+                recommendation,
+                runSelection: 'new_run_created',
+                selectedRun: null,
+            }),
             recommendation,
         };
     }
@@ -4081,6 +4256,11 @@ async function autoEnterForeman(options) {
             freshCount: activeRunInspection.fresh.length,
             staleCount: activeRunInspection.stale.length,
             routedSummary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
+        }),
+        answer_trace: createAutoEntryAnswerTrace({
+            recommendation,
+            runSelection: 'new_run_created',
+            selectedRun: null,
         }),
         recommendation,
     };

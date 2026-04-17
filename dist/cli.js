@@ -1501,6 +1501,7 @@ async function runCli(argv) {
             process.stdout.write(`Upstream binary intercept supported: ${result.upstream_codex_binary_intercept_supported} (${result.upstream_codex_binary_intercept_summary})\n`);
             process.stdout.write(`Active run inspection: inspected=${result.inspected_active_run_count} fresh=${result.fresh_active_run_count} stale=${result.stale_active_run_count}\n`);
             process.stdout.write(`Run decision: ${result.run_decision_reason}\n`);
+            process.stdout.write(`Answer trace: ${(0, run_command_1.renderAutoEntryAnswerTrace)(result.answer_trace)}\n`);
             process.stdout.write(`Summary: ${result.summary}\n`);
             if (result.run_id) {
                 process.stdout.write(`Run ${result.run_id} selection=${result.run_selection} entrypoint=${result.entrypoint_used ?? 'reused'} scoping_source=${result.scoping_source} status=${result.status} stage=${result.stage} next_step=${result.next_step} in ${result.run_directory}\n`);

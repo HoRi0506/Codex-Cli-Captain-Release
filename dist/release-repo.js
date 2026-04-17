@@ -183,6 +183,8 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
+Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
+
 ## How It Behaves
 
 - you send a request with \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <request>\`
@@ -191,6 +193,7 @@ Auto-entry is also reuse-first for lightweight read-heavy work. If one active ru
 - Codex decides whether to answer locally or use a specialist role inside that bounded stage
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
 - the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
+- the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
 - bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous

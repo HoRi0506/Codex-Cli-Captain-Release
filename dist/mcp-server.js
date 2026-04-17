@@ -2768,8 +2768,8 @@ function createRunTruthSurfaceView(input) {
     const ownerAgentId = input.currentTaskCard?.owner_agent_config_summary?.roster_name ??
         input.currentTaskCard?.agent_config_summary?.roster_name ??
         null;
-    const selectedAgentId = input.currentTaskCard?.assigned_agent_id ??
-        input.currentTaskCard?.assigned_agent_config_summary?.roster_name ??
+    const selectedAgentId = input.currentTaskCard?.assigned_agent_config_summary?.roster_name ??
+        input.currentTaskCard?.assigned_agent_id ??
         null;
     let boundaryState = 'running';
     if (input.run.status === 'completed' || input.nextStep === 'halt_completed') {
@@ -3046,15 +3046,15 @@ function resolveOperatorDisplayAgentName(currentTaskCard) {
         return 'none';
     }
     const proofState = resolveOperatorDisplayProofState(currentTaskCard);
-    const assignedName = currentTaskCard.assigned_agent_id ??
-        currentTaskCard.assigned_agent_config_summary?.roster_name ??
+    const assignedName = currentTaskCard.assigned_agent_config_summary?.roster_name ??
+        currentTaskCard.assigned_agent_id ??
         currentTaskCard.agent_config_summary?.roster_name ??
         'none';
     const ownerName = currentTaskCard.owner_agent_config_summary?.roster_name ??
         currentTaskCard.agent_config_summary?.roster_name ??
         assignedName;
     if (proofState === 'foreman_worker_visible') {
-        return currentTaskCard.concrete_worker_id ?? assignedName;
+        return assignedName;
     }
     if (proofState === 'captain_read_only_fallback') {
         return ownerName;
@@ -3869,6 +3869,17 @@ async function autoEnterForemanForMcp(input) {
             next_step: null,
             can_advance: null,
             summary: diagnosis.summary,
+            answer_trace: {
+                request_shape: 'planning',
+                mutation_intent: 'none',
+                selected_role: 'captain',
+                execution_path: 'captain_local',
+                budget_class: 'planning_budget',
+                review_requirement: 'none',
+                why_selected: 'captain kept the request visible after the bounded auto-entry timeout.',
+                why_not_local: 'captain local path already won because auto-entry degraded before creating persisted state.',
+                why_not_heavier_role: 'no heavier specialist path should start while the auto-entry timeout is unresolved.',
+            },
             recommendation: {
                 cwd: resolveCwd(input.cwd),
                 request: input.request,
@@ -4416,18 +4427,19 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                     const visibilitySummary = `policy=${result.policy_mode}, entry_boundary=${result.entry_boundary}, ` +
                         `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}, ` +
                         `fresh_active_runs=${result.fresh_active_run_count}, stale_active_runs=${result.stale_active_run_count}`;
+                    const answerTraceSummary = (0, run_command_1.renderAutoEntryAnswerTrace)(result.answer_trace);
                     return createSuccessResponse(value.id, {
                         content: [
                             {
                                 type: 'text',
                                 text: result.run_selection === 'existing_run_reused' && result.run_id
-                                    ? `Foreman auto-entry reused active run ${result.run_id} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
+                                    ? `Foreman auto-entry reused active run ${result.run_id} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}. Answer trace: ${answerTraceSummary}`
                                     : result.created
-                                        ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}.`
+                                        ? `Foreman auto-entry created run ${result.run_id} through ${result.entrypoint_used} with ${visibilitySummary}, next_step=${result.next_step}, and decision_reason=${result.run_decision_reason}. Answer trace: ${answerTraceSummary}`
                                         : result.policy_mode === 'guided_explicit'
                                             ? `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.` +
                                                 `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`
-                                            : `Foreman auto-entry suppressed new run creation with ${visibilitySummary} because ${result.run_decision_reason}. ${result.summary}`,
+                                            : `Foreman auto-entry suppressed new run creation with ${visibilitySummary} because ${result.run_decision_reason}. Answer trace: ${answerTraceSummary}. ${result.summary}`,
                             },
                         ],
                         structuredContent: result,
