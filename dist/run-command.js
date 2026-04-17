@@ -1368,6 +1368,7 @@ async function loadContinueRunSnapshot(options) {
         taskCardId: taskCard.task_card_id,
         runDirectory: runPaths.runDir,
         createdAt: run.created_at,
+        updatedAt: run.updated_at,
         goal: run.goal,
         taskTitle: taskCard.title,
         taskKind: taskCard.task_kind,
@@ -1388,6 +1389,7 @@ function buildContinueRunSnapshotFromLoopResult(result) {
         taskCardId: result.finalSnapshot.task_card_id,
         runDirectory: result.runDirectory,
         createdAt: (0, runtime_1.nowTimestamp)(),
+        updatedAt: (0, runtime_1.nowTimestamp)(),
         goal: '',
         taskTitle: result.finalSnapshot.task_card_id,
         taskKind: result.finalSnapshot.next_step === 'verify_task' ? 'review' : 'execution',
@@ -4063,6 +4065,7 @@ function detectAutoEntrySessionDirective(request) {
 function createAutoEntryRunLabelFromSnapshot(snapshot) {
     return (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: snapshot.createdAt,
+        updatedAt: snapshot.updatedAt,
         title: snapshot.taskTitle,
         goal: snapshot.goal,
     });
@@ -4070,6 +4073,7 @@ function createAutoEntryRunLabelFromSnapshot(snapshot) {
 function createAutoEntryRunLabelFromRun(run, taskTitle) {
     return (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: run.created_at,
+        updatedAt: run.updated_at,
         title: taskTitle,
         goal: run.goal,
     });

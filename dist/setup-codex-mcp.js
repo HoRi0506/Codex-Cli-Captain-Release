@@ -111,6 +111,7 @@ function createConfiguredRoleModelsSummary(config) {
 }
 async function inspectActiveRunHygiene(cwd) {
     const lifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
+    const activeCount = lifecycleViews.length;
     const freshCount = lifecycleViews.filter((view) => view.freshness === 'fresh').length;
     const staleCount = lifecycleViews.filter((view) => view.freshness === 'stale').length;
     const cleanupCandidates = lifecycleViews.filter((view) => view.cleanup_action !== 'retain');
@@ -119,13 +120,20 @@ async function inspectActiveRunHygiene(cwd) {
     if (lifecycleViews.length === 0) {
         return {
             status: 'clean',
-            summary: `Run hygiene: clean; workspace=${cwd} active=0 stale=0 resume=none.`,
+            summary: `clean; workspace=${cwd} active=0 fresh=0 stale=0 resumable=none.`,
             recommendedRunId: null,
         };
     }
+    const summaryBase = `workspace=${cwd} active=${activeCount} fresh=${freshCount} stale=${staleCount} ` +
+        `resumable=${recommendedRunId ?? 'none'}`;
+    const cleanupCommand = `codex-foreman clear-runs --cwd ${cwd} --include-blocked`;
     const summary = status === 'clean'
-        ? `Run hygiene: clean; workspace=${cwd} fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'}.`
-        : `Run hygiene: warning; workspace=${cwd} fresh=${freshCount} stale=${staleCount} resume=${recommendedRunId ?? 'none'} cleanup_candidates=${cleanupCandidates.length}. Auto-entry reuse may be ambiguous until older runs are archived or pruned.`;
+        ? `clean; ${summaryBase}.`
+        : cleanupCandidates.length > 0
+            ? `warning; ${summaryBase} cleanup_candidates=${cleanupCandidates.length} reuse_ambiguity=cleanup_recommended. ` +
+                `Cleanup recommended: ${cleanupCommand}`
+            : `warning; ${summaryBase} cleanup_candidates=0 reuse_ambiguity=manual_review_advised. ` +
+                `Multiple fresh runs are still active in this workspace. If they are accidental or stale, clear them with: ${cleanupCommand}`;
     return {
         status,
         summary,

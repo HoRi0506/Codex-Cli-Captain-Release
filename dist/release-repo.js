@@ -22,7 +22,7 @@ function createHealthyCheckInstallExample(packageVersion) {
         `Current package: codex-foreman@${packageVersion}`,
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/high',
-        'Run hygiene: Run hygiene: clean; workspace=<cwd> fresh=0 stale=0 resume=none.',
+        'Run hygiene: clean; workspace=<cwd> active=0 fresh=0 stale=0 resumable=none.',
     ].join('\n');
 }
 function toPosixRelativePath(filePath) {
@@ -223,7 +223,7 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
-Within one Codex CLI session, Foreman now keeps one current run by default. The same session keeps reusing that run until the operator explicitly asks for a new run or closes it, and the bound run is closed when that session ends. Operator-facing surfaces can now show a readable current-run label in date-time-task form instead of only a raw run id.
+Within one Codex CLI session, Foreman now keeps one current run by default. The same session keeps reusing that run until the operator explicitly asks for a new run or closes it, and the bound run is closed when that session ends. Operator-facing surfaces can now show a readable current-run label in local date-time-task form using the run's latest activity time instead of only a raw run id.
 
 Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 

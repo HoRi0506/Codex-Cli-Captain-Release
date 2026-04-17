@@ -2218,6 +2218,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
     const runLocator = createResolvedForemanRunLocator(cwd, visibility.run_id);
     const runLabel = (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: run.created_at,
+        updatedAt: run.updated_at,
         title: taskCard.title,
         goal: run.goal,
     });
@@ -2356,6 +2357,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
     const runLocator = createResolvedForemanRunLocator(cwd, run.run_id);
     const runLabel = (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: run.created_at,
+        updatedAt: run.updated_at,
         goal: run.goal,
     });
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
@@ -2474,6 +2476,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
     const runLocator = createResolvedForemanRunLocator(cwd, run.run_id);
     const runLabel = (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: run.created_at,
+        updatedAt: run.updated_at,
         goal: run.goal,
     });
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({

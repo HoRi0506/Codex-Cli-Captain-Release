@@ -78,9 +78,29 @@ function normalizeRunLabelTitle(title) {
     return `${normalized.slice(0, 69).trimEnd()}...`;
 }
 function createForemanRunLabel(input) {
-    const timestamp = input.createdAt.replace('T', ' ').slice(0, 16);
+    const labelTimestamp = selectRunLabelTimestamp(input.createdAt, input.updatedAt ?? null);
+    const timestamp = formatRunLabelTimestamp(labelTimestamp);
     const title = normalizeRunLabelTitle(input.title ?? input.goal ?? null);
     return `${timestamp} - ${title}`;
+}
+function selectRunLabelTimestamp(createdAt, updatedAt) {
+    const updatedAtMs = updatedAt === null ? Number.NaN : Date.parse(updatedAt);
+    if (Number.isFinite(updatedAtMs)) {
+        return updatedAt;
+    }
+    return createdAt;
+}
+function formatRunLabelTimestamp(timestamp) {
+    const date = new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) {
+        return timestamp.replace('T', ' ').slice(0, 16);
+    }
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 function registerTouchedRun(session, cwd, runId) {
     const byWorkspace = touchedRunsBySession.get(session.sessionId) ?? new Map();
