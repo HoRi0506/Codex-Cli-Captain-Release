@@ -111,7 +111,8 @@ function createConfiguredRoleModelsSummary(config) {
 }
 async function inspectActiveRunHygiene(cwd) {
     const lifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
-    const activeCount = lifecycleViews.length;
+    const activeCount = lifecycleViews.filter((view) => view.status === 'active').length;
+    const blockedCount = lifecycleViews.filter((view) => view.status === 'blocked').length;
     const freshCount = lifecycleViews.filter((view) => view.freshness === 'fresh').length;
     const staleCount = lifecycleViews.filter((view) => view.freshness === 'stale').length;
     const cleanupCandidates = lifecycleViews.filter((view) => view.cleanup_action !== 'retain');
@@ -120,11 +121,11 @@ async function inspectActiveRunHygiene(cwd) {
     if (lifecycleViews.length === 0) {
         return {
             status: 'clean',
-            summary: `clean; workspace=${cwd} active=0 fresh=0 stale=0 resumable=none.`,
+            summary: `clean; workspace=${cwd} active=0 blocked=0 fresh=0 stale=0 resumable=none.`,
             recommendedRunId: null,
         };
     }
-    const summaryBase = `workspace=${cwd} active=${activeCount} fresh=${freshCount} stale=${staleCount} ` +
+    const summaryBase = `workspace=${cwd} active=${activeCount} blocked=${blockedCount} fresh=${freshCount} stale=${staleCount} ` +
         `resumable=${recommendedRunId ?? 'none'}`;
     const cleanupCommand = `codex-foreman clear-runs --cwd ${cwd} --include-blocked`;
     const summary = status === 'clean'

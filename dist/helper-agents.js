@@ -627,11 +627,12 @@ function getHelperEntry(helperAgentId) {
     const { catalog } = loadCatalog();
     return catalog.agents[helperAgentId] ?? EMBEDDED_AGENT_ROLE_CATALOG.agents[helperAgentId];
 }
-const FRAMING_SEED_MAX_CHARS = 180;
-const FRAMING_FOCUS_MAX_CHARS = 180;
-const FRAMING_SCOPE_MAX_CHARS = 220;
-const FRAMING_ACCEPTANCE_MAX_CHARS = 220;
-const FRAMING_NAVIGATION_MAX_CHARS = 260;
+const FRAMING_SEED_MAX_CHARS = 140;
+const FRAMING_FOCUS_MAX_CHARS = 140;
+const FRAMING_SCOPE_MAX_CHARS = 180;
+const FRAMING_ACCEPTANCE_MAX_CHARS = 180;
+const FRAMING_NAVIGATION_MAX_CHARS = 220;
+const FRAMED_EXECUTION_PROMPT_MAX_CHARS = 320;
 function compactPromptField(value, maxChars) {
     const normalized = value.replace(/\s+/g, ' ').trim();
     if (normalized.length <= maxChars) {
@@ -676,7 +677,7 @@ function createTaskAssignmentFraming(taskCard, options) {
 }
 function buildFramedTaskPrompt(taskCard, options) {
     const framing = createTaskAssignmentFraming(taskCard, options);
-    return `${framing.prompt_prefix}\n\n${taskCard.execution_prompt}`;
+    return `${framing.prompt_prefix}\n\n${compactPromptField(taskCard.execution_prompt, FRAMED_EXECUTION_PROMPT_MAX_CHARS)}`;
 }
 function createTaskOwnershipGuard(input) {
     const sentinelEntry = getHelperEntry('sentinel');

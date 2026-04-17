@@ -9,7 +9,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.29/codex-foreman-1.5.29.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.30/codex-foreman-1.5.30.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -27,7 +27,7 @@ Codex should execute these steps for the preferred install path:
 Install from the exact release tarball:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.29/codex-foreman-1.5.29.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.30/codex-foreman-1.5.30.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -49,7 +49,7 @@ codex-foreman check-install
 To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.29/codex-foreman-1.5.29.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.30/codex-foreman-1.5.30.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
@@ -92,11 +92,11 @@ The install is in the expected state when:
 ## Healthy output example
 
 ```text
-Foreman install check: status=ok version=1.5.29 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
-Current package: codex-foreman@1.5.29
+Foreman install check: status=ok version=1.5.30 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
+Current package: codex-foreman@1.5.30
 Public entry: $cap (skill=cap)
 Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium
-Run hygiene: clean; workspace=<cwd> active=0 fresh=0 stale=0 resumable=none.
+Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.
 ```
 
 ## Notes

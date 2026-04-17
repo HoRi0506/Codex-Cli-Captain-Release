@@ -503,6 +503,9 @@
       "required": [
         "request",
         "run_selection",
+        "requester_session_id",
+        "continuity_strategy",
+        "continuity_summary",
         "entry_boundary",
         "upstream_codex_binary_intercept_supported",
         "run_decision_reason",
@@ -518,6 +521,18 @@
         "run_selection": {
           "type": "string",
           "enum": ["new_run_created", "existing_run_reused", "no_run_created"]
+        },
+        "requester_session_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "continuity_strategy": {
+          "type": "string",
+          "enum": ["session_bound_first", "workspace_run_search"]
+        },
+        "continuity_summary": {
+          "type": "string",
+          "minLength": 1
         },
         "entry_boundary": {
           "type": "string",

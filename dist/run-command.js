@@ -72,7 +72,7 @@ const DEFAULT_CONTINUE_MAX_STEPS = 2;
 const MIN_CONTINUE_MAX_STEPS = 1;
 const MAX_CONTINUE_MAX_STEPS = 4;
 const AUTO_ENTRY_REUSE_SCORE_MINIMUM = 3;
-const AUTO_ENTRY_READ_ONLY_REQUEST_SHAPES = new Set([
+const AUTO_ENTRY_REUSABLE_NON_MUTATION_REQUEST_SHAPES = new Set([
     'existence_check',
     'lookup',
     'survey',
@@ -3847,7 +3847,24 @@ function isReadOnlyAutoEntryCandidate(recommendation) {
         recommendation.recommended_entrypoint === 'start' &&
         recommendation.mutation_intent === 'none' &&
         recommendation.recommended_task_kind !== 'execution' &&
-        AUTO_ENTRY_READ_ONLY_REQUEST_SHAPES.has(recommendation.request_shape));
+        AUTO_ENTRY_REUSABLE_NON_MUTATION_REQUEST_SHAPES.has(recommendation.request_shape));
+}
+function shouldSuppressNewRunCreationForAutoEntry(recommendation) {
+    return isReadOnlyAutoEntryCandidate(recommendation) && recommendation.request_shape === 'synthesis';
+}
+function deriveAutoEntryContinuityMetadata(options) {
+    if (options.session) {
+        return {
+            requesterSessionId: options.session.sessionId,
+            continuityStrategy: 'session_bound_first',
+            continuitySummary: 'Requester session continuity is keyed by owner_session_id first; Foreman reuses only the current session-bound run and does not perform default workspace run search for $cap/MCP continuity.',
+        };
+    }
+    return {
+        requesterSessionId: null,
+        continuityStrategy: 'workspace_run_search',
+        continuitySummary: 'No requester session id was supplied, so Foreman kept workspace active-run search enabled for bounded reuse and resume decisions.',
+    };
 }
 function selectReusableAutoEntryRun(input) {
     if (input.activeRunInspection.fresh.length === 1) {
@@ -4113,6 +4130,9 @@ async function persistLatestAutoEntryTrace(input) {
     run.latest_entry_trace = {
         request: input.request,
         run_selection: input.runSelection,
+        requester_session_id: input.requesterSessionId,
+        continuity_strategy: input.continuityStrategy,
+        continuity_summary: input.continuitySummary,
         entry_boundary: input.entryBoundary,
         upstream_codex_binary_intercept_supported: input.upstreamCodexBinaryInterceptSupported,
         run_decision_reason: input.runDecisionReason,
@@ -4124,6 +4144,7 @@ async function persistLatestAutoEntryTrace(input) {
     await (0, runtime_1.persistRunRecord)(runPaths, run);
 }
 async function autoEnterForeman(options) {
+    const continuity = deriveAutoEntryContinuityMetadata(options);
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
         cwd: options.cwd,
@@ -4132,7 +4153,7 @@ async function autoEnterForeman(options) {
     if (recommendation.automatic_entry_supported) {
         await (0, session_run_binding_1.cleanupStaleSessionBoundRuns)(options.cwd);
     }
-    const activeRunInspection = recommendation.automatic_entry_supported
+    const activeRunInspection = recommendation.automatic_entry_supported && !options.session
         ? await inspectPersistedActiveRunsForAutoEntry(options.cwd)
         : { fresh: [], stale: [] };
     const inspectedActiveRunCount = activeRunInspection.fresh.length + activeRunInspection.stale.length;
@@ -4159,7 +4180,7 @@ async function autoEnterForeman(options) {
             sessionBoundRun = null;
         }
     }
-    const defaultReusableRun = recommendation.automatic_entry_supported && sessionDirective === null
+    const defaultReusableRun = recommendation.automatic_entry_supported && sessionDirective === null && !options.session
         ? selectReusableAutoEntryRun({
             recommendation,
             activeRunInspection,
@@ -4177,6 +4198,9 @@ async function autoEnterForeman(options) {
             entry_boundary_summary: recommendation.entry_boundary_summary,
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            requester_session_id: continuity.requesterSessionId,
+            continuity_strategy: continuity.continuityStrategy,
+            continuity_summary: continuity.continuitySummary,
             created: false,
             run_selection: 'no_run_created',
             inspected_active_run_count: inspectedActiveRunCount,
@@ -4223,6 +4247,9 @@ async function autoEnterForeman(options) {
             entry_boundary_summary: recommendation.entry_boundary_summary,
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            requester_session_id: continuity.requesterSessionId,
+            continuity_strategy: continuity.continuityStrategy,
+            continuity_summary: continuity.continuitySummary,
             created: false,
             run_selection: 'no_run_created',
             inspected_active_run_count: inspectedActiveRunCount,
@@ -4274,6 +4301,9 @@ async function autoEnterForeman(options) {
             runId: reusableRun.snapshot.runId,
             request: options.request,
             runSelection: 'existing_run_reused',
+            requesterSessionId: continuity.requesterSessionId,
+            continuityStrategy: continuity.continuityStrategy,
+            continuitySummary: continuity.continuitySummary,
             entryBoundary: recommendation.entry_boundary,
             upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
             runDecisionReason,
@@ -4296,6 +4326,9 @@ async function autoEnterForeman(options) {
             entry_boundary_summary: recommendation.entry_boundary_summary,
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            requester_session_id: continuity.requesterSessionId,
+            continuity_strategy: continuity.continuityStrategy,
+            continuity_summary: continuity.continuitySummary,
             created: false,
             run_selection: 'existing_run_reused',
             inspected_active_run_count: inspectedActiveRunCount,
@@ -4319,12 +4352,12 @@ async function autoEnterForeman(options) {
             recommendation,
         };
     }
-    if (isReadOnlyAutoEntryCandidate(recommendation)) {
+    if (shouldSuppressNewRunCreationForAutoEntry(recommendation)) {
         const noRunReason = activeRunInspection.fresh.length > 1
-            ? 'multiple fresh active runs were present, but none matched this read-only request safely enough to reuse'
+            ? 'multiple fresh active runs were present, but none matched this synthesis-first request safely enough to reuse'
             : activeRunInspection.stale.length > 0
-                ? 'only stale active runs were available, so Foreman suppressed a new run for this read-only request'
-                : 'no active run matched this read-only request, so Foreman suppressed new run creation';
+                ? 'only stale active runs were available, so Foreman suppressed a new run for this synthesis-first request'
+                : 'no active run matched this synthesis-first request, so Foreman suppressed new run creation';
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4334,6 +4367,9 @@ async function autoEnterForeman(options) {
             entry_boundary_summary: recommendation.entry_boundary_summary,
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            requester_session_id: continuity.requesterSessionId,
+            continuity_strategy: continuity.continuityStrategy,
+            continuity_summary: continuity.continuitySummary,
             created: false,
             run_selection: 'no_run_created',
             inspected_active_run_count: inspectedActiveRunCount,
@@ -4352,7 +4388,7 @@ async function autoEnterForeman(options) {
             stage: null,
             next_step: null,
             can_advance: null,
-            summary: 'Foreman-first auto-entry suppressed new run creation for a bounded read-only request. ' +
+            summary: 'Foreman-first auto-entry suppressed new run creation for a bounded synthesis-first request. ' +
                 'Captain should answer locally, reuse an explicitly chosen active run, or accept an explicit start if persisted run state is still desired.',
             answer_trace: createAutoEntryAnswerTrace({
                 recommendation,
@@ -4395,13 +4431,18 @@ async function autoEnterForeman(options) {
             runId: result.runId,
             request: options.request,
             runSelection: 'new_run_created',
+            requesterSessionId: continuity.requesterSessionId,
+            continuityStrategy: continuity.continuityStrategy,
+            continuitySummary: continuity.continuitySummary,
             entryBoundary: recommendation.entry_boundary,
             upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
-            runDecisionReason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
-                ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
-                : activeRunInspection.fresh.length > 1
-                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
-                    : 'no reusable active run was available, so Foreman created a new planner-scoped run',
+            runDecisionReason: options.session
+                ? 'no session-bound run existed for the requester session, so Foreman created a new planner-scoped run and bound it to that session'
+                : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                    ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
+                    : activeRunInspection.fresh.length > 1
+                        ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                        : 'no reusable active run was available, so Foreman created a new planner-scoped run',
             summary,
             answerTrace,
         });
@@ -4423,6 +4464,9 @@ async function autoEnterForeman(options) {
             entry_boundary_summary: recommendation.entry_boundary_summary,
             upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
             upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+            requester_session_id: continuity.requesterSessionId,
+            continuity_strategy: continuity.continuityStrategy,
+            continuity_summary: continuity.continuitySummary,
             created: true,
             run_selection: 'new_run_created',
             inspected_active_run_count: inspectedActiveRunCount,
@@ -4430,11 +4474,13 @@ async function autoEnterForeman(options) {
             stale_active_run_count: activeRunInspection.stale.length,
             entrypoint_used: 'plan',
             scoping_source: 'planner_scoping',
-            run_decision_reason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
-                ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
-                : activeRunInspection.fresh.length > 1
-                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
-                    : 'no reusable active run was available, so Foreman created a new planner-scoped run',
+            run_decision_reason: options.session
+                ? 'no session-bound run existed for the requester session, so Foreman created a new planner-scoped run and bound it to that session'
+                : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                    ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
+                    : activeRunInspection.fresh.length > 1
+                        ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                        : 'no reusable active run was available, so Foreman created a new planner-scoped run',
             active_run_candidates: activeRunCandidates,
             selected_run_lifecycle: null,
             run_id: result.runId,
@@ -4459,20 +4505,25 @@ async function autoEnterForeman(options) {
     const summary = summarizeNewAutoEntryRunCreation({
         freshCount: activeRunInspection.fresh.length,
         staleCount: activeRunInspection.stale.length,
-        routedSummary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
+        routedSummary: 'Foreman-first auto-entry created a new bounded run through the bounded start surface using conservative request-derived task-card defaults.',
     });
     await persistLatestAutoEntryTrace({
         cwd: options.cwd,
         runId: startResult.runId,
         request: options.request,
         runSelection: 'new_run_created',
+        requesterSessionId: continuity.requesterSessionId,
+        continuityStrategy: continuity.continuityStrategy,
+        continuitySummary: continuity.continuitySummary,
         entryBoundary: recommendation.entry_boundary,
         upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
-        runDecisionReason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
-            ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
-            : activeRunInspection.fresh.length > 1
-                ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
-                : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
+        runDecisionReason: options.session
+            ? 'no session-bound run existed for the requester session, so Foreman created a new conservative start-scoped run and bound it to that session'
+            : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
+                : activeRunInspection.fresh.length > 1
+                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                    : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
         summary,
         answerTrace,
     });
@@ -4498,6 +4549,9 @@ async function autoEnterForeman(options) {
         entry_boundary_summary: recommendation.entry_boundary_summary,
         upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
         upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+        requester_session_id: continuity.requesterSessionId,
+        continuity_strategy: continuity.continuityStrategy,
+        continuity_summary: continuity.continuitySummary,
         created: true,
         run_selection: 'new_run_created',
         inspected_active_run_count: inspectedActiveRunCount,
@@ -4505,11 +4559,13 @@ async function autoEnterForeman(options) {
         stale_active_run_count: activeRunInspection.stale.length,
         entrypoint_used: 'start',
         scoping_source: 'bounded_request_defaults',
-        run_decision_reason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
-            ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
-            : activeRunInspection.fresh.length > 1
-                ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
-                : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
+        run_decision_reason: options.session
+            ? 'no session-bound run existed for the requester session, so Foreman created a new conservative start-scoped run and bound it to that session'
+            : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
+                : activeRunInspection.fresh.length > 1
+                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                    : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
         active_run_candidates: activeRunCandidates,
         selected_run_lifecycle: null,
         run_id: startResult.runId,

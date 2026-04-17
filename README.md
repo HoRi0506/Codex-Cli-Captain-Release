@@ -2,11 +2,11 @@
 
 Captain-first Foreman toolbox for Codex CLI.
 
-Codex-Foreman is for requests that benefit from a more structured path than one opaque Codex turn. It adds a captain-first entry, visible run state, role-shaped specialist routing, an explicit review lane, and honest install/runtime audit without replacing Codex as the orchestrator.
+Codex-Foreman is for requests that benefit from a more structured path than one opaque Codex turn. It adds a captain-first entry, visible run state, role-shaped specialist routing, an explicit review lane, and honest install/runtime audit without replacing the host Codex session as the orchestrator.
 
 Beta warning: this release surface is still beta. Expect changes, fixes, and update cadence to stay relatively fast and sometimes irregular while the harness contract continues to harden.
 
-The public entrypoint is `$cap`. That entry hands the request to `captain` first.
+The public entrypoint is `$cap`. That entry keeps the host Codex session as `captain` first.
 
 ## What It Is For
 
@@ -29,9 +29,11 @@ For trivial answers or short conversational turns, the normal Codex path is ofte
 
 ## What Captain Does
 
-`captain` is the orchestrator. It receives the request, checks the current Foreman state, decides whether to stay local or choose a specialist role, keeps the work bounded, and pulls the result back into one visible run.
+`captain` is the orchestrator. For packaged `$cap`, that means the host Codex session receives the request first, checks the current Foreman state, decides whether to stay narrow or choose a specialist role, keeps the work bounded, and pulls the result back into one visible run.
 
 The packaged routing pass is request-shape-aware before it becomes mutation-shaped. Existence checks, lookup, survey, diagnosis, planning, verification, and synthesis can stay on cheaper `captain`, `scout`, or `tactician` routes, while `raider` stays behind an explicit mutation-intent gate.
+
+Token discipline matters here. Captain should spend tokens on state lookup, routing, waiting, and synthesis rather than broad repository survey or specialist-grade mutation work that can be delegated under role-specific settings.
 
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
@@ -58,7 +60,7 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - one Codex CLI session can keep one current run until the operator explicitly closes it or asks for a new run
 - `codex-foreman check-install` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
-- when the packaged custom-agent roster is available, the first Codex-native receiver for packaged `$cap` work is `foreman_captain`
+- the packaged `$cap` skill keeps the host Codex session as `captain`, while packaged custom agents remain internal specialist targets
 - specialist results return through `captain`, which decides whether to continue, review, reroute, stop, or answer
 
 ## Canonical Loop
@@ -90,6 +92,8 @@ The internal support surfaces are:
 - the bounded review and ownership helpers
 
 Those internal pieces help `captain` route and supervise work. They are not public operator commands.
+
+A packaged `foreman_captain` definition may still exist as an internal or future-facing support surface, but it is not the public first receiver for packaged `$cap`.
 
 ## When To Reach For It
 
@@ -129,7 +133,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.29/codex-foreman-1.5.29.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.30/codex-foreman-1.5.30.tgz
 codex-foreman setup
 codex-foreman check-install
 

@@ -610,11 +610,12 @@ function formatOrchestratorRequestSummary(status) {
     ].join(' ');
 }
 function formatAlwaysOnOperatorSummary(status) {
+    const alwaysOnOperatorState = status.always_on_operator_state;
     return [
-        `always_on_phase=${compactWatchText(status.always_on_operator_state.phase)}`,
-        `always_on_next=${compactWatchText(status.always_on_operator_state.recommended_operator_action)}`,
-        `always_on_last_tick=${compactWatchText(status.always_on_operator_state.last_tick_at)}`,
-        `always_on_last_loop_stop=${compactWatchText(status.always_on_operator_state.last_loop_stop_reason)}`,
+        `always_on_phase=${compactWatchText(alwaysOnOperatorState?.phase)}`,
+        `always_on_next=${compactWatchText(alwaysOnOperatorState?.recommended_operator_action)}`,
+        `always_on_last_tick=${compactWatchText(alwaysOnOperatorState?.last_tick_at)}`,
+        `always_on_last_loop_stop=${compactWatchText(alwaysOnOperatorState?.last_loop_stop_reason)}`,
     ].join(' ');
 }
 function formatWorkflowOperatorSummary(status) {
@@ -860,6 +861,9 @@ function resolveWatchAgentAndRole(status) {
     };
 }
 function formatWatchAgentLine(status) {
+    if (isPlanningClarificationHold(status)) {
+        return 'Agent: none (planner; clarification hold)';
+    }
     const proofState = resolveWatchProofState(status);
     const { agent, role } = resolveWatchAgentAndRole(status);
     const suffix = proofState === 'foreman_worker_visible'
@@ -872,6 +876,9 @@ function formatWatchAgentLine(status) {
     return `Agent: ${agent}${role !== 'none' ? ` (${role}${suffix})` : ''}`;
 }
 function formatWatchModelLine(status) {
+    if (isPlanningClarificationHold(status)) {
+        return 'Model: planner pending';
+    }
     const model = compactWatchText(status.current_task_card?.resolved_request_settings?.model ??
         status.current_task_card?.role_config_snapshot?.model ??
         status.current_task_card?.agent_config_summary?.model);
@@ -941,6 +948,13 @@ function toWatchDisplayName(value) {
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(' ');
 }
+function isPlanningClarificationHold(status) {
+    return (status.status === 'blocked' &&
+        status.stage === 'planning' &&
+        status.next_step === 'await_clarification' &&
+        status.current_task_card === null &&
+        status.planning_clarification_request !== null);
+}
 function describeWatchSpecialistProgress(truth) {
     if (truth.proofState === 'foreman_worker_visible') {
         return `Spawned ${toWatchDisplayName(truth.specialist)}`;
@@ -951,11 +965,23 @@ function describeWatchSpecialistProgress(truth) {
     return 'Waiting';
 }
 function formatWatchSpecialistTruthLine(status) {
+    if (isPlanningClarificationHold(status)) {
+        return 'Hold: planning clarification required';
+    }
     const truth = resolveWatchSpecialistTruth(status);
     const progress = describeWatchSpecialistProgress(truth);
     return `Truth: ${truth.specialist} ${truth.state} [${progress}; proof=${truth.proofState}; visibility=${truth.visibility}]`;
 }
+function formatWatchClarificationLine(status) {
+    if (!isPlanningClarificationHold(status)) {
+        return null;
+    }
+    return `Clarification: ${status.planning_clarification_request?.clarification_request ?? 'none'}`;
+}
 function formatWatchLatestAnswerLine(status) {
+    if (isPlanningClarificationHold(status)) {
+        return null;
+    }
     const trace = status.latest_entry_trace;
     if (!trace) {
         return null;
@@ -981,6 +1007,7 @@ function formatCompactWatchStatusLine(status) {
         `Task: ${status.current_task_card?.title ?? 'none'}`,
         formatWatchModelLine(status),
         formatWatchSpecialistTruthLine(status),
+        formatWatchClarificationLine(status),
         formatWatchLatestAnswerLine(status),
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
     ]
@@ -992,6 +1019,7 @@ function formatQuietWatchStatusLine(status) {
         formatWatchAgentLine(status),
         formatWatchModelLine(status),
         formatWatchSpecialistTruthLine(status),
+        formatWatchClarificationLine(status),
         formatWatchLatestAnswerLine(status),
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
@@ -1128,7 +1156,7 @@ function formatWatchStatusLine(status, verbosity) {
         `answer_path=${compactWatchText(status.latest_entry_trace?.answer_trace.execution_path)}`,
         `answer_shape=${compactWatchText(status.latest_entry_trace?.answer_trace.request_shape)}`,
         `answer_budget=${compactWatchText(status.latest_entry_trace?.answer_trace.budget_class)}`,
-        `always_on=${status.always_on_mode.status}`,
+        `always_on=${compactWatchText(status.always_on_mode?.status)}`,
         formatAlwaysOnOperatorSummary(status),
         `context=${quoteWatchText(status.readable_context?.summary)}`,
         formatWatchServerIdentitySummary(status),
@@ -1145,11 +1173,11 @@ function formatWatchActivityLine(activity, verbosity) {
             `delegations=${quoteWatchText(activity.active_task_delegations === null
                 ? 'none'
                 : `${activity.active_task_delegations.running} running/${activity.active_task_delegations.queued} queued`)}`,
-            `loop=${quoteWatchText(activity.always_on_mode.last_companion_loop?.summary ?? null)}`,
+            `loop=${quoteWatchText(activity.always_on_mode?.last_companion_loop?.summary ?? null)}`,
         ].join(' ');
     }
     const latestAttemptSummary = activity.latest_orchestration_attempt?.summary ?? null;
-    const latestLoopSummary = activity.always_on_mode.last_companion_loop?.summary ?? null;
+    const latestLoopSummary = activity.always_on_mode?.last_companion_loop?.summary ?? null;
     const delegationSummary = activity.active_task_delegations === null
         ? 'none'
         : `${activity.active_task_delegations.queued} queued, ${activity.active_task_delegations.running} running, ${activity.active_task_delegations.completed} completed`;
@@ -1275,11 +1303,11 @@ function createWatchSnapshot(status, activity) {
         review_state: compactWatchText(formatWatchReviewState(status)),
         latest_handoff: compactWatchText(formatWatchHandoff(status)),
         provenance: compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header),
-        always_on: compactWatchText(status.always_on_mode.status),
-        always_on_phase: compactWatchText(status.always_on_operator_state.phase),
-        always_on_next: compactWatchText(status.always_on_operator_state.recommended_operator_action),
-        always_on_last_tick: compactWatchText(status.always_on_operator_state.last_tick_at),
-        always_on_last_loop_stop: compactWatchText(status.always_on_operator_state.last_loop_stop_reason),
+        always_on: compactWatchText(status.always_on_mode?.status),
+        always_on_phase: compactWatchText(status.always_on_operator_state?.phase),
+        always_on_next: compactWatchText(status.always_on_operator_state?.recommended_operator_action),
+        always_on_last_tick: compactWatchText(status.always_on_operator_state?.last_tick_at),
+        always_on_last_loop_stop: compactWatchText(status.always_on_operator_state?.last_loop_stop_reason),
         lease_state: compactWatchText(status.mcp_mutation_lease?.state),
         lease_owner: compactWatchText(status.mcp_mutation_lease?.owner_session_id),
         lease_tool: compactWatchText(status.mcp_mutation_lease?.last_mutating_tool),
@@ -1292,7 +1320,7 @@ function createWatchSnapshot(status, activity) {
         delegation_summary: activity === null || activity.active_task_delegations === null
             ? 'none'
             : `${activity.active_task_delegations.queued} queued, ${activity.active_task_delegations.running} running, ${activity.active_task_delegations.completed} completed`,
-        loop_summary: compactWatchText(activity?.always_on_mode.last_companion_loop?.summary),
+        loop_summary: compactWatchText(activity?.always_on_mode?.last_companion_loop?.summary),
     };
 }
 function formatWatchChangesLine(previousSnapshot, nextSnapshot) {
@@ -1808,8 +1836,8 @@ async function runCli(argv) {
             });
             process.stdout.write(`Run ${result.runId} always_on_status=${result.alwaysOnMode.status} enabled=${result.alwaysOnMode.enabled} in ${result.runDirectory}\n`);
             process.stdout.write(`Always-on summary: ${result.alwaysOnMode.summary}\n`);
-            process.stdout.write(`Always-on operator state: phase=${status.always_on_operator_state.phase} next=${status.always_on_operator_state.recommended_operator_action} last_tick_at=${compactWatchText(status.always_on_operator_state.last_tick_at)} last_loop_stop=${compactWatchText(status.always_on_operator_state.last_loop_stop_reason)}\n`);
-            process.stdout.write(`Always-on operator summary: ${status.always_on_operator_state.summary}\n`);
+            process.stdout.write(`Always-on operator state: phase=${compactWatchText(status.always_on_operator_state?.phase)} next=${compactWatchText(status.always_on_operator_state?.recommended_operator_action)} last_tick_at=${compactWatchText(status.always_on_operator_state?.last_tick_at)} last_loop_stop=${compactWatchText(status.always_on_operator_state?.last_loop_stop_reason)}\n`);
+            process.stdout.write(`Always-on operator summary: ${status.always_on_operator_state?.summary ?? 'none'}\n`);
             process.stdout.write(`Workflow operator state: phase=${compactWatchText(status.workflow_operator_state?.phase)} next=${compactWatchText(status.workflow_operator_state?.recommended_operator_action)} explore_evidence=${compactWatchText(status.workflow_operator_state?.explore_evidence_state)} plan_update=${status.workflow_operator_state?.plan_update_available ? 'recorded' : 'missing'}\n`);
             process.stdout.write(`Workflow operator summary: ${status.workflow_operator_state?.summary ?? 'none'}\n`);
             if (result.companionExecution !== null) {

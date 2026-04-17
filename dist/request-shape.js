@@ -28,6 +28,10 @@ const REVIEW_KEYWORDS = ['review', 'verify', 'verification', 'validate', 'valida
 const MUTATION_VERBS = [
     'fix',
     'write',
+    'make',
+    'author',
+    'draft',
+    'document',
     'create',
     'edit',
     'update',
@@ -47,6 +51,7 @@ const MUTATION_VERBS = [
     '추가',
     '삭제',
     '구현',
+    '만들',
     '반영',
     '교체',
     '고쳐',

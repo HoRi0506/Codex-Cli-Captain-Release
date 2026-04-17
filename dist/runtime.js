@@ -2679,6 +2679,13 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                 value.run_selection === 'no_run_created'
                 ? value.run_selection
                 : 'no_run_created',
+            requester_session_id: typeof value.requester_session_id === 'string' ? value.requester_session_id : null,
+            continuity_strategy: value.continuity_strategy === 'session_bound_first' || value.continuity_strategy === 'workspace_run_search'
+                ? value.continuity_strategy
+                : 'workspace_run_search',
+            continuity_summary: typeof value.continuity_summary === 'string'
+                ? value.continuity_summary
+                : 'details recorded in persisted state.',
             entry_boundary: value.entry_boundary === 'explicit_cli_or_mcp' ||
                 value.entry_boundary === 'explicit_auto_entry' ||
                 value.entry_boundary === 'session_instruction_plus_wrapper'
