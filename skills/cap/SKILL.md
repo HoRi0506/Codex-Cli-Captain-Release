@@ -49,4 +49,5 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, code specialist, and verifier; those are internal specialist contracts, not public operator commands
 - upstream lifecycle commands such as `/spec`, `/plan`, `/build`, `/test`, `/review`, and `/ship` are playbook inspiration only here, not the public Codex-Foreman operator surface
 - if the packaged custom-agent roster is unavailable, stay on the persisted Foreman MCP path rather than inventing a public worker command surface
+- when the operator asks for commit, push, or release work without a stricter commit plan, default to small split commits grouped by coherent work type and use `<type>: <summary>` commit titles
 - new or updated skill content requires a fresh Codex session before the change is available

@@ -124,8 +124,20 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the latest GitHub release tarball published under https://github.com/HoRi0506/Codex-Foreman-release/releases. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
+
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.23/codex-foreman-1.5.23.tgz
+codex-foreman setup
+codex-foreman check-install
+
+Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed.
+Do not ask me to type the shell commands manually.
+Finish with exactly: Please restart Codex CLI.
 ```
+
+## Update
+
+To update an existing install, copy the latest release README install block again and rerun it. The direct tarball install refreshes the package version, and `codex-foreman setup` refreshes MCP registration plus the packaged `$cap` skill and custom agents.
 
 ## What To Expect
 

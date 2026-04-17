@@ -3897,13 +3897,16 @@ function mapRoleToAutoEntrySelectedRole(role) {
     }
 }
 function deriveAutoEntrySelectedRole(input) {
+    if (input.runSelection === 'no_run_created') {
+        return 'captain';
+    }
+    if (input.recommendation.mutation_intent === 'explicit_or_strong') {
+        return 'raider';
+    }
     if (input.runSelection === 'existing_run_reused' &&
         input.selectedRun &&
         !isReadOnlyAutoEntryCandidate(input.recommendation)) {
         return mapRoleToAutoEntrySelectedRole(input.selectedRun.snapshot.assignedRole);
-    }
-    if (input.runSelection === 'no_run_created') {
-        return 'captain';
     }
     if (input.recommendation.recommended_entrypoint === 'plan') {
         return 'tactician';
@@ -3965,8 +3968,9 @@ function createAutoEntryAnswerTrace(input) {
     let whyNotLocal = 'captain local path already won for this bounded request.';
     if (executionPath === 'run_reused' && input.selectedRun) {
         whySelected =
-            `${selectedRole} kept control because Foreman reused the freshest matching active run ` +
-                `${input.selectedRun.snapshot.runId} instead of creating another run.`;
+            selectedRole === 'raider' && input.recommendation.mutation_intent === 'explicit_or_strong'
+                ? `${selectedRole} kept control because Foreman reused active run ${input.selectedRun.snapshot.runId} and explicit mutation intent still requires the bounded implementation path.`
+                : `${selectedRole} kept control because Foreman reused the freshest matching active run ${input.selectedRun.snapshot.runId} instead of creating another run.`;
         whyNotLocal = 'persisted run context already existed and was safe to continue.';
     }
     else if (executionPath === 'new_run') {

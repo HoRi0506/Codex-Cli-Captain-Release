@@ -62,7 +62,17 @@ async function resolveSourceGitCommit(sourceRoot) {
 }
 function createReleaseInstallGuide(input) {
     const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
-    const codexPrompt = `Install ${input.packageName} on this machine from the latest GitHub release tarball published under ${RELEASES_URL}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const codexPrompt = [
+        'Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.',
+        '',
+        `npm install -g ${releaseTarballUrl}`,
+        'codex-foreman setup',
+        'codex-foreman check-install',
+        '',
+        `Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the MCP registration matches the installed entrypoint, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed.`,
+        'Do not ask me to type the shell commands manually.',
+        'Finish with exactly: Please restart Codex CLI.',
+    ].join('\n');
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
@@ -101,6 +111,18 @@ Verify the install:
 codex-foreman check-install
 \`\`\`
 
+## Update
+
+To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
+
+\`\`\`bash
+npm install -g ${releaseTarballUrl}
+codex-foreman setup
+codex-foreman check-install
+\`\`\`
+
+The tarball command refreshes the installed package version, and \`setup\` refreshes the MCP registration, packaged skill, and packaged custom agents.
+
 ## Local tarball fallback
 
 If you already downloaded the release asset locally, use:
@@ -134,7 +156,7 @@ ${createHealthyCheckInstallExample(input.packageVersion)}
 
 ## Notes
 
-- there is no separate \`mcp update\` command today
+- There is no separate \`mcp update\` command today.
 - \`codex-foreman setup\` handles MCP registration, packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
 - Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
 - install from the GitHub release tarball when you want a no-clone setup
@@ -144,7 +166,18 @@ Please restart Codex CLI.
 `;
 }
 function createReleaseReadme(input) {
-    const codexPrompt = `Install ${input.packageName} on this machine from the latest GitHub release tarball published under ${RELEASES_URL}. Do not assume a published npm registry package exists. If this repository is available locally, read \`docs/install.md\` before you start and follow it as the source of truth. Run \`codex-foreman setup\`, then run \`codex-foreman check-install\`. Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.`;
+    const releaseTarballUrl = `${RELEASE_REPO_URL}/releases/download/v${input.packageVersion}/${input.packageName}-${input.packageVersion}.tgz`;
+    const codexPrompt = [
+        'Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.',
+        '',
+        `npm install -g ${releaseTarballUrl}`,
+        'codex-foreman setup',
+        'codex-foreman check-install',
+        '',
+        `Verify that \`codex-foreman check-install\` reports \`status=ok\`, that the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill is installed, and that the packaged Codex custom agents are installed.`,
+        'Do not ask me to type the shell commands manually.',
+        'Finish with exactly: Please restart Codex CLI.',
+    ].join('\n');
     return `# ${input.packageName}
 
 Captain-first Foreman toolbox for Codex CLI.
@@ -273,6 +306,10 @@ Copy this text into Codex CLI:
 \`\`\`text
 ${codexPrompt}
 \`\`\`
+
+## Update
+
+To update an existing install, copy the latest release README install block again and rerun it. The direct tarball install refreshes the package version, and \`codex-foreman setup\` refreshes MCP registration plus the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and custom agents.
 
 ## What To Expect
 

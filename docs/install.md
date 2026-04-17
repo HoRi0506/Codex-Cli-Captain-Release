@@ -7,7 +7,15 @@ Use this guide when you want to install or update Codex-Foreman without keeping 
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the latest GitHub release tarball published under https://github.com/HoRi0506/Codex-Foreman-release/releases. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
+
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.23/codex-foreman-1.5.23.tgz
+codex-foreman setup
+codex-foreman check-install
+
+Verify that `codex-foreman check-install` reports `status=ok`, that the MCP registration matches the installed entrypoint, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed.
+Do not ask me to type the shell commands manually.
+Finish with exactly: Please restart Codex CLI.
 ```
 
 If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
@@ -19,7 +27,7 @@ Codex should execute these steps for the preferred install path:
 Install from the exact release tarball:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.22/codex-foreman-1.5.22.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.23/codex-foreman-1.5.23.tgz
 ```
 
 Then register or refresh the MCP entrypoint:
@@ -35,6 +43,18 @@ Verify the install:
 ```bash
 codex-foreman check-install
 ```
+
+## Update
+
+To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
+
+```bash
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.23/codex-foreman-1.5.23.tgz
+codex-foreman setup
+codex-foreman check-install
+```
+
+The tarball command refreshes the installed package version, and `setup` refreshes the MCP registration, packaged skill, and packaged custom agents.
 
 ## Local tarball fallback
 
@@ -64,8 +84,8 @@ The install is in the expected state when:
 ## Healthy output example
 
 ```text
-Foreman install check: status=ok version=1.5.22 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
-Current package: codex-foreman@1.5.22
+Foreman install check: status=ok version=1.5.23 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean
+Current package: codex-foreman@1.5.23
 Public entry: $cap (skill=cap)
 Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/high
 Run hygiene: Run hygiene: clean; fresh=0 stale=0 resume=none.
@@ -73,7 +93,7 @@ Run hygiene: Run hygiene: clean; fresh=0 stale=0 resume=none.
 
 ## Notes
 
-- there is no separate `mcp update` command today
+- There is no separate `mcp update` command today.
 - `codex-foreman setup` handles MCP registration, packaged `$cap` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
 - Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
 - install from the GitHub release tarball when you want a no-clone setup
