@@ -319,6 +319,29 @@ function deriveRoleModelObservationDefaults(input) {
 function deriveObservedCapabilityFromLaunchSource(requestKind, launchSource) {
     return deriveRoleModelObservationDefaults({ requestKind, launchSource }).observed_capability;
 }
+function normalizeLoadedRoleValue(candidate) {
+    switch (candidate) {
+        case 'orchestrator':
+        case 'planner':
+        case 'explorer':
+        case 'code specialist':
+        case 'verifier':
+            return candidate;
+        default:
+            return 'code specialist';
+    }
+}
+function normalizeLoadedLaunchRequestKind(candidate, role) {
+    switch (candidate) {
+        case 'execution':
+        case 'verification':
+        case 'planning':
+        case 'advisory':
+            return candidate;
+        default:
+            return role === 'verifier' ? 'verification' : role === 'planner' ? 'planning' : 'execution';
+    }
+}
 function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     if (candidate === null || candidate === undefined) {
         return null;
@@ -326,16 +349,24 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     if (!isRecord(candidate)) {
         return candidate;
     }
+    const role = normalizeLoadedRoleValue(candidate.role);
     const launchSource = Object.prototype.hasOwnProperty.call(candidate, 'launch_source') && candidate.launch_source === 'foreman_spawn'
         ? 'foreman_spawn'
-        : null;
-    const requestKind = Object.prototype.hasOwnProperty.call(candidate, 'request_kind') && typeof candidate.request_kind === 'string'
-        ? candidate.request_kind
-        : null;
+        : 'foreman_spawn';
+    const requestKind = normalizeLoadedLaunchRequestKind(candidate.request_kind, role);
     const observedDefaults = deriveRoleModelObservationDefaults({
         requestKind,
         launchSource,
     });
+    const configuredProfile = Object.prototype.hasOwnProperty.call(candidate, 'configured_profile')
+        ? candidate.configured_profile
+        : candidate.actual_profile ?? candidate.dispatched_profile ?? null;
+    const configuredModel = Object.prototype.hasOwnProperty.call(candidate, 'configured_model')
+        ? candidate.configured_model
+        : candidate.actual_model ?? candidate.dispatched_model ?? null;
+    const configuredVariant = Object.prototype.hasOwnProperty.call(candidate, 'configured_variant')
+        ? candidate.configured_variant
+        : candidate.actual_variant ?? candidate.dispatched_variant ?? null;
     const dispatchedProfile = Object.prototype.hasOwnProperty.call(candidate, 'dispatched_profile')
         ? candidate.dispatched_profile
         : candidate.actual_profile;
@@ -348,26 +379,54 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     const dispatchedConfigEntries = Object.prototype.hasOwnProperty.call(candidate, 'dispatched_config_entries')
         ? candidate.dispatched_config_entries
         : candidate.actual_config_entries;
+    const normalizedDispatchedModel = typeof dispatchedModel === 'string' ? dispatchedModel : null;
+    const normalizedDispatchedVariant = dispatchedVariant === 'low' || dispatchedVariant === 'medium' || dispatchedVariant === 'high' || dispatchedVariant === 'xhigh'
+        ? dispatchedVariant
+        : null;
+    const normalizedDispatchedConfigEntries = Array.isArray(dispatchedConfigEntries)
+        ? dispatchedConfigEntries
+        : normalizeAgentConfigEntries(normalizedDispatchedModel, normalizedDispatchedVariant, []);
+    const actualProfile = Object.prototype.hasOwnProperty.call(candidate, 'actual_profile')
+        ? candidate.actual_profile
+        : dispatchedProfile ?? null;
+    const actualModel = Object.prototype.hasOwnProperty.call(candidate, 'actual_model')
+        ? candidate.actual_model
+        : dispatchedModel ?? null;
+    const actualVariant = Object.prototype.hasOwnProperty.call(candidate, 'actual_variant')
+        ? candidate.actual_variant
+        : dispatchedVariant ?? null;
+    const actualConfigEntries = Array.isArray(candidate.actual_config_entries)
+        ? candidate.actual_config_entries
+        : normalizedDispatchedConfigEntries;
+    const mismatchReasons = [];
+    if (configuredProfile !== actualProfile) {
+        mismatchReasons.push(`profile expected ${configuredProfile ?? 'none'} but launched ${actualProfile ?? 'none'}`);
+    }
+    if (configuredModel !== actualModel) {
+        mismatchReasons.push(`model expected ${configuredModel ?? 'none'} but launched ${actualModel ?? 'none'}`);
+    }
+    if (configuredVariant !== actualVariant) {
+        mismatchReasons.push(`reasoning expected ${configuredVariant ?? 'none'} but launched ${actualVariant ?? 'none'}`);
+    }
     return {
         ...candidate,
+        role,
+        request_kind: requestKind,
+        launch_source: launchSource,
+        codex_path: Object.prototype.hasOwnProperty.call(candidate, 'codex_path') && typeof candidate.codex_path === 'string'
+            ? candidate.codex_path
+            : 'codex',
+        configured_profile: configuredProfile ?? null,
+        configured_model: configuredModel ?? null,
+        configured_variant: configuredVariant ?? null,
         dispatched_profile: dispatchedProfile ?? null,
         dispatched_model: dispatchedModel ?? null,
         dispatched_variant: dispatchedVariant ?? null,
-        dispatched_config_entries: Array.isArray(dispatchedConfigEntries) ? dispatchedConfigEntries : [],
-        actual_profile: Object.prototype.hasOwnProperty.call(candidate, 'actual_profile')
-            ? candidate.actual_profile
-            : dispatchedProfile ?? null,
-        actual_model: Object.prototype.hasOwnProperty.call(candidate, 'actual_model')
-            ? candidate.actual_model
-            : dispatchedModel ?? null,
-        actual_variant: Object.prototype.hasOwnProperty.call(candidate, 'actual_variant')
-            ? candidate.actual_variant
-            : dispatchedVariant ?? null,
-        actual_config_entries: Array.isArray(candidate.actual_config_entries)
-            ? candidate.actual_config_entries
-            : Array.isArray(dispatchedConfigEntries)
-                ? dispatchedConfigEntries
-                : [],
+        dispatched_config_entries: normalizedDispatchedConfigEntries,
+        actual_profile: actualProfile,
+        actual_model: actualModel,
+        actual_variant: actualVariant,
+        actual_config_entries: actualConfigEntries,
         observed_profile: Object.prototype.hasOwnProperty.call(candidate, 'observed_profile') ? candidate.observed_profile : null,
         observed_model: Object.prototype.hasOwnProperty.call(candidate, 'observed_model') ? candidate.observed_model : null,
         observed_variant: Object.prototype.hasOwnProperty.call(candidate, 'observed_variant') ? candidate.observed_variant : null,
@@ -390,6 +449,19 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
         observation_mismatch_summary: Object.prototype.hasOwnProperty.call(candidate, 'observation_mismatch_summary')
             ? candidate.observation_mismatch_summary
             : null,
+        match_state: Object.prototype.hasOwnProperty.call(candidate, 'match_state')
+            ? candidate.match_state
+            : mismatchReasons.length === 0
+                ? 'verified_match'
+                : 'mismatch',
+        mismatch_summary: Object.prototype.hasOwnProperty.call(candidate, 'mismatch_summary')
+            ? candidate.mismatch_summary
+            : mismatchReasons.length === 0
+                ? null
+                : `Configured role launch mismatch for ${role} ${requestKind}: ${mismatchReasons.join('; ')}.`,
+        recorded_at: Object.prototype.hasOwnProperty.call(candidate, 'recorded_at') && typeof candidate.recorded_at === 'string'
+            ? candidate.recorded_at
+            : nowTimestamp(),
     };
 }
 function normalizeLoadedWorkerResult(candidate) {
@@ -666,7 +738,7 @@ const DEFAULT_FOREMAN_AGENT_SETTINGS = {
     verifier: {
         name: constants_1.FOREMAN_AGENT_ROSTER.verifier,
         model: 'gpt-5.4',
-        variant: 'high',
+        variant: 'medium',
     },
 };
 function createEmptyRoleDefaults() {

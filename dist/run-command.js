@@ -603,9 +603,18 @@ function buildPromptModelEvidenceContext(launchEvidence) {
         },
     };
 }
-function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowedActions, taskDelegations) {
+function selectPromptModelLaunchEvidence(taskCard, taskDelegations) {
+    const taskLinkedDelegationEvidence = taskDelegations
+        .filter((delegation) => delegation.task_card_id === taskCard.task_card_id && delegation.worker_launch_evidence)
+        .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
+        .map((delegation) => delegation.worker_launch_evidence ?? null)
+        .find((evidence) => evidence !== null);
+    return taskLinkedDelegationEvidence ?? taskCard.latest_model_launch;
+}
+function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowedActions, taskDelegations, reviewRelevantDelegations) {
+    const promptLaunchEvidence = selectPromptModelLaunchEvidence(taskCard, taskDelegations);
     const routingMetadata = (0, orchestrator_1.derivePolicyAwareRoutingMetadata)(run, taskCard, orchestrationPolicy, decision);
-    const reviewMetadata = (0, orchestrator_1.derivePolicyAwareReviewMetadata)(run, taskCard, orchestrationPolicy, decision, taskDelegations);
+    const reviewMetadata = (0, orchestrator_1.derivePolicyAwareReviewMetadata)(run, taskCard, orchestrationPolicy, decision, reviewRelevantDelegations);
     const researchMetadata = (0, orchestrator_1.derivePolicyAwareResearchMetadata)(orchestrationPolicy, decision);
     const mutationGuardrailsMetadata = (0, orchestrator_1.derivePolicyAwareMutationGuardrailsMetadata)(orchestrationPolicy, decision);
     const untrustedRunContext = stringifyPromptJson({
@@ -624,7 +633,7 @@ function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowe
             sc: taskCard.scope,
             a: taskCard.acceptance,
         },
-        me: buildPromptModelEvidenceContext(taskCard.latest_model_launch),
+        me: buildPromptModelEvidenceContext(promptLaunchEvidence),
         l: {
             v: run.latest_verification
                 ? {
@@ -1514,7 +1523,8 @@ function buildPlannerPrompt(goal, prompt) {
     }
     return `Goal: ${goal}\n\n${prompt}\n\n${STRICT_PLANNER_CONTRACT}`;
 }
-function buildRepairPlannerPrompt(run, taskCard, operatorPrompt) {
+function buildRepairPlannerPrompt(run, taskCard, operatorPrompt, taskDelegations) {
+    const promptLaunchEvidence = selectPromptModelLaunchEvidence(taskCard, taskDelegations);
     const blockedContext = stringifyPromptJson({
         g: shouldCollapsePlannerGoal(run.goal, operatorPrompt) ||
             shouldCollapsePlannerGoal(run.goal, taskCard.execution_prompt) ||
@@ -1528,7 +1538,7 @@ function buildRepairPlannerPrompt(run, taskCard, operatorPrompt) {
             a: taskCard.acceptance,
             p: taskCard.execution_prompt,
         },
-        me: buildPromptModelEvidenceContext(taskCard.latest_model_launch),
+        me: buildPromptModelEvidenceContext(promptLaunchEvidence),
         l: {
             v: run.latest_verification
                 ? {
@@ -2281,6 +2291,19 @@ function selectExecutionStageDelegations(taskCard, taskDelegations) {
         return delegation.child_agent.role === taskCard.assigned_role;
     });
 }
+async function retireExecutionStageDelegationsForRetry(runPaths, run, taskCard) {
+    const existingDelegations = selectExecutionStageDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
+    if (existingDelegations.length === 0) {
+        return;
+    }
+    const collapseTimestamp = (0, runtime_1.nowTimestamp)();
+    for (const delegation of existingDelegations) {
+        delegation.fan_in_collapsed_at = collapseTimestamp;
+        delegation.updated_at = collapseTimestamp;
+        await (0, runtime_1.persistDelegationWithVisibilitySync)(runPaths, delegation);
+        syncDelegationChildAgent(run, delegation);
+    }
+}
 function isPartitionedInvestigationDelegationSet(delegations) {
     return delegations.some((delegation) => delegation.worker_request?.partition_strategy !== null && delegation.worker_request?.partition_strategy !== undefined);
 }
@@ -2789,6 +2812,11 @@ function buildUnexpectedDelegationLifecycleInput(delegationId, error) {
 }
 function isGraphChildDelegationSet(taskCard, delegations) {
     return taskCard.node_kind === 'fan_in' && delegations.some((delegation) => delegation.source_task_card_id !== null && delegation.source_task_card_id !== undefined);
+}
+function isPrimaryExecutionDelegation(taskCard, delegation) {
+    return (delegation.task_card_id === taskCard.task_card_id &&
+        delegation.source_task_card_id === null &&
+        delegation.child_agent.role === taskCard.assigned_role);
 }
 async function cancelRemainingGraphChildDelegations(runPaths, run, activeTaskCard, pendingDelegations, failureSummary) {
     for (const delegation of pendingDelegations) {
@@ -4906,6 +4934,90 @@ async function advanceForemanRun(options) {
         await syncDelegationLifecycle(runPaths, run, buildDelegationTerminalLifecycleInput(executionDelegation.delegation_id, outcome, delegatedExecutionLaunchEvidence, executionDelegation.worker_request, executionDelegation.summary));
     }
     if (executionDelegation) {
+        if (delegatedExecutionLaunchEvidence !== null) {
+            taskCard.latest_model_launch = delegatedExecutionLaunchEvidence;
+        }
+        if (isPrimaryExecutionDelegation(taskCard, executionDelegation)) {
+            if (outcome.threadId) {
+                (0, runtime_1.updateExecutionThread)(run, taskCard, outcome.threadId);
+            }
+            if (outcome.kind === 'completed') {
+                const verificationHandoff = (0, runtime_1.createHandoffRecord)({
+                    handoffId: (0, node_crypto_1.randomUUID)(),
+                    runId: run.run_id,
+                    taskCardId: taskCard.task_card_id,
+                    fromRole: taskCard.assigned_role,
+                    toRole: 'verifier',
+                    summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+                });
+                currentLatestHandoff = verificationHandoff;
+                (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
+                await (0, runtime_1.persistHandoffRecord)(runPaths, verificationHandoff);
+            }
+            else if (outcome.kind === 'compatibility_failed') {
+                (0, runtime_1.markRunTerminalState)(run, taskCard, {
+                    status: 'failed',
+                    stage: 'compatibility',
+                    reason: 'surface_mismatch',
+                    summary: outcome.summary,
+                    ownerRole: 'orchestrator',
+                    verificationState: 'blocked',
+                });
+            }
+            else if (outcome.kind === 'blocked_dependency') {
+                (0, runtime_1.markRunTerminalState)(run, taskCard, {
+                    status: 'failed',
+                    stage: 'execution',
+                    reason: 'blocked_dependency',
+                    summary: outcome.summary,
+                    ownerRole: taskCard.assigned_role,
+                    verificationState: 'blocked',
+                });
+            }
+            else if (outcome.kind === 'cancelled') {
+                (0, runtime_1.markRunTerminalState)(run, taskCard, {
+                    status: 'cancelled',
+                    stage: 'execution',
+                    reason: 'cancelled',
+                    summary: outcome.summary,
+                    ownerRole: taskCard.assigned_role,
+                    verificationState: 'blocked',
+                });
+            }
+            else {
+                (0, runtime_1.markRunTerminalState)(run, taskCard, {
+                    status: 'failed',
+                    stage: 'execution',
+                    reason: 'unknown',
+                    summary: outcome.summary,
+                    ownerRole: taskCard.assigned_role,
+                    verificationState: 'blocked',
+                });
+            }
+            ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
+            (0, runtime_1.setOrchestratorDecision)(orchestratorState, decision);
+            await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
+            await persistRunArtifactsAndProgress(runPaths, {
+                run,
+                taskCards: await ensureTaskCards(),
+                taskCard,
+                latestHandoff: currentLatestHandoff,
+                decision,
+                orchestrationPolicy: orchestratorState.orchestration_policy,
+            });
+            return createAdvanceRunResult({
+                run,
+                taskCard,
+                orchestrationPolicy: orchestratorState.orchestration_policy,
+                taskCardId: taskCard.task_card_id,
+                runDirectory: runPaths.runDir,
+                status: run.status,
+                stage: run.stage,
+                threadId: outcome.threadId ?? run.active_thread_id,
+                decision,
+                advanced: true,
+            });
+        }
         ({ decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request));
         if (decision.next_step === 'await_fan_in' && decision.can_advance) {
             currentLatestHandoff = await performExplicitDelegationFanIn(runPaths, run, await ensureTaskCards(), taskCard);
@@ -5019,6 +5131,7 @@ async function adviseForemanRun(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
     const { run, taskCard, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
+    const taskDelegations = await (0, runtime_1.loadDelegationArtifacts)(runPaths);
     const { decision: currentDecision, taskDelegationSummary } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     const allowedActions = (0, orchestrator_1.getAllowedExplicitCommandsForDecision)(currentDecision);
     (0, runtime_1.assertRunContextIntegrity)({
@@ -5034,7 +5147,7 @@ async function adviseForemanRun(options) {
     }
     const orchestratorRequestSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)(foremanConfig.agents.orchestrator);
     const advisorSettings = resolveRequestSettings(options, orchestratorRequestSettings);
-    const outcome = await executeAdvisorCodex(options, buildAdvisorPrompt(run, taskCard, orchestratorState.orchestration_policy, currentDecision, allowedActions, taskDelegationSummary.delegations), advisorSettings);
+    const outcome = await executeAdvisorCodex(options, buildAdvisorPrompt(run, taskCard, orchestratorState.orchestration_policy, currentDecision, allowedActions, taskDelegations, taskDelegationSummary.delegations), advisorSettings);
     if (outcome.kind !== 'advised' || !outcome.advice) {
         throw new Error(outcome.summary);
     }
@@ -5074,6 +5187,7 @@ async function retryForemanRun(options) {
         summary: 'Verifier returned the blocked task to its assigned specialist role for an explicit retry attempt.',
     });
     taskCard.review_pass_count += 1;
+    await retireExecutionStageDelegationsForRetry(runPaths, run, taskCard);
     (0, runtime_1.reactivateBlockedTask)(run, taskCard, retryHandoff);
     syncOrchestratorStateRequests(orchestratorState, options.cwd, run, taskCard);
     const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
@@ -5101,6 +5215,7 @@ async function retryForemanRun(options) {
 async function replanForemanRun(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
     const { run, taskCard, latestHandoff, orchestratorState, hydrateTaskCards } = await (0, runtime_1.loadMutableRunContext)(runPaths);
+    const taskDelegations = await (0, runtime_1.loadDelegationArtifacts)(runPaths);
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const plannerSettings = resolveRequestSettings(options, {
         profile: foremanConfig.agents.planner.profile,
@@ -5128,7 +5243,7 @@ async function replanForemanRun(options) {
     const plannerOutcome = await executePlannerCodex({
         cwd: options.cwd,
         codexPath: options.codexPath,
-        prompt: buildRepairPlannerPrompt(run, taskCard, options.prompt),
+        prompt: buildRepairPlannerPrompt(run, taskCard, options.prompt, taskDelegations),
         profile: plannerSettings.profile,
         configEntries: plannerSettings.configEntries,
     });

@@ -1904,8 +1904,9 @@ function createReadableWorkerSnapshot(delegation, foremanConfig) {
 function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
     if (run.stage === 'execution' && taskCard.owner_role !== 'verifier') {
         return taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id &&
+            delegation.fan_in_collapsed_at === null &&
             (delegation.source_task_card_id !== null && delegation.source_task_card_id !== undefined
-                ? delegation.fan_in_collapsed_at === null
+                ? true
                 : delegation.child_agent.role === taskCard.assigned_role));
     }
     if (run.stage === 'verification' && taskCard.owner_role === 'verifier' && taskCard.verification_state === 'pending') {

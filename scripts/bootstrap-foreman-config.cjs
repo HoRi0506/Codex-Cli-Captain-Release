@@ -47,7 +47,7 @@ function fallbackCreateDefaultForemanConfig() {
         name: 'arbiter',
         profile: null,
         model: 'gpt-5.4',
-        variant: 'high',
+        variant: 'medium',
         config_entries: [],
       },
     },
