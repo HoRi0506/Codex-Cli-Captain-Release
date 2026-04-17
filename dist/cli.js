@@ -543,26 +543,64 @@ function formatAlwaysOnRequestSettingsLine(requestSettings) {
         : `${label}_profile=${compactWatchText(request.profile)} ${label}_config_entries=${compactWatchText(request.config_entries.join(','))}`;
     return `Always-on request settings: ${formatRequest('execution', requestSettings.execution_request)} ${formatRequest('verification', requestSettings.verification_request)}`;
 }
-function formatTaskCardRequestSummary(status) {
+function resolveTaskCardRequestReporting(status) {
     const requestSettings = status.current_task_card?.resolved_request_settings;
     if (requestSettings !== null && requestSettings !== undefined) {
-        return [
-            `task_request=${requestSettings.request_kind}`,
-            `task_profile=${compactWatchText(requestSettings.profile)}`,
-            `task_model=${compactWatchText(requestSettings.model)}`,
-            `task_variant=${compactWatchText(requestSettings.variant)}`,
-        ].join(' ');
+        return {
+            requestKind: requestSettings.request_kind,
+            profile: requestSettings.profile,
+            model: requestSettings.model,
+            variant: requestSettings.variant,
+        };
+    }
+    const roleConfigSnapshot = status.current_task_card?.role_config_snapshot;
+    if (roleConfigSnapshot !== null && roleConfigSnapshot !== undefined) {
+        return {
+            requestKind: 'none',
+            profile: roleConfigSnapshot.profile,
+            model: roleConfigSnapshot.model ??
+                status.current_task_card?.assigned_agent_config_summary?.model ??
+                status.current_task_card?.agent_config_summary?.model ??
+                null,
+            variant: roleConfigSnapshot.variant ??
+                status.current_task_card?.assigned_agent_config_summary?.variant ??
+                status.current_task_card?.agent_config_summary?.variant ??
+                null,
+        };
+    }
+    const assignedAgentConfigSummary = status.current_task_card?.assigned_agent_config_summary;
+    if (assignedAgentConfigSummary !== null && assignedAgentConfigSummary !== undefined) {
+        return {
+            requestKind: 'none',
+            profile: assignedAgentConfigSummary.profile,
+            model: assignedAgentConfigSummary.model,
+            variant: assignedAgentConfigSummary.variant,
+        };
     }
     const agentConfigSummary = status.current_task_card?.agent_config_summary;
     if (agentConfigSummary !== null && agentConfigSummary !== undefined) {
-        return [
-            `task_request=none`,
-            `task_profile=${compactWatchText(agentConfigSummary.profile)}`,
-            `task_model=${compactWatchText(agentConfigSummary.model)}`,
-            `task_variant=${compactWatchText(agentConfigSummary.variant)}`,
-        ].join(' ');
+        return {
+            requestKind: 'none',
+            profile: agentConfigSummary.profile,
+            model: agentConfigSummary.model,
+            variant: agentConfigSummary.variant,
+        };
     }
-    return 'task_request=none task_profile=none task_model=none task_variant=none';
+    return {
+        requestKind: 'none',
+        profile: null,
+        model: null,
+        variant: null,
+    };
+}
+function formatTaskCardRequestSummary(status) {
+    const requestReport = resolveTaskCardRequestReporting(status);
+    return [
+        `task_request=${requestReport.requestKind}`,
+        `task_profile=${compactWatchText(requestReport.profile)}`,
+        `task_model=${compactWatchText(requestReport.model)}`,
+        `task_variant=${compactWatchText(requestReport.variant)}`,
+    ].join(' ');
 }
 function formatOrchestratorRequestSummary(status) {
     return [
@@ -1053,6 +1091,7 @@ function createWatchSnapshot(status, activity) {
             verifier: 0,
         },
     };
+    const requestReport = resolveTaskCardRequestReporting(status);
     return {
         cwd: compactWatchText(status.cwd),
         status: compactWatchText(status.status),
@@ -1098,10 +1137,10 @@ function createWatchSnapshot(status, activity) {
             status.current_task_card?.actual_model_launch?.observation_unavailable_reason),
         task_observation_mismatch: compactWatchText(status.current_task_card?.observation_mismatch_summary ??
             status.current_task_card?.actual_model_launch?.observation_mismatch_summary),
-        task_request: compactWatchText(status.current_task_card?.resolved_request_settings?.request_kind),
-        task_profile: compactWatchText(status.current_task_card?.agent_config_summary?.profile ?? status.current_task_card?.resolved_request_settings?.profile),
-        task_model: compactWatchText(status.current_task_card?.agent_config_summary?.model ?? status.current_task_card?.resolved_request_settings?.model),
-        task_variant: compactWatchText(status.current_task_card?.agent_config_summary?.variant ?? status.current_task_card?.resolved_request_settings?.variant),
+        task_request: compactWatchText(requestReport.requestKind),
+        task_profile: compactWatchText(requestReport.profile),
+        task_model: compactWatchText(requestReport.model),
+        task_variant: compactWatchText(requestReport.variant),
         captain_profile: compactWatchText(status.orchestrator_request_settings_preview?.profile ?? status.orchestrator_agent_config_summary?.profile),
         captain_scope: compactWatchText(status.orchestrator_scope),
         captain_model: compactWatchText(status.orchestrator_request_settings_preview?.model ?? status.orchestrator_agent_config_summary?.model),

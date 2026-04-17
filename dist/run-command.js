@@ -4508,6 +4508,15 @@ async function advanceForemanRun(options) {
         }
         return taskCards;
     };
+    if (run.stage === 'execution' &&
+        taskCard.status === 'active' &&
+        taskCard.owner_role === 'orchestrator' &&
+        requiresConcreteWorkerLaunch(taskCard) &&
+        run.active_role !== 'orchestrator') {
+        run.active_role = 'orchestrator';
+        run.active_agent_id = (0, runtime_1.getRunActiveAgentIdForRole)('orchestrator');
+        run.updated_at = (0, runtime_1.nowTimestamp)();
+    }
     let currentLatestHandoff = latestHandoff;
     let activeTaskCard = taskCard;
     let { decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
