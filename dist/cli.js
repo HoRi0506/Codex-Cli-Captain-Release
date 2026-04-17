@@ -29,6 +29,8 @@ function usage() {
         '    Resume a persisted run and perform the next orchestrator-approved step. This is the main explicit execution entrypoint.',
         '  codex-foreman continue --run-id <id> [--codex-bin <path>] [--max-steps <n>] [--cwd <path>]',
         '    Thin wrapper over advance/verify only: it chains already-approved execution and verification steps, then stops at manual/operator boundaries or when the safe max-steps window is consumed.',
+        '  codex-foreman status --run-id <id> [--activity] [--quiet|--debug] [--cwd <path>]',
+        '    Print one persisted Foreman status snapshot using the same visibility contract as watch without the polling mental model.',
         '  codex-foreman watch --run-id <id> [--interval-ms <n>] [--iterations <n>] [--activity] [--show-changes] [--changes-only] [--quiet|--debug] [--cwd <path>]',
         '    Poll persisted Foreman status and optionally recent activity for terminal use. Default output follows foreman-config verbosity, while --quiet and --debug override it for this watch invocation only.',
         '  codex-foreman always-on --run-id <id> --action <start|stop|status|tick|loop> [--codex-bin <path>] [--max-steps <n>] [--max-iterations <n>] [--backoff-ms <n>] [--max-backoff-ms <n>] [--cwd <path>]',
@@ -828,21 +830,37 @@ function formatWatchModelLine(status) {
                 : 'planned ';
     return `Model: ${prefix}${model} / ${variant}`;
 }
+function formatWatchLatestAnswerLine(status) {
+    const trace = status.latest_entry_trace;
+    if (!trace) {
+        return null;
+    }
+    const currentRole = formatWatchAgentLine(status).replace(/^Agent:\s*/u, '').trim();
+    const currentRoleSuffix = currentRole.length > 0 && currentRole !== trace.answer_trace.selected_role ? ` current=${currentRole}` : '';
+    return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
+        ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
+}
 function formatCompactWatchStatusLine(status) {
     return [
         formatWatchAgentLine(status),
         `Task: ${status.current_task_card?.title ?? 'none'}`,
         formatWatchModelLine(status),
+        formatWatchLatestAnswerLine(status),
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
-    ].join('\n');
+    ]
+        .filter((line) => typeof line === 'string' && line.length > 0)
+        .join('\n');
 }
 function formatQuietWatchStatusLine(status) {
     return [
         formatWatchAgentLine(status),
         formatWatchModelLine(status),
+        formatWatchLatestAnswerLine(status),
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
         `Next: ${compactWatchText(status.workflow_operator_state?.recommended_operator_action ?? status.next_step)}`,
-    ].join('\n');
+    ]
+        .filter((line) => typeof line === 'string' && line.length > 0)
+        .join('\n');
 }
 function formatWatchReviewState(status) {
     const reviewOutcome = status.latest_response?.review_outcome ?? status.latest_orchestrator_synthesis?.review_outcome ?? null;
@@ -960,6 +978,10 @@ function formatWatchStatusLine(status, verbosity) {
         `response_boundary=${compactWatchText(status.latest_response?.boundary)}`,
         `response_action=${compactWatchText(status.latest_response?.recommended_action)}`,
         `response_provenance=${quoteWatchText(status.latest_response?.provenance_header ?? 'none')}`,
+        `answer_role=${compactWatchText(status.latest_entry_trace?.answer_trace.selected_role)}`,
+        `answer_path=${compactWatchText(status.latest_entry_trace?.answer_trace.execution_path)}`,
+        `answer_shape=${compactWatchText(status.latest_entry_trace?.answer_trace.request_shape)}`,
+        `answer_budget=${compactWatchText(status.latest_entry_trace?.answer_trace.budget_class)}`,
         `always_on=${status.always_on_mode.status}`,
         formatAlwaysOnOperatorSummary(status),
         `context=${quoteWatchText(status.readable_context?.summary)}`,
@@ -1090,6 +1112,10 @@ function createWatchSnapshot(status, activity) {
         synthesis_action: compactWatchText(status.latest_orchestrator_synthesis?.recommended_action),
         synthesis_class: compactWatchText(status.latest_orchestrator_synthesis?.decision_class),
         synthesis_review: compactWatchText(status.latest_orchestrator_synthesis?.review_outcome),
+        answer_role: compactWatchText(status.latest_entry_trace?.answer_trace.selected_role),
+        answer_path: compactWatchText(status.latest_entry_trace?.answer_trace.execution_path),
+        answer_shape: compactWatchText(status.latest_entry_trace?.answer_trace.request_shape),
+        answer_budget: compactWatchText(status.latest_entry_trace?.answer_trace.budget_class),
         review_state: compactWatchText(formatWatchReviewState(status)),
         latest_handoff: compactWatchText(formatWatchHandoff(status)),
         provenance: compactWatchText(status.latest_response?.provenance_header ?? status.latest_orchestrator_synthesis?.provenance_header),
@@ -1441,6 +1467,9 @@ function parseCliArgs(argv) {
     if (command === 'continue') {
         return { command, options: parseContinueOptions(rest) };
     }
+    if (command === 'status') {
+        return { command, options: { ...parseWatchOptions(rest), iterations: 1, intervalMs: 250 } };
+    }
     if (command === 'watch') {
         return { command, options: parseWatchOptions(rest) };
     }
@@ -1566,6 +1595,14 @@ async function runCli(argv) {
                 process.stdout.write(`${formatContinueStepTrace(step)}\n`);
             }
             return result.status === 'failed' || result.status === 'cancelled' || result.stopReason === 'max_steps_reached' ? 1 : 0;
+        }
+        if (parsed.command === 'status') {
+            await runWatchCommand({
+                ...parsed.options,
+                iterations: 1,
+                intervalMs: 250,
+            });
+            return 0;
         }
         if (parsed.command === 'watch') {
             await runWatchCommand(parsed.options);

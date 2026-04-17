@@ -1514,6 +1514,7 @@ function createInitialRunRecord(input) {
         latest_failure: null,
         latest_orchestrator_synthesis: null,
         latest_response: null,
+        latest_entry_trace: null,
         planning_clarification_request: null,
         raw_thread_ids: [],
         created_at: timestamp,
@@ -1602,6 +1603,7 @@ function createPlanningRunRecord(input) {
         latest_failure: null,
         latest_orchestrator_synthesis: null,
         latest_response: null,
+        latest_entry_trace: null,
         planning_clarification_request: null,
         raw_thread_ids: [],
         created_at: timestamp,
@@ -2565,6 +2567,77 @@ async function normalizeLoadedRunRecord(paths, candidate) {
             recorded_at: typeof value.recorded_at === 'string' ? value.recorded_at : nowTimestamp(),
         };
     };
+    const normalizeLatestEntryTrace = (value) => {
+        if (!isRecord(value) || !isRecord(value.answer_trace)) {
+            return null;
+        }
+        const answerTrace = value.answer_trace;
+        return {
+            request: typeof value.request === 'string' ? value.request : 'details recorded in persisted state.',
+            run_selection: value.run_selection === 'new_run_created' ||
+                value.run_selection === 'existing_run_reused' ||
+                value.run_selection === 'no_run_created'
+                ? value.run_selection
+                : 'no_run_created',
+            entry_boundary: value.entry_boundary === 'explicit_cli_or_mcp' ||
+                value.entry_boundary === 'explicit_auto_entry' ||
+                value.entry_boundary === 'session_instruction_plus_wrapper'
+                ? value.entry_boundary
+                : 'session_instruction_plus_wrapper',
+            upstream_codex_binary_intercept_supported: false,
+            run_decision_reason: typeof value.run_decision_reason === 'string' ? value.run_decision_reason : 'details recorded in persisted state.',
+            summary: typeof value.summary === 'string' ? value.summary : 'details recorded in persisted state.',
+            answer_trace: {
+                request_shape: answerTrace.request_shape === 'existence_check' ||
+                    answerTrace.request_shape === 'lookup' ||
+                    answerTrace.request_shape === 'survey' ||
+                    answerTrace.request_shape === 'diagnosis' ||
+                    answerTrace.request_shape === 'planning' ||
+                    answerTrace.request_shape === 'mutation' ||
+                    answerTrace.request_shape === 'verification' ||
+                    answerTrace.request_shape === 'synthesis'
+                    ? answerTrace.request_shape
+                    : 'synthesis',
+                mutation_intent: answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
+                    ? answerTrace.mutation_intent
+                    : 'none',
+                selected_role: answerTrace.selected_role === 'captain' ||
+                    answerTrace.selected_role === 'tactician' ||
+                    answerTrace.selected_role === 'scout' ||
+                    answerTrace.selected_role === 'raider' ||
+                    answerTrace.selected_role === 'arbiter'
+                    ? answerTrace.selected_role
+                    : 'captain',
+                execution_path: answerTrace.execution_path === 'captain_local' ||
+                    answerTrace.execution_path === 'run_reused' ||
+                    answerTrace.execution_path === 'new_run'
+                    ? answerTrace.execution_path
+                    : 'captain_local',
+                budget_class: answerTrace.budget_class === 'low_cost_read_only' ||
+                    answerTrace.budget_class === 'low_cost_investigation' ||
+                    answerTrace.budget_class === 'planning_budget' ||
+                    answerTrace.budget_class === 'implementation_budget' ||
+                    answerTrace.budget_class === 'verification_budget'
+                    ? answerTrace.budget_class
+                    : 'low_cost_read_only',
+                review_requirement: answerTrace.review_requirement === 'none' ||
+                    answerTrace.review_requirement === 'optional' ||
+                    answerTrace.review_requirement === 'required'
+                    ? answerTrace.review_requirement
+                    : 'none',
+                why_selected: typeof answerTrace.why_selected === 'string'
+                    ? answerTrace.why_selected
+                    : 'details recorded in persisted state.',
+                why_not_local: typeof answerTrace.why_not_local === 'string'
+                    ? answerTrace.why_not_local
+                    : 'details recorded in persisted state.',
+                why_not_heavier_role: typeof answerTrace.why_not_heavier_role === 'string'
+                    ? answerTrace.why_not_heavier_role
+                    : 'details recorded in persisted state.',
+            },
+            recorded_at: typeof value.recorded_at === 'string' ? value.recorded_at : nowTimestamp(),
+        };
+    };
     if (!isRecord(candidate) ||
         (Object.prototype.hasOwnProperty.call(candidate, 'specialist_executors') &&
             Object.prototype.hasOwnProperty.call(candidate, 'planning_clarification_request') &&
@@ -2578,6 +2651,9 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     : null,
                 latest_response: Object.prototype.hasOwnProperty.call(candidate, 'latest_response')
                     ? normalizeLatestResponse(candidate.latest_response)
+                    : null,
+                latest_entry_trace: Object.prototype.hasOwnProperty.call(candidate, 'latest_entry_trace')
+                    ? normalizeLatestEntryTrace(candidate.latest_entry_trace)
                     : null,
             }
             : candidate;
@@ -2594,6 +2670,9 @@ async function normalizeLoadedRunRecord(paths, candidate) {
             : null,
         latest_response: Object.prototype.hasOwnProperty.call(candidate, 'latest_response')
             ? normalizeLatestResponse(candidate.latest_response)
+            : null,
+        latest_entry_trace: Object.prototype.hasOwnProperty.call(candidate, 'latest_entry_trace')
+            ? normalizeLatestEntryTrace(candidate.latest_entry_trace)
             : null,
         planning_clarification_request: Object.prototype.hasOwnProperty.call(candidate, 'planning_clarification_request')
             ? candidate.planning_clarification_request

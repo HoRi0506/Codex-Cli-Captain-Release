@@ -2171,6 +2171,17 @@ function sanitizeLatestSummaryRecord(record) {
         summary: SAFE_PERSISTED_DETAIL_SUMMARY,
     };
 }
+function sanitizeLatestEntryTraceRecord(record) {
+    if (record === null) {
+        return null;
+    }
+    return {
+        ...record,
+        request: 'details recorded in persisted state.',
+        run_decision_reason: SAFE_PERSISTED_DETAIL_SUMMARY,
+        summary: SAFE_PERSISTED_DETAIL_SUMMARY,
+    };
+}
 async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDelegations, progress, hydration, latestVerifiedCheckpoint, alwaysOnMode, mcpMutationLease, serverIdentity, taskGraphSummary, orchestratorState, foremanConfig) {
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
@@ -2283,6 +2294,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         latest_verified_checkpoint: sanitizeLatestSummaryRecord(latestVerifiedCheckpoint),
         latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
+        latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
         hydration,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, visibility.orchestrator.next_step, visibility.orchestrator.can_advance),
@@ -2392,6 +2404,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         latest_verified_checkpoint: sanitizeLatestSummaryRecord(run.latest_verified_checkpoint),
         latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
+        latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
         hydration: null,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, 'await_clarification', false),
@@ -2661,6 +2674,7 @@ function createForemanActivityResult(input) {
         latest_verified_checkpoint: input.status.latest_verified_checkpoint,
         latest_orchestrator_synthesis: input.status.latest_orchestrator_synthesis,
         latest_response: input.status.latest_response,
+        latest_entry_trace: input.status.latest_entry_trace,
         hydration: input.status.hydration,
         always_on_mode: input.status.always_on_mode,
         always_on_operator_state: input.status.always_on_operator_state,
@@ -3288,20 +3302,34 @@ function describeOperatorLatestHandoff(guidanceSource) {
     }
     return 'none recorded';
 }
-function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, loopState, runTruthSurface, _workflowOperatorState, taskGraphSummary, _guidanceSource) {
+function describeOperatorLatestAnswerPath(currentTaskCard, guidanceSource) {
+    const trace = guidanceSource?.latest_entry_trace;
+    if (!trace) {
+        return null;
+    }
+    const currentRole = resolveOperatorDisplayAgentName(currentTaskCard);
+    const currentRoleSuffix = currentRole !== 'none' && currentRole !== trace.answer_trace.selected_role ? ` current=${currentRole}` : '';
+    return (`Answer: ${trace.answer_trace.selected_role} via ${trace.answer_trace.execution_path}` +
+        ` (${trace.answer_trace.request_shape}, ${trace.answer_trace.budget_class})${currentRoleSuffix}`);
+}
+function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, _nextStep, loopState, runTruthSurface, _workflowOperatorState, taskGraphSummary, guidanceSource) {
     const graphSummary = [
         `total=${taskGraphSummary.total_task_cards}`,
         `ready=${taskGraphSummary.ready_execution_tasks}`,
         `queued=${taskGraphSummary.queued_task_cards}`,
     ].join(' ');
+    const latestAnswer = describeOperatorLatestAnswerPath(currentTaskCard, guidanceSource ?? null);
     return [
         createOperatorDisplayAgentLine(currentTaskCard),
         `Task: ${currentTaskCard?.title ?? 'none'}`,
         createOperatorDisplayModelLine(currentTaskCard),
+        latestAnswer,
         `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `State: ${runTruthSurface ? `${runTruthSurface.boundary_state} / next=${runTruthSurface.resume_action}` : 'none'}`,
         `Graph: ${graphSummary}`,
-    ].join('\n');
+    ]
+        .filter((line) => typeof line === 'string' && line.length > 0)
+        .join('\n');
 }
 function createRunTruthOperatorVisibilitySummary(runTruthSurface) {
     if (runTruthSurface === null) {

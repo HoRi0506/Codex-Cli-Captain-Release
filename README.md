@@ -37,6 +37,8 @@ Auto-entry is also reuse-first for lightweight read-heavy work. If one active ru
 
 Default operator views now prefer named roster labels such as `captain`, `scout`, `raider`, and `arbiter` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 
+`codex-foreman status --run-id <id>` is the one-shot CLI snapshot surface for that same truth. It uses the compact watch contract without the polling mental model and can show the latest answer path separately from the persisted current task when a reused implementation run receives a read-only follow-up.
+
 ## How It Behaves
 
 - you send a request with `$cap <request>`
@@ -46,6 +48,7 @@ Default operator views now prefer named roster labels such as `captain`, `scout`
 - Foreman provides the run state, role metadata, model policy, playbook mapping, wrapper contract, and evidence surfaces
 - the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
 - the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
+- `codex-foreman status --run-id <id>` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
 - bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
 - `codex-foreman check-install` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
@@ -119,7 +122,7 @@ The current supported activation path is still `codex-foreman setup`, which inst
 Copy this text into Codex CLI:
 
 ```text
-Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.20/codex-foreman-1.5.20.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
+Install codex-foreman on this machine from the GitHub release tarball https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.21/codex-foreman-1.5.21.tgz. Do not assume a published npm registry package exists. If this repository is available locally, read `docs/install.md` before you start and follow it as the source of truth. Run `codex-foreman setup`, then run `codex-foreman check-install`. Verify that `codex-foreman check-install` reports `status=ok`, that the packaged `$cap` skill is installed, and that the packaged Codex custom agents are installed. Do not ask me to type the shell commands manually. Execute them yourself and finish with exactly: Please restart Codex CLI.
 ```
 
 ## What To Expect

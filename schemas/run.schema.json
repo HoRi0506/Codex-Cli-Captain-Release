@@ -21,6 +21,7 @@
     "latest_failure",
     "latest_orchestrator_synthesis",
     "latest_response",
+    "latest_entry_trace",
     "planning_clarification_request",
     "raw_thread_ids",
     "created_at",
@@ -126,6 +127,16 @@
       "anyOf": [
         {
           "$ref": "#/$defs/synthesizedRunResponse"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "latest_entry_trace": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/latestEntryTraceRecord"
         },
         {
           "type": "null"
@@ -479,6 +490,108 @@
         "review_outcome": {
           "type": ["string", "null"],
           "enum": ["pass", "repair", "hold", "pending", null]
+        },
+        "recorded_at": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "latestEntryTraceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "request",
+        "run_selection",
+        "entry_boundary",
+        "upstream_codex_binary_intercept_supported",
+        "run_decision_reason",
+        "summary",
+        "answer_trace",
+        "recorded_at"
+      ],
+      "properties": {
+        "request": {
+          "type": "string",
+          "minLength": 1
+        },
+        "run_selection": {
+          "type": "string",
+          "enum": ["new_run_created", "existing_run_reused", "no_run_created"]
+        },
+        "entry_boundary": {
+          "type": "string",
+          "enum": ["explicit_cli_or_mcp", "explicit_auto_entry", "session_instruction_plus_wrapper"]
+        },
+        "upstream_codex_binary_intercept_supported": {
+          "const": false
+        },
+        "run_decision_reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "answer_trace": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "request_shape",
+            "mutation_intent",
+            "selected_role",
+            "execution_path",
+            "budget_class",
+            "review_requirement",
+            "why_selected",
+            "why_not_local",
+            "why_not_heavier_role"
+          ],
+          "properties": {
+            "request_shape": {
+              "type": "string",
+              "enum": ["existence_check", "lookup", "survey", "diagnosis", "planning", "mutation", "verification", "synthesis"]
+            },
+            "mutation_intent": {
+              "type": "string",
+              "enum": ["none", "explicit_or_strong"]
+            },
+            "selected_role": {
+              "type": "string",
+              "enum": ["captain", "tactician", "scout", "raider", "arbiter"]
+            },
+            "execution_path": {
+              "type": "string",
+              "enum": ["captain_local", "run_reused", "new_run"]
+            },
+            "budget_class": {
+              "type": "string",
+              "enum": [
+                "low_cost_read_only",
+                "low_cost_investigation",
+                "planning_budget",
+                "implementation_budget",
+                "verification_budget"
+              ]
+            },
+            "review_requirement": {
+              "type": "string",
+              "enum": ["none", "optional", "required"]
+            },
+            "why_selected": {
+              "type": "string",
+              "minLength": 1
+            },
+            "why_not_local": {
+              "type": "string",
+              "minLength": 1
+            },
+            "why_not_heavier_role": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
         },
         "recorded_at": {
           "type": "string",

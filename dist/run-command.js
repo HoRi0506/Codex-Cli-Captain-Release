@@ -4035,6 +4035,23 @@ function renderAutoEntryAnswerTrace(trace) {
         `why_not_heavier_role=${trace.why_not_heavier_role}`,
     ].join(' | ');
 }
+async function persistLatestAutoEntryTrace(input) {
+    const runPaths = (0, runtime_1.createRunPaths)(input.cwd, input.runId);
+    const run = await (0, runtime_1.loadRunRecord)(runPaths);
+    const recordedAt = (0, runtime_1.nowTimestamp)();
+    run.latest_entry_trace = {
+        request: input.request,
+        run_selection: input.runSelection,
+        entry_boundary: input.entryBoundary,
+        upstream_codex_binary_intercept_supported: input.upstreamCodexBinaryInterceptSupported,
+        run_decision_reason: input.runDecisionReason,
+        summary: input.summary,
+        answer_trace: input.answerTrace,
+        recorded_at: recordedAt,
+    };
+    run.updated_at = recordedAt;
+    await (0, runtime_1.persistRunRecord)(runPaths, run);
+}
 async function autoEnterForeman(options) {
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
@@ -4090,6 +4107,25 @@ async function autoEnterForeman(options) {
         };
     }
     if (reusableRun) {
+        const answerTrace = createAutoEntryAnswerTrace({
+            recommendation,
+            runSelection: 'existing_run_reused',
+            selectedRun: reusableRun,
+        });
+        const summary = `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
+            `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
+            'because it was the only fresh active candidate in the workspace.';
+        await persistLatestAutoEntryTrace({
+            cwd: options.cwd,
+            runId: reusableRun.snapshot.runId,
+            request: options.request,
+            runSelection: 'existing_run_reused',
+            entryBoundary: recommendation.entry_boundary,
+            upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
+            runDecisionReason: reusableRun.lifecycle.decision_reason,
+            summary,
+            answerTrace,
+        });
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4116,14 +4152,8 @@ async function autoEnterForeman(options) {
             stage: reusableRun.snapshot.stage,
             next_step: reusableRun.snapshot.nextStep,
             can_advance: reusableRun.snapshot.canAdvance,
-            summary: `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
-                `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} ` +
-                'because it was the only fresh active candidate in the workspace.',
-            answer_trace: createAutoEntryAnswerTrace({
-                recommendation,
-                runSelection: 'existing_run_reused',
-                selectedRun: reusableRun,
-            }),
+            summary,
+            answer_trace: answerTrace,
             recommendation,
         };
     }
@@ -4176,6 +4206,33 @@ async function autoEnterForeman(options) {
             prompt: options.request,
             codexPath: options.codexPath,
         });
+        const answerTrace = createAutoEntryAnswerTrace({
+            recommendation,
+            runSelection: 'new_run_created',
+            selectedRun: null,
+        });
+        const summary = summarizeNewAutoEntryRunCreation({
+            freshCount: activeRunInspection.fresh.length,
+            staleCount: activeRunInspection.stale.length,
+            routedSummary: result.clarificationRequest === null
+                ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
+                : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
+        });
+        await persistLatestAutoEntryTrace({
+            cwd: options.cwd,
+            runId: result.runId,
+            request: options.request,
+            runSelection: 'new_run_created',
+            entryBoundary: recommendation.entry_boundary,
+            upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
+            runDecisionReason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+                ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
+                : activeRunInspection.fresh.length > 1
+                    ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                    : 'no reusable active run was available, so Foreman created a new planner-scoped run',
+            summary,
+            answerTrace,
+        });
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4206,22 +4263,37 @@ async function autoEnterForeman(options) {
             stage: result.stage,
             next_step: result.nextStep,
             can_advance: result.canAdvance,
-            summary: summarizeNewAutoEntryRunCreation({
-                freshCount: activeRunInspection.fresh.length,
-                staleCount: activeRunInspection.stale.length,
-                routedSummary: result.clarificationRequest === null
-                    ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
-                    : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
-            }),
-            answer_trace: createAutoEntryAnswerTrace({
-                recommendation,
-                runSelection: 'new_run_created',
-                selectedRun: null,
-            }),
+            summary,
+            answer_trace: answerTrace,
             recommendation,
         };
     }
     const startResult = await startForemanRun(createAutoEntryStartOptions(options, recommendation));
+    const answerTrace = createAutoEntryAnswerTrace({
+        recommendation,
+        runSelection: 'new_run_created',
+        selectedRun: null,
+    });
+    const summary = summarizeNewAutoEntryRunCreation({
+        freshCount: activeRunInspection.fresh.length,
+        staleCount: activeRunInspection.stale.length,
+        routedSummary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
+    });
+    await persistLatestAutoEntryTrace({
+        cwd: options.cwd,
+        runId: startResult.runId,
+        request: options.request,
+        runSelection: 'new_run_created',
+        entryBoundary: recommendation.entry_boundary,
+        upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
+        runDecisionReason: activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
+            ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
+            : activeRunInspection.fresh.length > 1
+                ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
+                : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
+        summary,
+        answerTrace,
+    });
     return {
         cwd: options.cwd,
         request: options.request,
@@ -4252,16 +4324,8 @@ async function autoEnterForeman(options) {
         stage: startResult.stage,
         next_step: startResult.nextStep,
         can_advance: startResult.canAdvance,
-        summary: summarizeNewAutoEntryRunCreation({
-            freshCount: activeRunInspection.fresh.length,
-            staleCount: activeRunInspection.stale.length,
-            routedSummary: 'Foreman-first auto-entry routed this request through the bounded start surface using conservative request-derived task-card defaults.',
-        }),
-        answer_trace: createAutoEntryAnswerTrace({
-            recommendation,
-            runSelection: 'new_run_created',
-            selectedRun: null,
-        }),
+        summary,
+        answer_trace: answerTrace,
         recommendation,
     };
 }
