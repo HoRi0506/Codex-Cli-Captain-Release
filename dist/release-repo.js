@@ -225,13 +225,13 @@ Token discipline matters here. Captain should spend tokens on state lookup, rout
 
 Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
 
-Within one Codex CLI session, Foreman now keeps one current run by default. The same session keeps reusing that run until the operator explicitly asks for a new run or closes it, and the bound run is closed when that session ends. Operator-facing surfaces can now show a readable current-run label in local date-time-task form using the run's latest activity time instead of only a raw run id.
+Within one Codex CLI session, Foreman now keeps one current workstream by default. A persisted run may still back that workstream internally, but the main continuity anchor is the current session plus its active route/workstream state. The same session keeps reusing that workstream until the operator explicitly asks for a new run or closes it, and the bound run/workstream state is released when that session ends. Operator-facing surfaces can still show a readable run label when needed, but they now also expose compact route and workstream truth.
 
 Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 
 The MCP auto-entry surface can now report bounded elapsed timing as part of the operator-facing diagnostic path, which makes it easier to tell whether slowdown came from Foreman work itself or from outer session transport.
 
-\`codex-foreman status --run-id <id>\` is the one-shot CLI snapshot surface for that same truth. It uses the compact watch contract without the polling mental model and can show the latest answer path separately from the persisted current task when a reused implementation run receives a read-only follow-up.
+\`codex-foreman status --run-id <id>\` is the one-shot CLI snapshot surface for that same truth. It uses the compact watch contract without the polling mental model and can show the latest answer path separately from the persisted current task when a reused implementation run receives a read-only follow-up. The same compact surface can also show route progress and session-workstream summary when those truths matter for the current run.
 
 ## How It Behaves
 
@@ -245,7 +245,8 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - \`codex-foreman status --run-id <id>\` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
 - bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
-- one Codex CLI session can keep one current run until the operator explicitly closes it or asks for a new run
+- one Codex CLI session can keep one current workstream until the operator explicitly closes it or asks for a new run
+- follow-up \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` input can queue onto the current session workstream instead of overwriting the in-flight request
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill keeps the host Codex session as \`captain\`, while packaged custom agents remain internal specialist targets

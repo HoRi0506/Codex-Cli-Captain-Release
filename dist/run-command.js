@@ -64,6 +64,7 @@ const request_shape_1 = require("./request-shape");
 const run_lifecycle_1 = require("./run-lifecycle");
 const workflow_variants_1 = require("./workflow-variants");
 const session_run_binding_1 = require("./session-run-binding");
+const session_workstream_1 = require("./session-workstream");
 const orchestrator_1 = require("./orchestrator");
 const runtime_1 = require("./runtime");
 const helper_agents_1 = require("./helper-agents");
@@ -485,6 +486,18 @@ function stringifyPromptJson(value) {
         return candidate;
     };
     return JSON.stringify(prune(value) ?? {});
+}
+function stripRepeatedStrictPlannerContract(text) {
+    const stripped = text
+        .split(STRICT_PLANNER_CONTRACT)
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
+        .join('\n\n')
+        .trim();
+    return stripped.length > 0 ? stripped : text.trim();
+}
+function sanitizePlanningPublicGoal(text) {
+    return stripRepeatedStrictPlannerContract(text).trim();
 }
 const DEFAULT_ALWAYS_ON_LOOP_MAX_ITERATIONS = 8;
 const MIN_ALWAYS_ON_LOOP_MAX_ITERATIONS = 1;
@@ -1742,6 +1755,29 @@ function clampContinueMaxSteps(maxSteps) {
 }
 async function loadContinueRunSnapshot(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
+    const persistedRun = await (0, runtime_1.loadRunRecord)(runPaths);
+    if (persistedRun.stage === 'planning' && persistedRun.active_task_card_id === null) {
+        return {
+            runId: persistedRun.run_id,
+            taskCardId: `planning:${persistedRun.run_id}`,
+            runDirectory: runPaths.runDir,
+            createdAt: persistedRun.created_at,
+            updatedAt: persistedRun.updated_at,
+            goal: persistedRun.goal,
+            taskTitle: trimAutoEntryTitle(persistedRun.latest_entry_trace?.request ?? persistedRun.goal),
+            latestEntryRequest: persistedRun.latest_entry_trace?.request ?? null,
+            taskKind: 'plan',
+            assignedRole: 'planner',
+            status: persistedRun.status,
+            stage: persistedRun.stage,
+            verificationState: null,
+            nextStep: 'await_operator',
+            canAdvance: false,
+            threadId: persistedRun.active_thread_id,
+            latestResponse: persistedRun.latest_response,
+            latestOrchestratorSynthesis: persistedRun.latest_orchestrator_synthesis,
+        };
+    }
     const { run, taskCard, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const { decision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     return {
@@ -1892,10 +1928,12 @@ function mapCompanionExecutionStopReasonToLoopStopReason(stopReason) {
     }
 }
 function buildPlannerPrompt(goal, prompt) {
-    if (shouldCollapsePlannerGoal(goal, prompt)) {
-        return `${prompt.trim()}\n\n${STRICT_PLANNER_CONTRACT}`;
+    const sanitizedGoal = sanitizePlanningPublicGoal(goal);
+    const sanitizedPrompt = stripRepeatedStrictPlannerContract(prompt).trim();
+    if (shouldCollapsePlannerGoal(sanitizedGoal, sanitizedPrompt)) {
+        return `${sanitizedPrompt}\n\n${STRICT_PLANNER_CONTRACT}`;
     }
-    return `Goal: ${goal}\n\n${prompt}\n\n${STRICT_PLANNER_CONTRACT}`;
+    return `Goal: ${sanitizedGoal}\n\n${sanitizedPrompt}\n\n${STRICT_PLANNER_CONTRACT}`;
 }
 function buildRepairPlannerPrompt(run, taskCard, operatorPrompt, taskDelegations) {
     const promptLaunchEvidence = selectPromptModelLaunchEvidence(taskCard, taskDelegations);
@@ -4073,7 +4111,8 @@ async function applyVerificationOutcome(cwd, runPaths, run, taskCards, taskCard,
 async function planForemanRun(options) {
     const runId = (0, node_crypto_1.randomUUID)();
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, runId);
-    const run = (0, runtime_1.createPlanningRunRecord)({ runId, goal: options.goal });
+    const publicGoal = sanitizePlanningPublicGoal(options.goal);
+    const run = (0, runtime_1.createPlanningRunRecord)({ runId, goal: publicGoal });
     const { config: foremanConfig } = await (0, runtime_1.ensureForemanConfig)(options.cwd);
     const plannerSettings = resolveRequestSettings(options, {
         profile: foremanConfig.agents.planner.profile,
@@ -4083,12 +4122,19 @@ async function planForemanRun(options) {
     const verificationSettings = (0, runtime_1.createRequestSettingsFromForemanAgentConfig)(verificationAgentConfig);
     await (0, runtime_1.ensureRunPaths)(runPaths);
     await (0, runtime_1.persistRunRecord)(runPaths, run);
+    if (options.session) {
+        await (0, session_run_binding_1.bindRunToSession)({
+            cwd: options.cwd,
+            runId,
+            session: options.session,
+        });
+    }
     const plannerAttemptId = await (0, runtime_1.allocatePlannerAttemptId)(runPaths);
     const plannerAttemptPaths = (0, runtime_1.createPlannerAttemptPaths)(runPaths, plannerAttemptId);
     const plannerOutcome = await executePlannerCodex({
         cwd: options.cwd,
         codexPath: options.codexPath,
-        prompt: buildPlannerPrompt(options.goal, options.prompt),
+        prompt: buildPlannerPrompt(publicGoal, options.prompt),
         profile: plannerSettings.profile,
         configEntries: plannerSettings.configEntries,
     });
@@ -4457,6 +4503,24 @@ function deriveAutoEntryContinuityMetadata(options) {
         continuitySummary: 'No requester session id was supplied, so Foreman kept workspace active-run search enabled for bounded reuse and resume decisions.',
     };
 }
+function shouldQueuePendingAutoEntryFollowUp(input) {
+    if (input.sessionBoundRun === null || input.sessionBoundRun.snapshot.runId !== input.reusableRun.snapshot.runId) {
+        return false;
+    }
+    if ((0, session_workstream_1.isContinuationOnlySessionRequest)(input.request)) {
+        return false;
+    }
+    if (input.currentWorkstreamRequest === null) {
+        return false;
+    }
+    const normalizedRequest = input.request.replace(/\s+/g, ' ').trim();
+    const normalizedCurrentRequest = input.currentWorkstreamRequest.replace(/\s+/g, ' ').trim();
+    if (normalizedRequest.length === 0 || normalizedRequest === normalizedCurrentRequest) {
+        return false;
+    }
+    return (input.reusableRun.snapshot.status === 'active' ||
+        input.reusableRun.snapshot.status === 'blocked');
+}
 function selectReusableAutoEntryRun(input) {
     if (input.activeRunInspection.fresh.length === 1) {
         return input.activeRunInspection.fresh[0] ?? null;
@@ -4543,7 +4607,7 @@ function deriveAutoEntrySelectedRole(input) {
     }
     if (input.runSelection === 'existing_run_reused' &&
         input.selectedRun &&
-        !isReadOnlyAutoEntryCandidate(input.recommendation)) {
+        (input.selectedRun.snapshot.stage === 'planning' || !isReadOnlyAutoEntryCandidate(input.recommendation))) {
         return mapRoleToAutoEntrySelectedRole(input.selectedRun.snapshot.assignedRole);
     }
     const firstRouteStep = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection)?.workflow_agent_route.find((step) => step !== 'captain');
@@ -4766,9 +4830,16 @@ async function persistLatestAutoEntryTrace(input) {
 async function autoEnterForemanUnlocked(options) {
     const continuity = deriveAutoEntryContinuityMetadata(options);
     const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
+    const currentSessionWorkstream = options.session
+        ? await (0, session_workstream_1.loadSessionWorkstream)(options.cwd, options.session.sessionId)
+        : null;
+    const routingRequest = (0, session_workstream_1.deriveSessionWorkstreamRoutingRequest)({
+        rawRequest: options.request,
+        workstream: currentSessionWorkstream,
+    });
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
         cwd: options.cwd,
-        request: options.request,
+        request: routingRequest.request,
     }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
     if (recommendation.automatic_entry_supported) {
         await (0, session_run_binding_1.cleanupStaleSessionBoundRuns)(options.cwd);
@@ -4804,7 +4875,7 @@ async function autoEnterForemanUnlocked(options) {
         ? selectReusableAutoEntryRun({
             recommendation,
             activeRunInspection,
-            request: options.request,
+            request: routingRequest.request,
         })
         : null;
     const reusableRun = sessionDirective === null ? sessionBoundRun ?? defaultReusableRun : null;
@@ -4858,6 +4929,13 @@ async function autoEnterForemanUnlocked(options) {
                 closeRun: true,
             });
         }
+        if (options.session) {
+            await (0, session_workstream_1.releaseSessionWorkstream)({
+                cwd: options.cwd,
+                session: options.session,
+                reason: 'operator_closed',
+            });
+        }
         return {
             cwd: options.cwd,
             request: options.request,
@@ -4907,6 +4985,59 @@ async function autoEnterForemanUnlocked(options) {
             runSelection: 'existing_run_reused',
             selectedRun: reusableRun,
         });
+        if (options.session &&
+            shouldQueuePendingAutoEntryFollowUp({
+                request: options.request,
+                sessionBoundRun,
+                reusableRun,
+                currentWorkstreamRequest: currentSessionWorkstream?.current_request ?? null,
+            })) {
+            const queuedWorkstream = await (0, session_workstream_1.enqueueSessionWorkstreamFollowUp)({
+                cwd: options.cwd,
+                session: options.session,
+                runId: reusableRun.snapshot.runId,
+                request: options.request,
+            });
+            const runDecisionReason = 'the current session already owns an active route-bound run, so Foreman queued the new operator follow-up instead of overwriting the in-flight workstream request';
+            const summary = `Foreman kept the current session-bound run ${reusableRun.snapshot.runId} active and queued ` +
+                `${queuedWorkstream.pending_requests.length} pending follow-up` +
+                `${queuedWorkstream.pending_requests.length === 1 ? '' : 's'} for the same session workstream. ` +
+                'Captain should merge the queued request at the next real route boundary instead of replacing the current route mid-flight.';
+            return {
+                cwd: options.cwd,
+                request: options.request,
+                policy_mode: recommendation.policy_mode,
+                automatic_entry_supported: true,
+                entry_boundary: recommendation.entry_boundary,
+                entry_boundary_summary: recommendation.entry_boundary_summary,
+                upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
+                upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
+                requester_session_id: continuity.requesterSessionId,
+                continuity_strategy: continuity.continuityStrategy,
+                continuity_summary: continuity.continuitySummary,
+                created: false,
+                run_selection: 'existing_run_reused',
+                inspected_active_run_count: inspectedActiveRunCount,
+                fresh_active_run_count: activeRunInspection.fresh.length,
+                stale_active_run_count: activeRunInspection.stale.length,
+                entrypoint_used: null,
+                scoping_source: 'persisted_active_run_reuse',
+                run_decision_reason: runDecisionReason,
+                active_run_candidates: activeRunCandidates,
+                selected_run_lifecycle: reusableRun.lifecycle,
+                run_id: reusableRun.snapshot.runId,
+                run_label: createAutoEntryRunLabelFromSnapshot(reusableRun.snapshot),
+                task_card_id: reusableRun.snapshot.taskCardId,
+                run_directory: reusableRun.snapshot.runDirectory,
+                status: reusableRun.snapshot.status,
+                stage: reusableRun.snapshot.stage,
+                next_step: reusableRun.snapshot.nextStep,
+                can_advance: reusableRun.snapshot.canAdvance,
+                summary,
+                answer_trace: answerTrace,
+                recommendation,
+            };
+        }
         const runDecisionReason = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
             ? 'current session already owns a persisted run, so Foreman kept reusing it until the operator asks for a new run or closes it'
             : reusableRun.lifecycle.decision_reason;
@@ -4917,7 +5048,7 @@ async function autoEnterForemanUnlocked(options) {
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: reusableRun.snapshot.runId,
-            request: options.request,
+            request: routingRequest.request,
             runSelection: 'existing_run_reused',
             requesterSessionId: continuity.requesterSessionId,
             continuityStrategy: continuity.continuityStrategy,
@@ -4934,10 +5065,14 @@ async function autoEnterForemanUnlocked(options) {
             ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) without generic workspace run inspection because the current Codex CLI session already owns that run.`
             : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
                 `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} (${reusableRunLabel}) because it was the only fresh active candidate in the workspace.`;
+        const mergedSummary = routingRequest.merged_from_workstream && routingRequest.merged_pending_count > 0
+            ? `${summary} Foreman merged ${routingRequest.merged_pending_count} queued follow-up` +
+                `${routingRequest.merged_pending_count === 1 ? '' : 's'} into the current session workstream before routing.`
+            : summary;
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: reusableRun.snapshot.runId,
-            request: options.request,
+            request: routingRequest.request,
             runSelection: 'existing_run_reused',
             requesterSessionId: continuity.requesterSessionId,
             continuityStrategy: continuity.continuityStrategy,
@@ -4945,7 +5080,7 @@ async function autoEnterForemanUnlocked(options) {
             entryBoundary: recommendation.entry_boundary,
             upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
             runDecisionReason,
-            summary,
+            summary: mergedSummary,
             answerTrace,
         });
         if (options.session) {
@@ -4954,6 +5089,23 @@ async function autoEnterForemanUnlocked(options) {
                 runId: reusableRun.snapshot.runId,
                 session: options.session,
             });
+            if (routingRequest.merged_from_workstream) {
+                await (0, session_workstream_1.replaceSessionWorkstreamCurrentRequest)({
+                    cwd: options.cwd,
+                    session: options.session,
+                    runId: reusableRun.snapshot.runId,
+                    request: routingRequest.request,
+                    clearPending: true,
+                });
+            }
+            else {
+                await (0, session_workstream_1.activateSessionWorkstream)({
+                    cwd: options.cwd,
+                    session: options.session,
+                    runId: reusableRun.snapshot.runId,
+                    request: routingRequest.request,
+                });
+            }
         }
         return {
             cwd: options.cwd,
@@ -4985,7 +5137,7 @@ async function autoEnterForemanUnlocked(options) {
             stage: reusableRun.snapshot.stage,
             next_step: reusableRun.snapshot.nextStep,
             can_advance: reusableRun.snapshot.canAdvance,
-            summary,
+            summary: mergedSummary,
             answer_trace: answerTrace,
             recommendation,
         };
@@ -5044,13 +5196,19 @@ async function autoEnterForemanUnlocked(options) {
             reason: 'new_run_requested',
             closeRun: true,
         });
+        await (0, session_workstream_1.releaseSessionWorkstream)({
+            cwd: options.cwd,
+            session: options.session,
+            reason: 'new_run_requested',
+        });
     }
     if (recommendation.recommended_entrypoint === 'plan') {
         const result = await planForemanRun({
             cwd: options.cwd,
-            goal: options.request,
-            prompt: options.request,
+            goal: routingRequest.request,
+            prompt: routingRequest.request,
             codexPath: options.codexPath,
+            session: options.session ?? undefined,
         });
         const answerTrace = createAutoEntryAnswerTrace({
             recommendation,
@@ -5064,10 +5222,14 @@ async function autoEnterForemanUnlocked(options) {
                 ? 'Foreman-first auto-entry routed this request through the bounded planner surface and created a new run.'
                 : 'Foreman-first auto-entry routed this request through the bounded planner surface and paused for clarification before task execution.',
         });
+        const mergedSummary = routingRequest.merged_from_workstream && routingRequest.merged_pending_count > 0
+            ? `${summary} Foreman merged ${routingRequest.merged_pending_count} queued follow-up` +
+                `${routingRequest.merged_pending_count === 1 ? '' : 's'} into the next session workstream request before creating the new run.`
+            : summary;
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: result.runId,
-            request: options.request,
+            request: routingRequest.request,
             runSelection: 'new_run_created',
             requesterSessionId: continuity.requesterSessionId,
             continuityStrategy: continuity.continuityStrategy,
@@ -5081,7 +5243,7 @@ async function autoEnterForemanUnlocked(options) {
                     : activeRunInspection.fresh.length > 1
                         ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
                         : 'no reusable active run was available, so Foreman created a new planner-scoped run',
-            summary,
+            summary: mergedSummary,
             answerTrace,
         });
         const createdRunRecord = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, result.runId));
@@ -5091,6 +5253,12 @@ async function autoEnterForemanUnlocked(options) {
                 cwd: options.cwd,
                 runId: result.runId,
                 session: options.session,
+            });
+            await (0, session_workstream_1.activateSessionWorkstream)({
+                cwd: options.cwd,
+                session: options.session,
+                runId: result.runId,
+                request: routingRequest.request,
             });
         }
         return {
@@ -5129,12 +5297,15 @@ async function autoEnterForemanUnlocked(options) {
             stage: result.stage,
             next_step: result.nextStep,
             can_advance: result.canAdvance,
-            summary,
+            summary: mergedSummary,
             answer_trace: answerTrace,
             recommendation,
         };
     }
-    const startResult = await startForemanRun(createAutoEntryStartOptions(options, recommendation));
+    const startResult = await startForemanRun(createAutoEntryStartOptions({
+        ...options,
+        request: routingRequest.request,
+    }, recommendation));
     const answerTrace = createAutoEntryAnswerTrace({
         recommendation,
         runSelection: 'new_run_created',
@@ -5145,10 +5316,14 @@ async function autoEnterForemanUnlocked(options) {
         staleCount: activeRunInspection.stale.length,
         routedSummary: 'Foreman-first auto-entry created a new bounded run through the bounded start surface using conservative request-derived task-card defaults.',
     });
+    const mergedSummary = routingRequest.merged_from_workstream && routingRequest.merged_pending_count > 0
+        ? `${summary} Foreman merged ${routingRequest.merged_pending_count} queued follow-up` +
+            `${routingRequest.merged_pending_count === 1 ? '' : 's'} into the next session workstream request before creating the new run.`
+        : summary;
     await persistLatestAutoEntryTrace({
         cwd: options.cwd,
         runId: startResult.runId,
-        request: options.request,
+        request: routingRequest.request,
         runSelection: 'new_run_created',
         requesterSessionId: continuity.requesterSessionId,
         continuityStrategy: continuity.continuityStrategy,
@@ -5162,7 +5337,7 @@ async function autoEnterForemanUnlocked(options) {
                 : activeRunInspection.fresh.length > 1
                     ? 'multiple fresh active runs were present, so automatic reuse would have been ambiguous'
                     : 'no reusable active run was available, so Foreman created a new conservative start-scoped run',
-        summary,
+        summary: mergedSummary,
         answerTrace,
     });
     const createdRunRecord = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, startResult.runId));
@@ -5176,6 +5351,12 @@ async function autoEnterForemanUnlocked(options) {
             cwd: options.cwd,
             runId: startResult.runId,
             session: options.session,
+        });
+        await (0, session_workstream_1.activateSessionWorkstream)({
+            cwd: options.cwd,
+            session: options.session,
+            runId: startResult.runId,
+            request: routingRequest.request,
         });
     }
     return {
@@ -5214,7 +5395,7 @@ async function autoEnterForemanUnlocked(options) {
         stage: startResult.stage,
         next_step: startResult.nextStep,
         can_advance: startResult.canAdvance,
-        summary,
+        summary: mergedSummary,
         answer_trace: answerTrace,
         recommendation,
     };

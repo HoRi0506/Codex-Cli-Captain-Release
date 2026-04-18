@@ -34,6 +34,7 @@ const workflow_variants_1 = require("./workflow-variants");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
 const session_run_binding_1 = require("./session-run-binding");
+const session_workstream_1 = require("./session-workstream");
 const setup_codex_mcp_1 = require("./setup-codex-mcp");
 const runtime_1 = require("./runtime");
 const JSON_RPC_VERSION = '2.0';
@@ -2356,6 +2357,19 @@ async function createWorkflowOperatorStateView(input) {
         worker_session_alignment: workerSessionAlignment,
     };
 }
+async function loadSessionWorkstreamViewForRun(cwd, run) {
+    const sessionBinding = await (0, session_run_binding_1.loadSessionRunBinding)(cwd, run.run_id);
+    const workstreamSessionId = sessionBinding?.state === 'active'
+        ? sessionBinding.owner_session_id
+        : run.latest_entry_trace?.requester_session_id ?? null;
+    if (workstreamSessionId === null) {
+        return null;
+    }
+    return (0, session_workstream_1.createSessionWorkstreamView)({
+        record: await (0, session_workstream_1.loadSessionWorkstream)(cwd, workstreamSessionId),
+        runId: run.run_id,
+    });
+}
 function createVisibleDelegation(delegation, taskTitle, foremanConfig) {
     return {
         delegation_id: delegation.delegation_id,
@@ -2445,6 +2459,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         goal: run.goal,
         latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
+    const sessionWorkstream = await loadSessionWorkstreamViewForRun(cwd, run);
     const specialistRoleRoster = createSpecialistRoleRosterView(foremanConfig);
     const operatorSummary = createOperatorSummary(currentTaskCard, {
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
@@ -2528,6 +2543,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
         latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
+        session_workstream: sessionWorkstream,
         hydration,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, visibility.orchestrator.next_step, visibility.orchestrator.can_advance),
@@ -2583,6 +2599,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         goal: run.goal,
         latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
+    const sessionWorkstream = await loadSessionWorkstreamViewForRun(cwd, run);
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
         runStatus: run.status,
         workflowStage: run.stage,
@@ -2644,6 +2661,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
         latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
+        session_workstream: sessionWorkstream,
         hydration: null,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, 'await_clarification', false),
@@ -2703,6 +2721,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         goal: run.goal,
         latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
+    const sessionWorkstream = await loadSessionWorkstreamViewForRun(cwd, run);
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
         runStatus: run.status,
         workflowStage: run.stage,
@@ -2778,6 +2797,8 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         latest_verified_checkpoint: sanitizeLatestSummaryRecord(run.latest_verified_checkpoint),
         latest_orchestrator_synthesis: sanitizeLatestSummaryRecord(run.latest_orchestrator_synthesis),
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
+        latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
+        session_workstream: sessionWorkstream,
         hydration: null,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, nextStep, false),
@@ -4729,7 +4750,6 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 text: [
                                     'Attached Foreman MCP session',
                                     `Build: ${result.server_identity.build_identity}`,
-                                    `Session: ${result.server_identity.session_id}`,
                                     `Started: ${result.server_identity.started_at}`,
                                     `Entrypoint: ${result.server_identity.entrypoint_path ?? 'none'}`,
                                     `Config: ${result.server_identity.shared_config_path}`,
@@ -5097,6 +5117,11 @@ function createMcpSession() {
         },
         async close() {
             await (0, session_run_binding_1.closeTouchedSessionRuns)({
+                sessionId: sessionContext.session_id,
+                processId: sessionContext.process_id,
+                startedAt: sessionContext.started_at,
+            });
+            await (0, session_workstream_1.closeTouchedSessionWorkstreams)({
                 sessionId: sessionContext.session_id,
                 processId: sessionContext.process_id,
                 startedAt: sessionContext.started_at,

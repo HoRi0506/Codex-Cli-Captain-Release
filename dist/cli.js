@@ -973,6 +973,31 @@ function formatWatchSpecialistTruthLine(status) {
     const progress = describeWatchSpecialistProgress(truth);
     return `Truth: ${truth.specialist} ${truth.state} [${progress}; proof=${truth.proofState}; visibility=${truth.visibility}]`;
 }
+function formatWatchRouteProgressLine(status) {
+    if (isPlanningClarificationHold(status)) {
+        return null;
+    }
+    const workflowState = status.workflow_operator_state;
+    if (!workflowState) {
+        return null;
+    }
+    const routeContractState = compactWatchText(workflowState.route_contract_state ?? 'not_applicable');
+    const currentStep = compactWatchText(workflowState.current_route_step ?? 'none');
+    const nextStep = compactWatchText(workflowState.next_route_step ?? 'none');
+    const phase = compactWatchText(workflowState.phase);
+    const progress = compactWatchText(workflowState.workflow_progress);
+    const continuity = compactWatchText(workflowState.requester_session_continuity);
+    const alignment = compactWatchText(workflowState.worker_session_alignment);
+    return (`Route: ${routeContractState} ${currentStep}->${nextStep}` +
+        ` [phase=${phase}; progress=${progress}; session=${continuity}; alignment=${alignment}]`);
+}
+function formatWatchWorkstreamLine(status) {
+    const workstream = status.session_workstream;
+    if (!workstream || workstream.state === 'none') {
+        return null;
+    }
+    return `Workstream: ${compactWatchText(workstream.summary)}`;
+}
 function formatWatchClarificationLine(status) {
     if (!isPlanningClarificationHold(status)) {
         return null;
@@ -1009,6 +1034,8 @@ function formatCompactWatchStatusLine(status) {
         `Task: ${status.current_task_card?.title ?? 'none'}`,
         formatWatchModelLine(status),
         formatWatchSpecialistTruthLine(status),
+        formatWatchRouteProgressLine(status),
+        formatWatchWorkstreamLine(status),
         formatWatchClarificationLine(status),
         formatWatchLatestAnswerLine(status),
         `Graph: total=${status.task_graph_summary?.total_task_cards ?? 0} ready=${status.task_graph_summary?.ready_execution_tasks ?? 0} queued=${status.task_graph_summary?.queued_task_cards ?? 0}`,
@@ -1021,6 +1048,8 @@ function formatQuietWatchStatusLine(status) {
         formatWatchAgentLine(status),
         formatWatchModelLine(status),
         formatWatchSpecialistTruthLine(status),
+        formatWatchRouteProgressLine(status),
+        formatWatchWorkstreamLine(status),
         formatWatchClarificationLine(status),
         formatWatchLatestAnswerLine(status),
         `Phase: ${compactWatchText(status.workflow_operator_state?.phase)}`,
