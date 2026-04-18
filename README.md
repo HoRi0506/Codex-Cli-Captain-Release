@@ -35,7 +35,7 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Token discipline matters here. Captain should spend tokens on state lookup, routing, waiting, and synthesis rather than broad repository survey or specialist-grade mutation work that can be delegated under role-specific settings.
 
-Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
+Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, companion-shaped read-only work can stay on a visible low-cost scout path instead of collapsing into opaque host-local fallback.
 
 Within one Codex CLI session, Foreman now keeps one current workstream by default. A persisted run may still back that workstream internally, but the main continuity anchor is the current session plus its active route/workstream state. The same session keeps reusing that workstream until the operator explicitly asks for a new run or closes it, and the bound run/workstream state is released when that session ends. Operator-facing surfaces can still show a readable run label when needed, but they now also expose compact route and workstream truth.
 
@@ -56,7 +56,7 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
 - `codex-foreman status --run-id <id>` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
-- bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
+- bounded companion-shaped read-only auto-entry can prefer safe reuse or a visible low-cost scout route instead of accumulating throwaway active runs or opaque host-local fallback
 - one Codex CLI session can keep one current workstream until the operator explicitly closes it or asks for a new run
 - follow-up `$cap` input can queue onto the current session workstream instead of overwriting the in-flight request
 - `codex-foreman check-install` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
@@ -113,7 +113,7 @@ Reach for Codex-Foreman when:
 - `git` for provenance, diffs, branch state, and regression-oriented history checks
 - `fetch` for authoritative remote artifacts or docs during release and install work
 
-These remain companion surfaces, not hidden Foreman workers.
+These remain companion tools under configured specialist ownership, not public worker routes.
 
 ## Packaged Harness Surface
 
@@ -134,7 +134,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.34/codex-foreman-1.5.34.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.35/codex-foreman-1.5.35.tgz
 codex-foreman setup
 codex-foreman check-install
 

@@ -2103,6 +2103,9 @@ async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CON
             modelPolicyStatus: 'warning',
             modelPolicySummary: diagnosis.summary,
             configuredRoleModels: [],
+            toolRoutingPolicyStatus: 'warning',
+            toolRoutingPolicySummary: diagnosis.summary,
+            configuredToolRoutes: [],
             activeRunHygieneStatus: 'warning',
             activeRunHygieneSummary: diagnosis.summary,
             activeRunRecommendedId: null,
@@ -4020,10 +4023,19 @@ function buildForemanOrchestrateDispatchedSummary(input) {
     return `Dispatched bounded foreman_orchestrate progression from ${input.startingNextStep} via ${commandSequence} and stopped at ${input.stopReason}.`;
 }
 function renderCompactAutoEntryAnswerTrace(trace) {
+    const toolRoute = trace.companion_tool_route_class ?? 'none';
+    const toolOwner = trace.tool_owner_role ?? 'none';
+    const toolModel = trace.tool_owner_model ?? 'none';
+    const toolVariant = trace.tool_owner_variant ?? 'none';
     return [
         `workflow=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `role=${trace.selected_role}`,
         `path=${trace.execution_path}`,
+        `follow=${trace.follow_proof ?? 'captain_local_only'}`,
+        `complete=${trace.completion_rule ?? 'answer_now'}`,
+        `tool_route=${toolRoute}`,
+        `tool_owner=${toolOwner}`,
+        `tool_model=${toolModel}/${toolVariant}`,
         `budget=${trace.budget_class}`,
         `review=${trace.review_requirement}`,
     ].join(' ');
@@ -4161,7 +4173,7 @@ async function recommendForemanEntryForMcp(input) {
             return (0, entry_policy_1.recommendForemanEntry)({
                 cwd,
                 request: input.request,
-            }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+            }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
         },
         onTimeout: (diagnosis) => ({
             cwd: resolveCwd(input.cwd),
@@ -4194,6 +4206,13 @@ async function recommendForemanEntryForMcp(input) {
             task_shape: 'multi_step_or_unclear',
             request_shape: 'planning',
             mutation_intent: 'none',
+            companion_tool_route_class: 'none',
+            companion_tool_names: [],
+            companion_tool_operation: 'none',
+            companion_tool_owner_role: null,
+            companion_tool_model: null,
+            companion_tool_variant: null,
+            companion_tool_fallback_mode: 'visible_degraded_host_fallback',
             workflow_variant_selection: (0, workflow_variants_1.deriveWorkflowVariantSelection)({
                 request: input.request,
                 recommendation: {
@@ -4271,6 +4290,12 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
             answer_trace: {
                 request_shape: 'planning',
                 mutation_intent: 'none',
+                companion_tool_route_class: 'none',
+                companion_tool_names: [],
+                companion_tool_operation: 'none',
+                tool_owner_role: null,
+                tool_owner_model: null,
+                tool_owner_variant: null,
                 workflow_variant_selection: (0, workflow_variants_1.deriveWorkflowVariantSelection)({
                     request: input.request,
                     recommendation: {
@@ -4281,6 +4306,8 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
                 }),
                 selected_role: 'captain',
                 execution_path: 'captain_local',
+                follow_proof: 'degraded_host_fallback',
+                completion_rule: 'degraded_boundary',
                 budget_class: 'planning_budget',
                 review_requirement: 'none',
                 why_selected: 'captain kept the request visible after the bounded auto-entry timeout.',
@@ -4318,6 +4345,13 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
                 task_shape: 'multi_step_or_unclear',
                 request_shape: 'planning',
                 mutation_intent: 'none',
+                companion_tool_route_class: 'none',
+                companion_tool_names: [],
+                companion_tool_operation: 'none',
+                companion_tool_owner_role: null,
+                companion_tool_model: null,
+                companion_tool_variant: null,
+                companion_tool_fallback_mode: 'visible_degraded_host_fallback',
                 workflow_variant_selection: (0, workflow_variants_1.deriveWorkflowVariantSelection)({
                     request: input.request,
                     recommendation: {
@@ -4847,6 +4881,8 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     `with confidence=${result.confidence}, task_shape=${result.task_shape}, and policy=${result.policy_mode}. ` +
                                     `Operator view: captain_model=${result.orchestrator_request_settings_preview.model ?? 'none'} ` +
                                     `captain_variant=${result.orchestrator_request_settings_preview.variant ?? 'none'} ` +
+                                    `tool_route=${result.companion_tool_route_class} ` +
+                                    `tool_owner=${result.companion_tool_owner_role ?? 'none'} ` +
                                     `scope=${result.orchestrator_scope} ` +
                                     `entry_boundary=${result.entry_boundary} ` +
                                     `upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}.` +

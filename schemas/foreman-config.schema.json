@@ -30,6 +30,37 @@
         }
       }
     },
+    "tool_routing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_model", "default_variant", "fallback_mode", "tools"],
+      "properties": {
+        "default_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "default_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "fallback_mode": {
+          "type": "string",
+          "enum": ["visible_degraded_host_fallback", "deny_host_fallback"]
+        },
+        "tools": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["filesystem", "git", "context7", "fetch", "openaiDeveloperDocs"],
+          "properties": {
+            "filesystem": { "$ref": "#/definitions/toolRoutingPolicyEntry" },
+            "git": { "$ref": "#/definitions/toolRoutingPolicyEntry" },
+            "context7": { "$ref": "#/definitions/toolRoutingPolicyEntry" },
+            "fetch": { "$ref": "#/definitions/toolRoutingPolicyEntry" },
+            "openaiDeveloperDocs": { "$ref": "#/definitions/toolRoutingPolicyEntry" }
+          }
+        }
+      }
+    },
     "agents": {
       "type": "object",
       "additionalProperties": false,
@@ -141,6 +172,37 @@
             "type": "string",
             "minLength": 1
           }
+        }
+      }
+    },
+    "toolRoutingPolicyEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["owner_role", "model", "variant", "allowed_operations", "fallback_mode"],
+      "properties": {
+        "owner_role": {
+          "type": "string",
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+        },
+        "model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "allowed_operations": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["read", "mutation"]
+          },
+          "minItems": 1
+        },
+        "fallback_mode": {
+          "type": "string",
+          "enum": ["visible_degraded_host_fallback", "deny_host_fallback"]
         }
       }
     }

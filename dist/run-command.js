@@ -4338,6 +4338,13 @@ async function startForemanRun(options) {
     run.task_card_ids = taskCards.map((candidate) => candidate.task_card_id);
     if (options.workflowVariantSelection) {
         const requestClassification = (0, request_shape_1.classifyForemanRequest)({ request: options.goal });
+        const recommendedForGoal = {
+            ...(0, entry_policy_1.recommendForemanEntry)({
+                cwd: options.cwd,
+                request: options.goal,
+            }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing),
+            workflow_variant_selection: options.workflowVariantSelection,
+        };
         const firstRouteStep = (0, workflow_variants_1.getWorkflowRouteContract)(options.workflowVariantSelection)?.workflow_agent_route.find((step) => step !== 'captain') ?? null;
         const selectedRole = mapWorkflowRouteStepToSelectedRole(firstRouteStep);
         run.latest_entry_trace = {
@@ -4353,18 +4360,20 @@ async function startForemanRun(options) {
             answer_trace: {
                 request_shape: requestClassification.requestShape,
                 mutation_intent: requestClassification.mutationIntent,
+                companion_tool_route_class: recommendedForGoal.companion_tool_route_class,
+                companion_tool_names: [...recommendedForGoal.companion_tool_names],
+                companion_tool_operation: recommendedForGoal.companion_tool_operation,
+                tool_owner_role: recommendedForGoal.companion_tool_owner_role,
+                tool_owner_model: recommendedForGoal.companion_tool_model,
+                tool_owner_variant: recommendedForGoal.companion_tool_variant,
                 workflow_variant_selection: options.workflowVariantSelection,
                 selected_role: selectedRole,
                 execution_path: 'new_run',
+                follow_proof: 'foreman_route_visible',
+                completion_rule: 'continue_foreman',
                 budget_class: deriveAutoEntryBudgetClass({
                     selectedRole,
-                    recommendation: {
-                        ...(0, entry_policy_1.recommendForemanEntry)({
-                            cwd: options.cwd,
-                            request: options.goal,
-                        }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator),
-                        workflow_variant_selection: options.workflowVariantSelection,
-                    },
+                    recommendation: recommendedForGoal,
                 }),
                 review_requirement: options.workflowVariantSelection.workflow_agent_route.includes('arbiter')
                     ? 'required'
@@ -4473,6 +4482,9 @@ function isReadOnlyAutoEntryCandidate(recommendation) {
         AUTO_ENTRY_REUSABLE_NON_MUTATION_REQUEST_SHAPES.has(recommendation.request_shape));
 }
 function shouldSuppressNewRunCreationForAutoEntry(recommendation) {
+    if (recommendation.companion_tool_route_class !== 'none') {
+        return false;
+    }
     return (isReadOnlyAutoEntryCandidate(recommendation) &&
         (recommendation.request_shape === 'synthesis' ||
             ((recommendation.request_shape === 'lookup' || recommendation.request_shape === 'existence_check') &&
@@ -4682,6 +4694,25 @@ function mapWorkflowRouteStepToSelectedRole(step) {
             return 'captain';
     }
 }
+function deriveAutoEntryFollowProof(input) {
+    if (input.executionPath === 'run_reused' || input.executionPath === 'new_run') {
+        return 'foreman_route_visible';
+    }
+    if (input.recommendation.companion_tool_route_class !== 'none' ||
+        !input.recommendation.automatic_entry_supported) {
+        return 'degraded_host_fallback';
+    }
+    return 'captain_local_only';
+}
+function deriveAutoEntryCompletionRule(input) {
+    if (input.executionPath === 'run_reused' || input.executionPath === 'new_run') {
+        return 'continue_foreman';
+    }
+    if (!input.recommendation.automatic_entry_supported || input.recommendation.companion_tool_route_class !== 'none') {
+        return 'degraded_boundary';
+    }
+    return 'answer_now';
+}
 function createAutoEntryAnswerTrace(input) {
     const selectedRole = deriveAutoEntrySelectedRole(input);
     const executionPath = input.runSelection === 'existing_run_reused'
@@ -4692,6 +4723,14 @@ function createAutoEntryAnswerTrace(input) {
     const budgetClass = deriveAutoEntryBudgetClass({
         selectedRole,
         recommendation: input.recommendation,
+    });
+    const followProof = deriveAutoEntryFollowProof({
+        recommendation: input.recommendation,
+        executionPath,
+    });
+    const completionRule = deriveAutoEntryCompletionRule({
+        recommendation: input.recommendation,
+        executionPath,
     });
     const reviewRequirement = deriveAutoEntryReviewRequirement(selectedRole);
     let whySelected = 'captain kept the request on the local synthesis path.';
@@ -4710,7 +4749,10 @@ function createAutoEntryAnswerTrace(input) {
                 whySelected = 'tactician won because the request is multi-step or unclear and needs bounded planning first.';
                 break;
             case 'scout':
-                whySelected = 'scout won because the request is read-heavy and is better served by cheap investigation than by mutation.';
+                whySelected =
+                    input.recommendation.companion_tool_route_class !== 'none'
+                        ? `scout won because ${input.recommendation.companion_tool_route_class} should stay on a low-cost Foreman companion path.`
+                        : 'scout won because the request is read-heavy and is better served by cheap investigation than by mutation.';
                 break;
             case 'arbiter':
                 whySelected = 'arbiter won because the request is verification-shaped and fits the review path.';
@@ -4747,9 +4789,17 @@ function createAutoEntryAnswerTrace(input) {
     return {
         request_shape: input.recommendation.request_shape,
         mutation_intent: input.recommendation.mutation_intent,
+        companion_tool_route_class: input.recommendation.companion_tool_route_class,
+        companion_tool_names: [...input.recommendation.companion_tool_names],
+        companion_tool_operation: input.recommendation.companion_tool_operation,
+        tool_owner_role: input.recommendation.companion_tool_owner_role,
+        tool_owner_model: input.recommendation.companion_tool_model,
+        tool_owner_variant: input.recommendation.companion_tool_variant,
         workflow_variant_selection: input.recommendation.workflow_variant_selection,
         selected_role: selectedRole,
         execution_path: executionPath,
+        follow_proof: followProof,
+        completion_rule: completionRule,
         budget_class: budgetClass,
         review_requirement: reviewRequirement,
         why_selected: whySelected,
@@ -4758,12 +4808,21 @@ function createAutoEntryAnswerTrace(input) {
     };
 }
 function renderAutoEntryAnswerTrace(trace) {
+    const toolNames = Array.isArray(trace.companion_tool_names) ? trace.companion_tool_names : [];
     return [
         `request_shape=${trace.request_shape}`,
         `mutation_intent=${trace.mutation_intent}`,
+        `tool_route=${trace.companion_tool_route_class}`,
+        `tool_names=${toolNames.length > 0 ? toolNames.join(',') : 'none'}`,
+        `tool_operation=${trace.companion_tool_operation}`,
+        `tool_owner=${trace.tool_owner_role ?? 'none'}`,
+        `tool_model=${trace.tool_owner_model ?? 'none'}`,
+        `tool_variant=${trace.tool_owner_variant ?? 'none'}`,
         `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `selected_role=${trace.selected_role}`,
         `execution_path=${trace.execution_path}`,
+        `follow_proof=${trace.follow_proof}`,
+        `completion_rule=${trace.completion_rule}`,
         `budget_class=${trace.budget_class}`,
         `review_requirement=${trace.review_requirement}`,
         `why_selected=${trace.why_selected}`,
@@ -4840,7 +4899,7 @@ async function autoEnterForemanUnlocked(options) {
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
         cwd: options.cwd,
         request: routingRequest.request,
-    }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+    }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
     if (recommendation.automatic_entry_supported) {
         await (0, session_run_binding_1.cleanupStaleSessionBoundRuns)(options.cwd);
     }

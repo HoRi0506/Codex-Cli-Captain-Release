@@ -555,9 +555,17 @@
           "required": [
             "request_shape",
             "mutation_intent",
+            "companion_tool_route_class",
+            "companion_tool_names",
+            "companion_tool_operation",
+            "tool_owner_role",
+            "tool_owner_model",
+            "tool_owner_variant",
             "workflow_variant_selection",
             "selected_role",
             "execution_path",
+            "follow_proof",
+            "completion_rule",
             "budget_class",
             "review_requirement",
             "why_selected",
@@ -572,6 +580,33 @@
             "mutation_intent": {
               "type": "string",
               "enum": ["none", "explicit_or_strong"]
+            },
+            "companion_tool_route_class": {
+              "type": "string",
+              "enum": ["none", "workspace_inspection", "docs_lookup", "git_inspection", "git_mutation", "multi_source_evidence"]
+            },
+            "companion_tool_names": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["filesystem", "git", "context7", "fetch", "openaiDeveloperDocs"]
+              }
+            },
+            "companion_tool_operation": {
+              "type": "string",
+              "enum": ["none", "read", "mutation"]
+            },
+            "tool_owner_role": {
+              "type": ["string", "null"],
+              "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+            },
+            "tool_owner_model": {
+              "type": ["string", "null"],
+              "minLength": 1
+            },
+            "tool_owner_variant": {
+              "type": ["string", "null"],
+              "enum": ["low", "medium", "high", "xhigh", null]
             },
             "workflow_variant_selection": {
               "type": "object",
@@ -636,6 +671,14 @@
             "execution_path": {
               "type": "string",
               "enum": ["captain_local", "run_reused", "new_run"]
+            },
+            "follow_proof": {
+              "type": "string",
+              "enum": ["foreman_route_visible", "degraded_host_fallback", "captain_local_only"]
+            },
+            "completion_rule": {
+              "type": "string",
+              "enum": ["continue_foreman", "answer_now", "degraded_boundary"]
             },
             "budget_class": {
               "type": "string",

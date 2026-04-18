@@ -14,6 +14,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const public_surface_1 = require("./public-surface");
 const run_lifecycle_1 = require("./run-lifecycle");
 const runtime_1 = require("./runtime");
+const tool_routing_1 = require("./tool-routing");
 const DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS = 8_000;
 const RUN_HYGIENE_WARNING_THRESHOLD = 1;
 class CodexMcpSetupConflictError extends Error {
@@ -106,6 +107,24 @@ function createConfiguredRoleModelsSummary(config) {
     return {
         status,
         summary: `Configured role-model policy: ${summary}`,
+        entries,
+    };
+}
+function createConfiguredToolRoutesSummary(config) {
+    const entries = Object.keys(config.tool_routing.tools).map((tool) => {
+        const policy = config.tool_routing.tools[tool];
+        return {
+            tool,
+            ownerRole: policy.owner_role,
+            model: policy.model ?? config.tool_routing.default_model,
+            variant: policy.variant ?? config.tool_routing.default_variant,
+            fallbackMode: policy.fallback_mode ?? config.tool_routing.fallback_mode,
+        };
+    });
+    const status = entries.every((entry) => entry.model && entry.variant) ? 'coherent' : 'warning';
+    return {
+        status,
+        summary: (0, tool_routing_1.summarizeConfiguredToolRoutes)(config.tool_routing),
         entries,
     };
 }
@@ -531,9 +550,9 @@ function summarizeCompanionMcpServers(servers) {
     const recommendedServers = servers.filter((server) => server.compatibility === 'recommended_companion').map((server) => server.name);
     const allNames = servers.map((server) => server.name);
     if (recommendedServers.length === 0) {
-        return `Other installed MCP servers: ${allNames.join(', ')}. These remain subordinate tool surfaces alongside Foreman.`;
+        return `Other installed MCP servers: ${allNames.join(', ')}. These remain subordinate tool surfaces under Foreman specialist ownership when policy selects them.`;
     }
-    return `Other installed MCP servers: ${allNames.join(', ')}. Recommended Foreman companions: ${recommendedServers.join(', ')}. All companions remain subordinate tool surfaces and do not replace packaged Foreman specialist routes.`;
+    return `Other installed MCP servers: ${allNames.join(', ')}. Recommended Foreman companions: ${recommendedServers.join(', ')}. Companions remain subordinate tool surfaces under configured specialist ownership and do not replace packaged Foreman specialist routes.`;
 }
 function createRegistrationSummary(status, serverName) {
     switch (status) {
@@ -663,14 +682,21 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const configPath = (0, runtime_1.resolveForemanConfigFilePath)();
     const configExists = await pathExists(configPath);
     let modelPolicyAudit = null;
+    let toolRoutingAudit = null;
     try {
         const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
         modelPolicyAudit = createConfiguredRoleModelsSummary(foremanConfig);
+        toolRoutingAudit = createConfiguredToolRoutesSummary(foremanConfig);
     }
     catch (error) {
         modelPolicyAudit = {
             status: 'warning',
             summary: `Configured role-model policy could not be loaded: ${error instanceof Error ? error.message : 'Unknown error.'}`,
+            entries: [],
+        };
+        toolRoutingAudit = {
+            status: 'warning',
+            summary: `Configured companion tool routing could not be loaded: ${error instanceof Error ? error.message : 'Unknown error.'}`,
             entries: [],
         };
     }
@@ -819,6 +845,9 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         modelPolicyStatus: modelPolicyAudit.status,
         modelPolicySummary: modelPolicyAudit.summary,
         configuredRoleModels: modelPolicyAudit.entries,
+        toolRoutingPolicyStatus: toolRoutingAudit.status,
+        toolRoutingPolicySummary: toolRoutingAudit.summary,
+        configuredToolRoutes: toolRoutingAudit.entries,
         activeRunHygieneStatus: activeRunHygiene.status,
         activeRunHygieneSummary: activeRunHygiene.summary,
         activeRunRecommendedId: activeRunHygiene.recommendedRunId,

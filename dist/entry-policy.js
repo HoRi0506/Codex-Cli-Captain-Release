@@ -7,6 +7,7 @@ exports.recommendForemanEntry = recommendForemanEntry;
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const request_shape_1 = require("./request-shape");
+const tool_routing_1 = require("./tool-routing");
 const workflow_variants_1 = require("./workflow-variants");
 const PLAN_KEYWORDS = ['plan', 'planner', 'roadmap', 'milestone', 'strategy', 'migration', 'phases', 'step-by-step'];
 const START_KEYWORDS = [
@@ -75,12 +76,17 @@ function createOrchestratorScopeSummary() {
     return ('Orchestrator settings stay bounded to persisted synthesis/decision work plus one read-only advisory Codex pass and visibility surfaces. ' +
         'Today advise consumes them for one advisory Codex pass, while latest_orchestrator_synthesis and status/watch surfaces expose the bounded decision-and-response layer without turning the orchestrator into a generic execution worker or a general orchestration loop.');
 }
-function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig) {
+function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig, toolRoutingConfig) {
     const normalizedRequest = options.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(options.request);
     const planKeywordMatches = countKeywordMatches(normalizedRequest, PLAN_KEYWORDS);
     const startKeywordMatches = countKeywordMatches(normalizedRequest, START_KEYWORDS);
     const requestClassification = (0, request_shape_1.classifyForemanRequest)({ request: options.request });
+    const companionRouting = (0, tool_routing_1.deriveCompanionRoutingDecision)({
+        request: options.request,
+        mutationIntent: requestClassification.mutationIntent,
+        toolRouting: toolRoutingConfig ?? (0, tool_routing_1.createDefaultForemanToolRoutingConfig)(),
+    });
     const rationale = [];
     let recommendedEntrypoint = requestClassification.recommendedEntrypoint;
     let taskShape = requestClassification.taskShape;
@@ -103,6 +109,9 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     rationale.push(requestClassification.mutationIntent === 'explicit_or_strong'
         ? 'Mutation intent is explicit or strongly implied, so the bounded mutation path is allowed.'
         : 'Mutation intent is not explicit, so bounded read-only, explorer-first, or synthesis-first routing is preferred.');
+    if (companionRouting.routeClass !== 'none') {
+        rationale.push(`Companion routing classified this request as ${companionRouting.routeClass} using ${companionRouting.toolNames.join(', ')} under ${companionRouting.ownerRole ?? 'none'}.`);
+    }
     if (requestClassification.recommendedEntrypoint === 'plan') {
         confidence = planKeywordMatches >= 2 || filePathMentions.length >= 4 ? 'high' : 'medium';
         summary =
@@ -187,6 +196,13 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         task_shape: taskShape,
         request_shape: requestClassification.requestShape,
         mutation_intent: requestClassification.mutationIntent,
+        companion_tool_route_class: companionRouting.routeClass,
+        companion_tool_names: [...companionRouting.toolNames],
+        companion_tool_operation: companionRouting.operation,
+        companion_tool_owner_role: companionRouting.ownerRole,
+        companion_tool_model: companionRouting.model,
+        companion_tool_variant: companionRouting.variant,
+        companion_tool_fallback_mode: companionRouting.fallbackMode,
         workflow_variant_selection: workflowVariantSelection,
         recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
         confidence,

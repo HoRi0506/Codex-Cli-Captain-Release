@@ -111,6 +111,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const orchestrator_1 = require("./orchestrator");
 const workflow_variants_1 = require("./workflow-variants");
+const tool_routing_1 = require("./tool-routing");
 const validation_1 = require("./validation");
 function writeJsonDocument(filePath, value) {
     return (0, promises_1.writeFile)(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
@@ -790,6 +791,7 @@ function createDefaultForemanConfig() {
         version: 1,
         entry_policy: createDefaultForemanEntryPolicy(),
         output: createDefaultForemanOutputConfig(),
+        tool_routing: (0, tool_routing_1.createDefaultForemanToolRoutingConfig)(),
         agents: {
             orchestrator: createDefaultForemanAgentConfig('orchestrator'),
             planner: createDefaultForemanAgentConfig('planner'),
@@ -1011,6 +1013,7 @@ function normalizeForemanConfigCandidate(candidate) {
         ...candidate,
         entry_policy: isRecord(candidate.entry_policy) ? candidate.entry_policy : createDefaultForemanEntryPolicy(),
         output,
+        tool_routing: (0, tool_routing_1.normalizeForemanToolRoutingConfig)(candidate.tool_routing),
         agents: candidateAgents
             ? {
                 ...candidateAgents,
@@ -1578,8 +1581,9 @@ async function persistOrchestrationAttemptArtifact(paths, attempt) {
     await writeJsonDocument(createOrchestrationAttemptArtifactFilePath(paths, normalizedAttempt.attempt_id), normalizedAttempt);
 }
 async function persistRunRecord(paths, run) {
-    (0, validation_1.assertValidRunRecord)(run);
-    await writeJsonDocument(paths.runFile, run);
+    const normalizedRun = await normalizeLoadedRunRecord(paths, run);
+    (0, validation_1.assertValidRunRecord)(normalizedRun);
+    await writeJsonDocument(paths.runFile, normalizedRun);
 }
 function createInitialRunRecord(input) {
     const timestamp = input.createdAt ?? nowTimestamp();
@@ -2773,6 +2777,44 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                 mutation_intent: answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
                     ? answerTrace.mutation_intent
                     : 'none',
+                companion_tool_route_class: answerTrace.companion_tool_route_class === 'none' ||
+                    answerTrace.companion_tool_route_class === 'workspace_inspection' ||
+                    answerTrace.companion_tool_route_class === 'docs_lookup' ||
+                    answerTrace.companion_tool_route_class === 'git_inspection' ||
+                    answerTrace.companion_tool_route_class === 'git_mutation' ||
+                    answerTrace.companion_tool_route_class === 'multi_source_evidence'
+                    ? answerTrace.companion_tool_route_class
+                    : 'none',
+                companion_tool_names: Array.isArray(answerTrace.companion_tool_names)
+                    ? answerTrace.companion_tool_names.filter((entry) => entry === 'filesystem' ||
+                        entry === 'git' ||
+                        entry === 'context7' ||
+                        entry === 'fetch' ||
+                        entry === 'openaiDeveloperDocs')
+                    : [],
+                companion_tool_operation: answerTrace.companion_tool_operation === 'none' ||
+                    answerTrace.companion_tool_operation === 'read' ||
+                    answerTrace.companion_tool_operation === 'mutation'
+                    ? answerTrace.companion_tool_operation
+                    : 'none',
+                tool_owner_role: answerTrace.tool_owner_role === 'orchestrator' ||
+                    answerTrace.tool_owner_role === 'planner' ||
+                    answerTrace.tool_owner_role === 'explorer' ||
+                    answerTrace.tool_owner_role === 'code specialist' ||
+                    answerTrace.tool_owner_role === 'verifier' ||
+                    answerTrace.tool_owner_role === null
+                    ? answerTrace.tool_owner_role
+                    : null,
+                tool_owner_model: typeof answerTrace.tool_owner_model === 'string' || answerTrace.tool_owner_model === null
+                    ? answerTrace.tool_owner_model
+                    : null,
+                tool_owner_variant: answerTrace.tool_owner_variant === 'low' ||
+                    answerTrace.tool_owner_variant === 'medium' ||
+                    answerTrace.tool_owner_variant === 'high' ||
+                    answerTrace.tool_owner_variant === 'xhigh' ||
+                    answerTrace.tool_owner_variant === null
+                    ? answerTrace.tool_owner_variant
+                    : null,
                 workflow_variant_selection: workflowVariantSelection,
                 selected_role: answerTrace.selected_role === 'captain' ||
                     answerTrace.selected_role === 'tactician' ||
@@ -2786,6 +2828,16 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     answerTrace.execution_path === 'new_run'
                     ? answerTrace.execution_path
                     : 'captain_local',
+                follow_proof: answerTrace.follow_proof === 'foreman_route_visible' ||
+                    answerTrace.follow_proof === 'degraded_host_fallback' ||
+                    answerTrace.follow_proof === 'captain_local_only'
+                    ? answerTrace.follow_proof
+                    : 'captain_local_only',
+                completion_rule: answerTrace.completion_rule === 'continue_foreman' ||
+                    answerTrace.completion_rule === 'answer_now' ||
+                    answerTrace.completion_rule === 'degraded_boundary'
+                    ? answerTrace.completion_rule
+                    : 'answer_now',
                 budget_class: answerTrace.budget_class === 'low_cost_read_only' ||
                     answerTrace.budget_class === 'low_cost_investigation' ||
                     answerTrace.budget_class === 'planning_budget' ||

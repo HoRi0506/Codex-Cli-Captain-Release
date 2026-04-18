@@ -1185,7 +1185,11 @@ function formatWatchStatusLine(status, verbosity) {
         `response_provenance=${quoteWatchText(status.latest_response?.provenance_header ?? 'none')}`,
         `answer_role=${compactWatchText(status.latest_entry_trace?.answer_trace.selected_role)}`,
         `answer_path=${compactWatchText(status.latest_entry_trace?.answer_trace.execution_path)}`,
+        `answer_follow=${compactWatchText(status.latest_entry_trace?.answer_trace.follow_proof)}`,
+        `answer_complete=${compactWatchText(status.latest_entry_trace?.answer_trace.completion_rule)}`,
         `answer_shape=${compactWatchText(status.latest_entry_trace?.answer_trace.request_shape)}`,
+        `answer_tool_route=${compactWatchText(status.latest_entry_trace?.answer_trace.companion_tool_route_class)}`,
+        `answer_tool_owner=${compactWatchText(status.latest_entry_trace?.answer_trace.tool_owner_role)}`,
         `answer_workflow_path=${compactWatchText((0, workflow_variants_1.getWorkflowPublicLabel)(status.latest_entry_trace?.answer_trace.workflow_variant_selection))}`,
         `answer_budget=${compactWatchText(status.latest_entry_trace?.answer_trace.budget_class)}`,
         `always_on=${compactWatchText(status.always_on_mode?.status)}`,
@@ -1798,13 +1802,14 @@ async function runCli(argv) {
         }
         if (parsed.command === 'recommend-entry') {
             const foremanConfig = await (0, runtime_1.loadForemanConfig)(parsed.options.cwd);
-            const result = (0, entry_policy_1.recommendForemanEntry)(parsed.options, foremanConfig.entry_policy, foremanConfig.agents.orchestrator);
+            const result = (0, entry_policy_1.recommendForemanEntry)(parsed.options, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
             process.stdout.write(`Foreman entry recommendation: ${result.recommended_entrypoint} confidence=${result.confidence} task_shape=${result.task_shape} in ${result.cwd}\n`);
             process.stdout.write(`Entry policy: ${result.policy_mode} (${result.policy_summary})\n`);
             process.stdout.write(`Entry boundary: ${result.entry_boundary} (${result.entry_boundary_summary})\n`);
             process.stdout.write(`Upstream binary intercept supported: ${result.upstream_codex_binary_intercept_supported} (${result.upstream_codex_binary_intercept_summary})\n`);
             process.stdout.write(`Orchestrator scope: ${result.orchestrator_scope} (${result.orchestrator_scope_summary})\n`);
             process.stdout.write(`Orchestrator config: roster=${result.orchestrator_agent.roster_name} profile=${result.orchestrator_request_settings_preview.profile ?? 'none'} model=${result.orchestrator_request_settings_preview.model ?? 'none'} variant=${result.orchestrator_request_settings_preview.variant ?? 'none'}\n`);
+            process.stdout.write(`Companion route: class=${result.companion_tool_route_class} tools=${result.companion_tool_names.length > 0 ? result.companion_tool_names.join(',') : 'none'} owner=${result.companion_tool_owner_role ?? 'none'} model=${result.companion_tool_model ?? 'none'} variant=${result.companion_tool_variant ?? 'none'} fallback=${result.companion_tool_fallback_mode}\n`);
             process.stdout.write(`Summary: ${result.summary}\n`);
             process.stdout.write(`Suggested CLI command: ${result.suggested_cli_command}\n`);
             if (result.suggested_mcp_tool !== null) {
@@ -1940,13 +1945,14 @@ async function runCli(argv) {
         }
         if (parsed.command === 'check-install') {
             const result = await (0, setup_codex_mcp_1.checkCodexMcpInstall)(parsed.options);
-            process.stdout.write(`Foreman install check: status=${result.status} version=${result.packageVersion} entry=${result.publicEntryLabel} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} package_surface=${result.packagedHarnessSurfaceStatus} companion_mcps=${result.otherInstalledMcpServers.length} model_policy=${result.modelPolicyStatus} run_hygiene=${result.activeRunHygieneStatus}\n`);
+            process.stdout.write(`Foreman install check: status=${result.status} version=${result.packageVersion} entry=${result.publicEntryLabel} registration=${result.registrationStatus} config=${result.configExists ? 'present' : 'missing'} skill=${result.capSkillStatus} agents=${result.customAgentStatus} package_surface=${result.packagedHarnessSurfaceStatus} companion_mcps=${result.otherInstalledMcpServers.length} model_policy=${result.modelPolicyStatus} tool_policy=${result.toolRoutingPolicyStatus ?? 'unknown'} run_hygiene=${result.activeRunHygieneStatus}\n`);
             process.stdout.write(`Current package: ${result.packageName}@${result.packageVersion}\n`);
             process.stdout.write(`Public entry: ${result.publicEntryLabel} (skill=${result.publicEntrySkillName})\n`);
             process.stdout.write(`Expected launch target: ${[result.expectedLaunchCommand, ...result.expectedLaunchArgs].join(' ')}\n`);
             process.stdout.write(`Registration summary: ${result.registrationSummary}\n`);
             process.stdout.write(`Shared config: ${result.configExists ? 'present' : 'missing'} at ${result.configPath}\n`);
             process.stdout.write(`Model policy: ${result.modelPolicySummary}\n`);
+            process.stdout.write(`Companion tool policy: ${result.toolRoutingPolicySummary ?? 'Unavailable.'}\n`);
             process.stdout.write(`Run hygiene: ${result.activeRunHygieneSummary}\n`);
             process.stdout.write(`Codex skill $${result.capSkillName}: ${result.capSkillSummary}\n`);
             process.stdout.write(`Codex custom agents: ${result.customAgentSummary}\n`);

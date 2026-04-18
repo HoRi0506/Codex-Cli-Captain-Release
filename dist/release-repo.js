@@ -18,10 +18,11 @@ const RELEASE_REPO_URL = public_surface_1.FOREMAN_RELEASE_REPO_URL;
 const RELEASES_URL = `${RELEASE_REPO_URL}/releases`;
 function createHealthyCheckInstallExample(packageVersion) {
     return [
-        `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent run_hygiene=clean`,
+        `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent tool_policy=coherent run_hygiene=clean`,
         `Current package: codex-foreman@${packageVersion}`,
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium',
+        'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem=scout/gpt-5.4-mini/medium git=scout/gpt-5.4-mini/medium context7=scout/gpt-5.4-mini/medium fetch=scout/gpt-5.4-mini/medium openaiDeveloperDocs=scout/gpt-5.4-mini/medium',
         'Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.',
     ].join('\n');
 }
@@ -223,7 +224,7 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Token discipline matters here. Captain should spend tokens on state lookup, routing, waiting, and synthesis rather than broad repository survey or specialist-grade mutation work that can be delegated under role-specific settings.
 
-Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, a bounded read-only request can stay on a no-run path instead of creating another fresh run that only falls back to the host session.
+Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, companion-shaped read-only work can stay on a visible low-cost scout path instead of collapsing into opaque host-local fallback.
 
 Within one Codex CLI session, Foreman now keeps one current workstream by default. A persisted run may still back that workstream internally, but the main continuity anchor is the current session plus its active route/workstream state. The same session keeps reusing that workstream until the operator explicitly asks for a new run or closes it, and the bound run/workstream state is released when that session ends. Operator-facing surfaces can still show a readable run label when needed, but they now also expose compact route and workstream truth.
 
@@ -244,7 +245,7 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
 - \`codex-foreman status --run-id <id>\` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
-- bounded read-only auto-entry can prefer safe reuse or suppress a needless new run instead of accumulating throwaway active runs
+- bounded companion-shaped read-only auto-entry can prefer safe reuse or a visible low-cost scout route instead of accumulating throwaway active runs or opaque host-local fallback
 - one Codex CLI session can keep one current workstream until the operator explicitly closes it or asks for a new run
 - follow-up \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` input can queue onto the current session workstream instead of overwriting the in-flight request
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
@@ -301,7 +302,7 @@ Reach for Codex-Foreman when:
 - \`git\` for provenance, diffs, branch state, and regression-oriented history checks
 - \`fetch\` for authoritative remote artifacts or docs during release and install work
 
-These remain companion surfaces, not hidden Foreman workers.
+These remain companion tools under configured specialist ownership, not public worker routes.
 
 ## Packaged Harness Surface
 

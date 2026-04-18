@@ -160,6 +160,15 @@ function classifyForemanRequest(input) {
     const normalizedRequest = input.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(input.request);
     const mutationIntent = detectMutationIntent(input.request);
+    if (mutationIntent === 'explicit_or_strong') {
+        return {
+            requestShape: 'mutation',
+            mutationIntent,
+            recommendedTaskKind: 'execution',
+            recommendedEntrypoint: 'start',
+            taskShape: 'single_scoped_task',
+        };
+    }
     if (looksLikePlanningRequest(normalizedRequest, filePathMentions)) {
         return {
             requestShape: 'planning',
@@ -174,15 +183,6 @@ function classifyForemanRequest(input) {
             requestShape: 'verification',
             mutationIntent,
             recommendedTaskKind: 'review',
-            recommendedEntrypoint: 'start',
-            taskShape: 'single_scoped_task',
-        };
-    }
-    if (mutationIntent === 'explicit_or_strong') {
-        return {
-            requestShape: 'mutation',
-            mutationIntent,
-            recommendedTaskKind: 'execution',
             recommendedEntrypoint: 'start',
             taskShape: 'single_scoped_task',
         };

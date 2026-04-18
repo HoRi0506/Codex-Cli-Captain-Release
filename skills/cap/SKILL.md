@@ -35,13 +35,15 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - do not spend host-local high-tier tokens on mutation or verification work that has a matching Foreman specialist path
 - do not let host Codex turn read-only specialist findings directly into host-local mutation or review work; if the next move is implementation or verification, route back through Foreman to the matching specialist
 - do not treat the first specialist response as completion unless the acceptance target has actually been satisfied; if the result is partial, ambiguous, or only advances the workflow, continue through Foreman instead of replying as though the request is done
+- do not treat companion MCP calls as free host-local work; if filesystem, git, docs, fetch, or OpenAI reference work is needed, prefer the configured Foreman-owned companion route first
+- if a configured companion route cannot be honored, surface the degraded host fallback honestly instead of silently doing the tool work in host Codex
 - prefer the compact workflow truth already exposed by `foreman_status` such as workflow skill, workflow progress, requester-session continuity, and worker-session alignment before paying for deeper activity inspection
 - if `foreman_orchestrate` returns `timeout_acknowledged`, inspect status first and retry only when the next bounded move is still pending
 - when specialist routing is chosen, pass the narrowest task scope that still preserves title, scope, acceptance, and the result contract
 - once a route root is selected, prefer Foreman-owned progression through that route's linked specialist chain before bringing control back to captain
 - if the request decomposes into independent bounded subtasks, prefer bounded parallel specialist fan-out within the configured worker cap, then wait and synthesize once all required subtasks finish
 - do not treat unrelated MCP servers, OpenAI documentation surfaces, SDK helpers, or generic Codex-native helper agents as substitutes for a selected Foreman specialist role when the packaged Foreman specialist roster is available
-- companion MCPs such as docs, fetch, filesystem, git, or OpenAI reference surfaces are subordinate tools that an assigned Foreman specialist may use; they are not the worker route themselves
+- companion MCPs such as docs, fetch, filesystem, git, or OpenAI reference surfaces are subordinate tools that an assigned Foreman specialist may use under configured ownership; they are not the worker route themselves and should not bypass Foreman when a configured companion route exists
 
 ## Required workflow
 
@@ -79,6 +81,8 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 17. The default after an intermediate specialist result is to continue orchestrating through Foreman, not to answer. Reply only when the request is actually complete, explicitly blocked, or waiting on an operator decision that cannot be inferred safely.
 18. If a mutation-capable or review-capable specialist is selected but Foreman still shows `planned_assignment_only` / `host_session_fallback` with no worker launch proof, surface that degraded truth instead of silently continuing as host-local specialist work.
 19. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
+20. Once the accepted request is complete, answer and stop. Do not add unrequested git, filesystem, docs, or cleanup work after a sufficient Foreman result.
+21. Make `$cap` follow proof visible whenever the runtime exposes it: prefer compact truth such as follow state, completion rule, tool route, tool owner, and degraded-vs-Foreman completion instead of opaque local-only narration.
 
 ## Captain-directed loop
 
