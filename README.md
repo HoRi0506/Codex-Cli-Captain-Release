@@ -133,7 +133,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.32/codex-foreman-1.5.32.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.33/codex-foreman-1.5.33.tgz
 codex-foreman setup
 codex-foreman check-install
 

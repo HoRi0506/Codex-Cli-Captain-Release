@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.selectForemanRunPublicTitle = selectForemanRunPublicTitle;
 exports.createForemanRunLabel = createForemanRunLabel;
 exports.loadSessionRunBinding = loadSessionRunBinding;
 exports.bindRunToSession = bindRunToSession;
@@ -77,10 +78,34 @@ function normalizeRunLabelTitle(title) {
     }
     return `${normalized.slice(0, 69).trimEnd()}...`;
 }
+function shouldPreferLatestEntryRequestForRunLabel(request) {
+    const normalized = (request ?? '').replace(/\s+/g, ' ').trim();
+    if (normalized.length === 0) {
+        return false;
+    }
+    if (/\b(close|clear|end|stop)\s+(the\s+)?(current\s+)?run\b/i.test(normalized) ||
+        /\bclear\s+run\s+session\b/i.test(normalized) ||
+        /\b(start|create|open)\s+(a\s+)?new\s+run\b/i.test(normalized) ||
+        /\bnew\s+run\b/i.test(normalized)) {
+        return false;
+    }
+    const wordCount = normalized.split(/\s+/).length;
+    const hasSpecificSignal = /\b\d+\.\d+\.\d+\b/.test(normalized) || /\b[\w./-]+\.[A-Za-z0-9]+\b/.test(normalized);
+    if (hasSpecificSignal) {
+        return true;
+    }
+    return normalized.length >= 32 && wordCount >= 6;
+}
+function selectForemanRunPublicTitle(input) {
+    if (shouldPreferLatestEntryRequestForRunLabel(input.latestEntryRequest)) {
+        return normalizeRunLabelTitle(input.latestEntryRequest);
+    }
+    return normalizeRunLabelTitle(input.title ?? input.goal ?? null);
+}
 function createForemanRunLabel(input) {
     const labelTimestamp = selectRunLabelTimestamp(input.createdAt, input.updatedAt ?? null);
     const timestamp = formatRunLabelTimestamp(labelTimestamp);
-    const title = normalizeRunLabelTitle(input.title ?? input.goal ?? null);
+    const title = selectForemanRunPublicTitle(input);
     return `${timestamp} - ${title}`;
 }
 function selectRunLabelTimestamp(createdAt, updatedAt) {

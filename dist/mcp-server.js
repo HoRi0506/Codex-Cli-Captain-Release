@@ -1633,6 +1633,31 @@ function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     }
     return taskCard.owner_role === 'orchestrator' && taskCard.model_tier_intent === 'low_cost';
 }
+const INTERNAL_ROUTE_TASK_TITLE_PREFIXES = [
+    'Prepare the next scoped move for ',
+    'Inspect the minimum source context for ',
+    'Deliver the requested scoped result for ',
+    'Verify the requested scoped result for ',
+];
+function normalizeOperatorTaskTitle(title) {
+    const normalized = title.replace(/\s+/g, ' ').trim();
+    if (normalized.length <= 120) {
+        return normalized;
+    }
+    return `${normalized.slice(0, 117).trimEnd()}...`;
+}
+function createOperatorFacingTaskTitle(run, taskCard) {
+    const taskTitle = taskCard.title.trim();
+    const isRouteInternalTitle = INTERNAL_ROUTE_TASK_TITLE_PREFIXES.some((prefix) => taskTitle.startsWith(prefix));
+    if (!isRouteInternalTitle) {
+        return taskTitle;
+    }
+    const publicTitleSource = run.latest_entry_trace?.request?.trim() || run.goal.trim();
+    if (publicTitleSource.length === 0) {
+        return taskTitle;
+    }
+    return normalizeOperatorTaskTitle(publicTitleSource);
+}
 function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
     const taskLinkedDelegations = taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id);
     const activeDelegation = taskLinkedDelegations.find((delegation) => (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
@@ -1710,9 +1735,10 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         assignedRolePlaybook,
         executionProof,
     });
+    const operatorFacingTitle = createOperatorFacingTaskTitle(run, taskCard);
     return {
         task_card_id: taskCard.task_card_id,
-        title: taskCard.title,
+        title: operatorFacingTitle,
         status: taskCard.status,
         owner_role: taskCard.owner_role,
         assigned_role: taskCard.assigned_role,
@@ -2417,6 +2443,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         updatedAt: run.updated_at,
         title: taskCard.title,
         goal: run.goal,
+        latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
     const specialistRoleRoster = createSpecialistRoleRosterView(foremanConfig);
     const operatorSummary = createOperatorSummary(currentTaskCard, {
@@ -2554,6 +2581,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         createdAt: run.created_at,
         updatedAt: run.updated_at,
         goal: run.goal,
+        latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
         runStatus: run.status,
@@ -2673,6 +2701,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         createdAt: run.created_at,
         updatedAt: run.updated_at,
         goal: run.goal,
+        latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
     const loopState = (0, canonical_loop_1.deriveForemanLoopState)({
         runStatus: run.status,

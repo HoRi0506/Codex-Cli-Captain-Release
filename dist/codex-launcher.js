@@ -74,6 +74,16 @@ function parseCodexLauncherArgs(argv) {
     return parsed;
 }
 function buildLauncherPrompt(result, request) {
+    if (result.run_selection === 'no_run_created' || result.run_id === null) {
+        return [
+            'Foreman auto-entry kept this request on the bounded captain-owned no-run path.',
+            'Answer inside the stated request, keep the work lightweight, and do not widen into a broader repository task unless a later explicit Foreman decision requires it.',
+            `Workflow path: ${(0, workflow_variants_1.getWorkflowPublicLabel)(result.answer_trace.workflow_variant_selection)}.`,
+            `Run decision: ${result.run_decision_reason}`,
+            `Auto-entry summary: ${result.summary}`,
+            `Original operator request: ${request}`,
+        ].join('\n');
+    }
     const runId = result.run_id ?? 'unknown-run';
     const runLabel = result.run_label ?? runId;
     const firstLine = result.run_selection === 'existing_run_reused'
@@ -130,9 +140,7 @@ async function runCodexLauncher(argv) {
             });
             process.stderr.write(`Foreman launcher policy=${autoEntryResult.policy_mode} created=${autoEntryResult.created} entrypoint=${autoEntryResult.entrypoint_used ?? 'none'}\n`);
             process.stderr.write(`Foreman launcher boundary=${autoEntryResult.entry_boundary}\n`);
-            if (autoEntryResult.run_id) {
-                launchPrompt = buildLauncherPrompt(autoEntryResult, parsed.request);
-            }
+            launchPrompt = buildLauncherPrompt(autoEntryResult, parsed.request);
         }
     }
     const launchArgs = [...parsed.passthroughArgs];

@@ -1752,6 +1752,7 @@ async function loadContinueRunSnapshot(options) {
         updatedAt: run.updated_at,
         goal: run.goal,
         taskTitle: taskCard.title,
+        latestEntryRequest: run.latest_entry_trace?.request ?? null,
         taskKind: taskCard.task_kind,
         assignedRole: taskCard.assigned_role,
         status: run.status,
@@ -1773,6 +1774,7 @@ function buildContinueRunSnapshotFromLoopResult(result) {
         updatedAt: (0, runtime_1.nowTimestamp)(),
         goal: '',
         taskTitle: result.finalSnapshot.task_card_id,
+        latestEntryRequest: null,
         taskKind: result.finalSnapshot.next_step === 'verify_task' ? 'review' : 'execution',
         assignedRole: result.finalSnapshot.next_step === 'verify_task' ? 'verifier' : 'code specialist',
         status: result.finalSnapshot.status,
@@ -4727,16 +4729,18 @@ function createAutoEntryRunLabelFromSnapshot(snapshot) {
     return (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: snapshot.createdAt,
         updatedAt: snapshot.updatedAt,
-        title: snapshot.taskTitle,
+        title: trimAutoEntryTitle(snapshot.goal),
         goal: snapshot.goal,
+        latestEntryRequest: snapshot.latestEntryRequest,
     });
 }
-function createAutoEntryRunLabelFromRun(run, taskTitle) {
+function createAutoEntryRunLabelFromRun(run) {
     return (0, session_run_binding_1.createForemanRunLabel)({
         createdAt: run.created_at,
         updatedAt: run.updated_at,
-        title: taskTitle,
+        title: trimAutoEntryTitle(run.goal),
         goal: run.goal,
+        latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
 }
 async function persistLatestAutoEntryTrace(input) {
@@ -4903,10 +4907,29 @@ async function autoEnterForemanUnlocked(options) {
             runSelection: 'existing_run_reused',
             selectedRun: reusableRun,
         });
-        const reusableRunLabel = createAutoEntryRunLabelFromSnapshot(reusableRun.snapshot);
         const runDecisionReason = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
             ? 'current session already owns a persisted run, so Foreman kept reusing it until the operator asks for a new run or closes it'
             : reusableRun.lifecycle.decision_reason;
+        const preliminarySummary = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
+            ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} without generic workspace run inspection because the current Codex CLI session already owns that run.`
+            : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
+                `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} because it was the only fresh active candidate in the workspace.`;
+        await persistLatestAutoEntryTrace({
+            cwd: options.cwd,
+            runId: reusableRun.snapshot.runId,
+            request: options.request,
+            runSelection: 'existing_run_reused',
+            requesterSessionId: continuity.requesterSessionId,
+            continuityStrategy: continuity.continuityStrategy,
+            continuitySummary: continuity.continuitySummary,
+            entryBoundary: recommendation.entry_boundary,
+            upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
+            runDecisionReason,
+            summary: preliminarySummary,
+            answerTrace,
+        });
+        const persistedReusableRun = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, reusableRun.snapshot.runId));
+        const reusableRunLabel = createAutoEntryRunLabelFromRun(persistedReusableRun);
         const summary = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
             ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) without generic workspace run inspection because the current Codex CLI session already owns that run.`
             : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
@@ -5062,7 +5085,7 @@ async function autoEnterForemanUnlocked(options) {
             answerTrace,
         });
         const createdRunRecord = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, result.runId));
-        const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord, options.request);
+        const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord);
         if (options.session) {
             await (0, session_run_binding_1.bindRunToSession)({
                 cwd: options.cwd,
@@ -5147,7 +5170,7 @@ async function autoEnterForemanUnlocked(options) {
         cwd: options.cwd,
         runId: startResult.runId,
     });
-    const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord, createdSnapshot.taskTitle);
+    const runLabel = createAutoEntryRunLabelFromRun(createdRunRecord);
     if (options.session) {
         await (0, session_run_binding_1.bindRunToSession)({
             cwd: options.cwd,

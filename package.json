@@ -1,6 +1,6 @@
 {
   "name": "codex-foreman",
-  "version": "1.5.32",
+  "version": "1.5.33",
   "private": false,
   "description": "Captain-led Foreman harness for Codex CLI",
   "main": "dist/index.js",

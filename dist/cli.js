@@ -1903,8 +1903,9 @@ async function runCli(argv) {
             process.stdout.write(`${result.configCreated ? 'Created' : 'Using'} shared config ${result.configPath}.\n`);
             process.stdout.write(`${skillAction} Codex skill $${result.capSkillName} at ${result.capSkillPath}.\n`);
             process.stdout.write(`${result.customAgentStatus === 'installed' ? 'Installed' : result.customAgentStatus === 'updated' ? 'Updated' : 'Using existing'} Codex custom agents (${result.customAgentFileCount}) at ${result.customAgentDirectoryPath}.\n`);
+            process.stdout.write(`Setup surface summary: skill=${result.capSkillStatus} agents=${result.customAgentStatus} restart_required=${result.restartRequired ? 'yes' : 'no'}.\n`);
             if (result.restartRequired) {
-                process.stdout.write('Restart Codex CLI to pick up the new Foreman skill or refreshed MCP session.\n');
+                process.stdout.write('Restart Codex CLI to pick up the new Foreman skill, refreshed custom agents, or refreshed MCP session.\n');
             }
             return 0;
         }
@@ -1922,6 +1923,11 @@ async function runCli(argv) {
             process.stdout.write(`Codex custom agents: ${result.customAgentSummary}\n`);
             process.stdout.write(`Packaged harness surface: ${result.packagedHarnessSurfaceSummary}\n`);
             process.stdout.write(`Registry summary: ${result.registryInspectionSummary}\n`);
+            if (result.registrationStatus !== 'matching_registration' ||
+                result.capSkillStatus !== 'matching_install' ||
+                result.customAgentStatus !== 'matching_install') {
+                process.stdout.write('Repair action: run codex-foreman setup, then restart Codex CLI.\n');
+            }
             for (const server of result.otherInstalledMcpServers) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} approval=${server.approvalExpectation} scope=${server.recommendationScope} hint=${server.usageHint}\n`);
             }

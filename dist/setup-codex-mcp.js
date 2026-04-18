@@ -520,7 +520,7 @@ function classifyCompanionMcpServer(name) {
                 compatibility: 'generic_companion',
                 approvalExpectation: 'operator_confirmation_recommended',
                 recommendationScope: 'general_support',
-                usageHint: 'Registered alongside Foreman as a separate MCP surface that can be used for bounded supporting work.',
+                usageHint: 'Registered alongside Foreman as a subordinate tool surface for bounded supporting work and not as a replacement specialist route.',
             };
     }
 }
@@ -531,9 +531,9 @@ function summarizeCompanionMcpServers(servers) {
     const recommendedServers = servers.filter((server) => server.compatibility === 'recommended_companion').map((server) => server.name);
     const allNames = servers.map((server) => server.name);
     if (recommendedServers.length === 0) {
-        return `Other installed MCP servers: ${allNames.join(', ')}.`;
+        return `Other installed MCP servers: ${allNames.join(', ')}. These remain subordinate tool surfaces alongside Foreman.`;
     }
-    return `Other installed MCP servers: ${allNames.join(', ')}. Recommended Foreman companions: ${recommendedServers.join(', ')}.`;
+    return `Other installed MCP servers: ${allNames.join(', ')}. Recommended Foreman companions: ${recommendedServers.join(', ')}. All companions remain subordinate tool surfaces and do not replace packaged Foreman specialist routes.`;
 }
 function createRegistrationSummary(status, serverName) {
     switch (status) {
