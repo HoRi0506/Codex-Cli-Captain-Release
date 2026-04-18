@@ -26,7 +26,7 @@ function usage() {
         '  codex-foreman recommend-entry --request <text> [--cwd <path>]',
         '    Recommend whether a new request should enter Foreman through start or plan. This is read-only operator guidance and does not create a run.',
         '  codex-foreman advise --run-id <id> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
-        '    Run one read-only advisory Codex pass against the current active task, require one strict JSON object containing summary and recommended_next_action, and leave persisted Foreman state unchanged.',
+        '    Keep captain bounded to synthesis, route selection, state supervision, and one strict JSON advisory response without turning host Codex into a general worker lane.',
         '  codex-foreman advance --run-id <id> [--codex-bin <path>] [--cwd <path>]',
         '    Resume a persisted run and perform the next orchestrator-approved step. This is the main explicit execution entrypoint.',
         '  codex-foreman continue --run-id <id> [--codex-bin <path>] [--max-steps <n>] [--cwd <path>]',
@@ -1802,7 +1802,10 @@ async function runCli(argv) {
         }
         if (parsed.command === 'recommend-entry') {
             const foremanConfig = await (0, runtime_1.loadForemanConfig)(parsed.options.cwd);
-            const result = (0, entry_policy_1.recommendForemanEntry)(parsed.options, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
+            const result = (0, entry_policy_1.recommendForemanEntry)({
+                ...parsed.options,
+                foremanConfig,
+            }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
             process.stdout.write(`Foreman entry recommendation: ${result.recommended_entrypoint} confidence=${result.confidence} task_shape=${result.task_shape} in ${result.cwd}\n`);
             process.stdout.write(`Entry policy: ${result.policy_mode} (${result.policy_summary})\n`);
             process.stdout.write(`Entry boundary: ${result.entry_boundary} (${result.entry_boundary_summary})\n`);

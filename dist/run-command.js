@@ -116,6 +116,14 @@ const AUTO_ENTRY_TOKEN_STOPWORDS = new Set([
 ]);
 const WORKSPACE_MUTATION_FINGERPRINT_MAX_ENTRIES = 4000;
 const WORKSPACE_MUTATION_FINGERPRINT_EXCLUDE_DIRS = new Set(['.foreman', '.git', 'node_modules', '.sisyphus']);
+const INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS = [
+    'git',
+    'fetch',
+    'context7',
+    'filesystem',
+    'openaiDeveloperDocs',
+    'codex-foreman',
+];
 const WORKSPACE_MUTATION_EVIDENCE_EXCLUDE_FILES = new Set(['codex-args.json']);
 const autoEntrySessionGateTails = new Map();
 function isRecord(value) {
@@ -141,7 +149,10 @@ async function withAutoEntrySessionGate(gateKey, work) {
     }
 }
 function buildCodexArgs(executionRequest) {
-    const args = ['exec', '--json'];
+    const args = ['exec', '--json', '--skip-git-repo-check'];
+    for (const serverId of INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS) {
+        args.push('-c', `mcp_servers.${serverId}.enabled=false`);
+    }
     if (executionRequest.profile) {
         args.push('--profile', executionRequest.profile);
     }
@@ -152,7 +163,10 @@ function buildCodexArgs(executionRequest) {
     return args;
 }
 function buildPlainCodexArgs(request) {
-    const args = ['exec'];
+    const args = ['exec', '--skip-git-repo-check'];
+    for (const serverId of INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS) {
+        args.push('-c', `mcp_servers.${serverId}.enabled=false`);
+    }
     if (request.profile) {
         args.push('--profile', request.profile);
     }
@@ -289,9 +303,12 @@ function createExploreArtifactFromDelegationResults(run, taskCard, delegations) 
             ? `Partition ${delegation.worker_request.slice_label} persisted bounded raw Codex evidence for the explore/plan task.`
             : 'This bounded evidence record points to the persisted raw Codex event stream for one delegated explore/plan worker.',
     }));
-    const outputSummary = delegations
-        .map((delegation) => delegation.worker_result?.summary ?? delegation.result_summary ?? delegation.summary)
-        .join(' ');
+    const workerSummaries = collectRelevantWorkerSummaries(delegations);
+    const outputSummary = workerSummaries.length > 0
+        ? workerSummaries.join(' ')
+        : delegations
+            .map((delegation) => delegation.worker_result?.summary ?? delegation.result_summary ?? delegation.summary)
+            .join(' ');
     return {
         version: 1,
         run_id: run.run_id,
@@ -510,8 +527,161 @@ const DEFAULT_AUTO_REPLAN_PROMPT = 'Replan narrowly for the current verification
 const BOUNDED_EXPLORE_MAX_FILES = 12;
 const BOUNDED_EXPLORE_MAX_BYTES = 65536;
 const BOUNDED_EXPLORE_OPERATIONS = ['search', 'read', 'grep'];
+const DEFAULT_CODEX_TURN_COMPLETED_SUMMARY = 'Codex reported turn.completed. Verification is pending.';
+const EXECUTION_SUMMARY_MAX_LENGTH = 320;
 function normalizeInlinePromptText(value) {
     return value.replace(/\s+/g, ' ').trim();
+}
+function truncateExecutionSummary(value, maxLength = EXECUTION_SUMMARY_MAX_LENGTH) {
+    const normalized = normalizeInlinePromptText(value);
+    if (normalized.length <= maxLength) {
+        return normalized;
+    }
+    return `${normalized.slice(0, maxLength - 3).trimEnd()}...`;
+}
+function extractCompletedAgentMessageText(parsed) {
+    if (parsed.type !== 'item.completed' || !isRecord(parsed.item)) {
+        return null;
+    }
+    const item = parsed.item;
+    if (item.type !== 'agent_message' || typeof item.text !== 'string') {
+        return null;
+    }
+    const normalized = truncateExecutionSummary(item.text);
+    return normalized.length > 0 ? normalized : null;
+}
+function isGenericWorkerCompletionSummary(summary) {
+    if (!summary) {
+        return false;
+    }
+    const normalized = normalizeInlinePromptText(summary);
+    return (normalized === DEFAULT_CODEX_TURN_COMPLETED_SUMMARY ||
+        normalized === 'Codex execution completed.' ||
+        normalized === 'Codex reported turn.failed.' ||
+        normalized === 'Codex emitted an error event.');
+}
+function extractSingleRequestedFilePath(request) {
+    if (typeof request !== 'string') {
+        return null;
+    }
+    const matches = request.match(/\b[\w./-]+\.[A-Za-z0-9]+\b/g);
+    if (!matches) {
+        return null;
+    }
+    const uniqueMatches = Array.from(new Set(matches.map((candidate) => candidate.trim()).filter((candidate) => candidate.length > 0)));
+    return uniqueMatches.length === 1 ? uniqueMatches[0] ?? null : null;
+}
+function buildFocusedExistenceCheckSummary(run, workerSummaries) {
+    const answerTrace = run.latest_entry_trace?.answer_trace;
+    if (answerTrace?.request_shape !== 'existence_check') {
+        return null;
+    }
+    const requestedPath = extractSingleRequestedFilePath(run.latest_entry_trace?.request ?? null);
+    if (!requestedPath) {
+        return null;
+    }
+    const normalizedPath = requestedPath.toLowerCase();
+    const normalizedSummaries = workerSummaries.map((summary) => normalizeInlinePromptText(summary).toLowerCase());
+    const fileMentioned = normalizedSummaries.some((summary) => summary.includes(normalizedPath) || summary.includes(node_path_1.default.basename(normalizedPath)));
+    const confirmsExistence = normalizedSummaries.some((summary) => summary.includes(' exists') ||
+        summary.includes(' found ') ||
+        summary.includes('present') ||
+        summary.includes('includes') ||
+        summary.includes('showed'));
+    if (!fileMentioned || !confirmsExistence) {
+        return null;
+    }
+    const noChanges = normalizedSummaries.some((summary) => summary.includes('no file changes were made') ||
+        summary.includes('no files were changed') ||
+        summary.includes('without mutating files'));
+    const repositoryRootConfirmed = !requestedPath.includes('/') &&
+        normalizedSummaries.some((summary) => summary.includes('repo root') ||
+            summary.includes('repository root') ||
+            summary.includes('top-level directory') ||
+            summary.includes('top level directory'));
+    const subject = repositoryRootConfirmed ? `\`${requestedPath}\` exists at the repository root.` : `\`${requestedPath}\` exists.`;
+    return noChanges ? `${subject} No file changes were made.` : subject;
+}
+function buildTaskCompletionModelEvidenceSuffix(taskCard, relevantDelegations) {
+    const launchEvidence = selectPromptModelLaunchEvidence(taskCard, relevantDelegations);
+    const model = launchEvidence?.observed_model ??
+        launchEvidence?.actual_model ??
+        launchEvidence?.dispatched_model ??
+        launchEvidence?.configured_model ??
+        null;
+    const variant = launchEvidence?.observed_variant ??
+        launchEvidence?.actual_variant ??
+        launchEvidence?.dispatched_variant ??
+        launchEvidence?.configured_variant ??
+        null;
+    if (!model) {
+        return null;
+    }
+    const rosterName = taskCard.assigned_agent_id ?? (0, runtime_1.getAgentIdForRole)(taskCard.assigned_role) ?? 'specialist';
+    return variant ? `Delegated execution used ${rosterName} on ${model}/${variant}.` : `Delegated execution used ${rosterName} on ${model}.`;
+}
+function collectRelevantWorkerSummaries(delegations) {
+    const summaries = [];
+    const seen = new Set();
+    for (const delegation of delegations) {
+        const candidates = [
+            ...(delegation.worker_result?.key_findings ?? []),
+            delegation.worker_result?.summary ?? null,
+            delegation.result_summary,
+            delegation.summary,
+        ];
+        const normalizedCandidates = candidates
+            .filter((candidate) => typeof candidate === 'string')
+            .map((candidate) => truncateExecutionSummary(candidate))
+            .filter((candidate) => candidate.length > 0);
+        const preferredSummary = normalizedCandidates.find((candidate) => !isGenericWorkerCompletionSummary(candidate)) ??
+            normalizedCandidates[0] ??
+            null;
+        if (!preferredSummary) {
+            continue;
+        }
+        const dedupeKey = normalizeInlinePromptText(preferredSummary).toLowerCase();
+        if (seen.has(dedupeKey)) {
+            continue;
+        }
+        seen.add(dedupeKey);
+        summaries.push(preferredSummary);
+    }
+    return summaries;
+}
+function buildExecutionCompletionWorkerSummary(run, taskCard, relevantDelegations) {
+    const workerSummaries = collectRelevantWorkerSummaries(relevantDelegations);
+    if (workerSummaries.length === 0) {
+        return {
+            summary: null,
+            userMessage: null,
+            prefersSummary: false,
+        };
+    }
+    const modelEvidenceSuffix = buildTaskCompletionModelEvidenceSuffix(taskCard, relevantDelegations);
+    const focusedExistenceSummary = buildFocusedExistenceCheckSummary(run, workerSummaries);
+    if (workerSummaries.length === 1) {
+        const workerSummary = focusedExistenceSummary ?? workerSummaries[0];
+        return {
+            summary: workerSummary,
+            userMessage: modelEvidenceSuffix ? `${workerSummary} ${modelEvidenceSuffix}` : workerSummary,
+            prefersSummary: focusedExistenceSummary !== null,
+        };
+    }
+    if (focusedExistenceSummary) {
+        return {
+            summary: focusedExistenceSummary,
+            userMessage: modelEvidenceSuffix ? `${focusedExistenceSummary} ${modelEvidenceSuffix}` : focusedExistenceSummary,
+            prefersSummary: true,
+        };
+    }
+    const combinedSummary = truncateExecutionSummary(workerSummaries.join(' '));
+    const prefix = `Completed "${taskCard.title}" after aggregating ${workerSummaries.length} delegated worker results.`;
+    return {
+        summary: combinedSummary,
+        userMessage: modelEvidenceSuffix ? `${prefix} ${combinedSummary} ${modelEvidenceSuffix}` : `${prefix} ${combinedSummary}`,
+        prefersSummary: false,
+    };
 }
 function shouldCollapsePlannerGoal(goal, prompt) {
     return normalizeInlinePromptText(goal) === normalizeInlinePromptText(prompt);
@@ -687,7 +857,23 @@ function createQueuedWorkflowReviewTask(input) {
         dependsOnTaskCardIds: [input.dependsOnTaskCardId],
         nodeKind: 'execution',
         roleConfigSnapshot: input.roleConfigSnapshot,
+        workflowSkillId: input.workflowSkillId,
+        workflowStepIndex: input.workflowStepIndex,
+        workflowStepSkillId: input.workflowStepSkillId,
+        workflowNextStepSkillId: input.workflowNextStepSkillId,
     });
+}
+function createWorkflowRouteTaskMetadata(contract, step) {
+    const specialistSteps = contract.workflow_agent_route.filter((candidateStep) => candidateStep !== 'captain');
+    const stepIndex = specialistSteps.findIndex((candidateStep) => candidateStep === step);
+    const workflowStepSkillId = stepIndex >= 0 ? contract.linked_step_skill_ids[stepIndex] ?? null : null;
+    const workflowNextStepSkillId = stepIndex >= 0 ? contract.linked_step_skill_ids[stepIndex + 1] ?? null : null;
+    return {
+        workflowSkillId: contract.workflow_skill_id,
+        workflowStepIndex: stepIndex >= 0 ? stepIndex + 1 : null,
+        workflowStepSkillId,
+        workflowNextStepSkillId,
+    };
 }
 function createWorkflowRouteStartTaskCards(input) {
     const contract = (0, workflow_variants_1.getWorkflowRouteContract)(input.workflowVariantSelection);
@@ -706,6 +892,10 @@ function createWorkflowRouteStartTaskCards(input) {
             const raiderChildId = (0, node_crypto_1.randomUUID)();
             const fanInTaskId = (0, node_crypto_1.randomUUID)();
             const reviewTaskId = specialistSteps.includes('arbiter') ? (0, node_crypto_1.randomUUID)() : null;
+            const tacticianMetadata = createWorkflowRouteTaskMetadata(contract, 'tactician');
+            const scoutMetadata = createWorkflowRouteTaskMetadata(contract, 'scout');
+            const raiderMetadata = createWorkflowRouteTaskMetadata(contract, 'raider');
+            const arbiterMetadata = reviewTaskId === null ? null : createWorkflowRouteTaskMetadata(contract, 'arbiter');
             const firstTask = (0, runtime_1.createInitialTaskCardRecord)({
                 taskCardId: firstTaskId,
                 runId: input.runId,
@@ -725,6 +915,7 @@ function createWorkflowRouteStartTaskCards(input) {
                 taskKind: 'plan',
                 ownerRole: 'orchestrator',
                 roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+                ...tacticianMetadata,
             });
             const scoutChild = (0, runtime_1.createQueuedTaskCardRecord)({
                 taskCardId: scoutChildId,
@@ -738,6 +929,7 @@ function createWorkflowRouteStartTaskCards(input) {
                 dependsOnTaskCardIds: [firstTaskId],
                 nodeKind: 'execution',
                 roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+                ...scoutMetadata,
             });
             const raiderChild = (0, runtime_1.createQueuedTaskCardRecord)({
                 taskCardId: raiderChildId,
@@ -751,6 +943,7 @@ function createWorkflowRouteStartTaskCards(input) {
                 dependsOnTaskCardIds: [firstTaskId],
                 nodeKind: 'execution',
                 roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+                ...raiderMetadata,
             });
             const fanInTask = (0, runtime_1.createQueuedTaskCardRecord)({
                 taskCardId: fanInTaskId,
@@ -765,6 +958,7 @@ function createWorkflowRouteStartTaskCards(input) {
                 fanInFromTaskCardIds: [scoutChildId, raiderChildId],
                 nodeKind: 'fan_in',
                 roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+                ...raiderMetadata,
             });
             const taskCards = [firstTask, scoutChild, raiderChild, fanInTask];
             if (reviewTaskId !== null) {
@@ -776,6 +970,10 @@ function createWorkflowRouteStartTaskCards(input) {
                     acceptance: input.acceptance,
                     dependsOnTaskCardId: fanInTaskId,
                     roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                    workflowSkillId: arbiterMetadata?.workflowSkillId ?? null,
+                    workflowStepIndex: arbiterMetadata?.workflowStepIndex ?? null,
+                    workflowStepSkillId: arbiterMetadata?.workflowStepSkillId ?? null,
+                    workflowNextStepSkillId: arbiterMetadata?.workflowNextStepSkillId ?? null,
                 }));
             }
             return taskCards;
@@ -784,6 +982,8 @@ function createWorkflowRouteStartTaskCards(input) {
         const scoutChildId = (0, node_crypto_1.randomUUID)();
         const planChildId = (0, node_crypto_1.randomUUID)();
         const fanInTaskId = (0, node_crypto_1.randomUUID)();
+        const scoutMetadata = createWorkflowRouteTaskMetadata(contract, 'scout');
+        const tacticianMetadata = createWorkflowRouteTaskMetadata(contract, 'tactician');
         const firstTask = (0, runtime_1.createInitialTaskCardRecord)({
             taskCardId: firstTaskId,
             runId: input.runId,
@@ -803,6 +1003,7 @@ function createWorkflowRouteStartTaskCards(input) {
             taskKind: 'explore',
             ownerRole: 'orchestrator',
             roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+            ...scoutMetadata,
         });
         const scoutChild = (0, runtime_1.createQueuedTaskCardRecord)({
             taskCardId: scoutChildId,
@@ -816,6 +1017,7 @@ function createWorkflowRouteStartTaskCards(input) {
             dependsOnTaskCardIds: [firstTaskId],
             nodeKind: 'execution',
             roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+            ...scoutMetadata,
         });
         const planChild = (0, runtime_1.createQueuedTaskCardRecord)({
             taskCardId: planChildId,
@@ -829,6 +1031,7 @@ function createWorkflowRouteStartTaskCards(input) {
             dependsOnTaskCardIds: [firstTaskId],
             nodeKind: 'execution',
             roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+            ...tacticianMetadata,
         });
         const fanInTask = (0, runtime_1.createQueuedTaskCardRecord)({
             taskCardId: fanInTaskId,
@@ -843,6 +1046,7 @@ function createWorkflowRouteStartTaskCards(input) {
             fanInFromTaskCardIds: [scoutChildId, planChildId],
             nodeKind: 'fan_in',
             roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('planner', input.foremanConfig),
+            ...tacticianMetadata,
         });
         return [firstTask, scoutChild, planChild, fanInTask];
     }
@@ -856,6 +1060,7 @@ function createWorkflowRouteStartTaskCards(input) {
         const step = serialSteps[index];
         const taskCardId = (0, node_crypto_1.randomUUID)();
         const nextStep = serialSteps[index + 1] ?? 'captain';
+        const workflowMetadata = createWorkflowRouteTaskMetadata(contract, step);
         if (step === 'arbiter') {
             if (!previousTaskCardId) {
                 taskCards.push((0, runtime_1.createInitialTaskCardRecord)({
@@ -878,6 +1083,7 @@ function createWorkflowRouteStartTaskCards(input) {
                     acceptanceChecks: [input.acceptance],
                     ownerRole: 'orchestrator',
                     roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                    ...workflowMetadata,
                 }));
             }
             else {
@@ -889,6 +1095,10 @@ function createWorkflowRouteStartTaskCards(input) {
                     acceptance: input.acceptance,
                     dependsOnTaskCardId: previousTaskCardId,
                     roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+                    workflowSkillId: workflowMetadata.workflowSkillId,
+                    workflowStepIndex: workflowMetadata.workflowStepIndex,
+                    workflowStepSkillId: workflowMetadata.workflowStepSkillId,
+                    workflowNextStepSkillId: workflowMetadata.workflowNextStepSkillId,
                 }));
             }
             previousTaskCardId = taskCardId;
@@ -912,6 +1122,7 @@ function createWorkflowRouteStartTaskCards(input) {
                 request: input.request,
                 nextStep,
             }),
+            ...workflowMetadata,
             taskKind: taskKindForStep,
             roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)(roleForStep, input.foremanConfig),
         };
@@ -1638,9 +1849,20 @@ function resolveTaskNavigationHint(cwd, taskCard) {
     });
 }
 function buildTaskExecutionPrompt(cwd, taskCard) {
-    return (0, helper_agents_1.buildFramedTaskPrompt)(taskCard, {
+    const framedPrompt = (0, helper_agents_1.buildFramedTaskPrompt)(taskCard, {
         navigationHint: resolveTaskNavigationHint(cwd, taskCard),
     });
+    if (!taskCard.workflow_step_skill_id) {
+        return framedPrompt;
+    }
+    const routeHeader = [
+        `Linked route wrapper: workflow=${taskCard.workflow_skill_id ?? 'none'}`,
+        `step_index=${taskCard.workflow_step_index ?? 'none'}`,
+        `step_skill=${taskCard.workflow_step_skill_id}`,
+        `next_step_skill=${taskCard.workflow_next_step_skill_id ?? 'captain_return'}`,
+        'Return only the bounded output needed for this linked step so the next route step can continue without captain rewriting the work.',
+    ].join('\n');
+    return `${routeHeader}\n\n${framedPrompt}`;
 }
 function roleConfigSnapshotsMatch(left, right) {
     return (left.role === right.role &&
@@ -2077,14 +2299,22 @@ function updateLatestSynthesizedRunResponse(run, taskCard, decision, orchestrati
     };
     const responseProvenanceHeader = (0, helper_agents_1.createOwnershipChainProvenanceHeader)(ownershipChain);
     if (run.status === 'completed') {
-        const summary = run.latest_verified_checkpoint?.summary ?? run.latest_verification?.summary ?? `Completed "${taskCard.title}".`;
+        const executionCompletionSummary = run.stage === 'execution' ? buildExecutionCompletionWorkerSummary(run, taskCard, relevantDelegations) : null;
+        const summary = (executionCompletionSummary?.prefersSummary ? executionCompletionSummary.summary : null) ??
+            run.latest_verified_checkpoint?.summary ??
+            run.latest_verification?.summary ??
+            executionCompletionSummary?.summary ??
+            `Completed "${taskCard.title}".`;
+        const userMessage = run.stage === 'execution' && executionCompletionSummary?.userMessage
+            ? executionCompletionSummary.userMessage
+            : workerCount > 0
+                ? `Completed "${taskCard.title}" after aggregating ${workerCount} delegated worker result${workerCount === 1 ? '' : 's'}.`
+                : `Completed "${taskCard.title}".`;
         nextResponse = {
             boundary: 'terminal',
             provenance_header: responseProvenanceHeader,
             summary,
-            user_message: workerCount > 0
-                ? `Completed "${taskCard.title}" after aggregating ${workerCount} delegated worker result${workerCount === 1 ? '' : 's'}.`
-                : `Completed "${taskCard.title}".`,
+            user_message: userMessage,
             recommended_action: 'none',
             decision_class: 'terminal_success',
             allowed_next_actions: ['none'],
@@ -2365,6 +2595,10 @@ function createExecutionDelegationWorkerRequest(taskCard, prompt) {
     return {
         prompt,
         acceptance: taskCard.acceptance,
+        workflow_skill_id: taskCard.workflow_skill_id,
+        workflow_step_index: taskCard.workflow_step_index,
+        workflow_step_skill_id: taskCard.workflow_step_skill_id,
+        workflow_next_step_skill_id: taskCard.workflow_next_step_skill_id,
     };
 }
 function buildInvestigationSlicePrompt(taskCard, slice) {
@@ -2513,6 +2747,10 @@ function createQueuedInvestigationDelegation(input) {
         worker_request: {
             prompt: input.slice.prompt,
             acceptance: input.taskCard.acceptance,
+            workflow_skill_id: input.taskCard.workflow_skill_id,
+            workflow_step_index: input.taskCard.workflow_step_index,
+            workflow_step_skill_id: input.taskCard.workflow_step_skill_id,
+            workflow_next_step_skill_id: input.taskCard.workflow_next_step_skill_id,
             scope: input.slice.scope,
             slice_label: input.slice.slice_label,
             partition_strategy: input.slice.partition_strategy,
@@ -2843,7 +3081,7 @@ function selectExecutionStageDelegations(taskCard, taskDelegations) {
     });
 }
 async function retireExecutionStageDelegationsForRetry(runPaths, run, taskCard) {
-    const existingDelegations = selectExecutionStageDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
+    const existingDelegations = (await (0, runtime_1.loadDelegationArtifacts)(runPaths)).filter((delegation) => delegation.task_card_id === taskCard.task_card_id && delegation.fan_in_collapsed_at === null);
     if (existingDelegations.length === 0) {
         return;
     }
@@ -2878,7 +3116,7 @@ async function seedExploreInvestigationDelegationsIfEligible(input) {
     if (existingDelegations.length > 0) {
         return [];
     }
-    const slices = createExploreInvestigationPartitionSlices(input.taskCard, input.maxActiveWorkers);
+    const slices = createExploreInvestigationPartitionSlices(input.taskCard, resolveExploreInvestigationWorkerCap(input.run, input.taskCard, input.maxActiveWorkers));
     if (slices.length === 0) {
         return [];
     }
@@ -3547,6 +3785,7 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
     let lineQueue = Promise.resolve();
     let terminalEvent = null;
     let terminalSummary = 'Codex execution completed.';
+    let latestCompletedAgentMessage = null;
     let compatibilityFailure = null;
     let spawnFailure = null;
     let rawEventsFile = null;
@@ -3590,6 +3829,10 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
                 child.kill();
                 return;
             }
+            const completedAgentMessageText = extractCompletedAgentMessageText(parsed);
+            if (completedAgentMessageText) {
+                latestCompletedAgentMessage = completedAgentMessageText;
+            }
             switch (parsed.type) {
                 case 'thread.started': {
                     if (typeof parsed.thread_id !== 'string' || parsed.thread_id.length === 0) {
@@ -3614,7 +3857,7 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
                 case 'turn.started':
                     return;
                 case 'turn.completed':
-                    registerTerminalEvent('completed', 'Codex reported turn.completed. Verification is pending.');
+                    registerTerminalEvent('completed', latestCompletedAgentMessage ?? DEFAULT_CODEX_TURN_COMPLETED_SUMMARY);
                     return;
                 case 'turn.failed':
                     registerTerminalEvent('failed', 'Codex reported turn.failed.');
@@ -4342,6 +4585,7 @@ async function startForemanRun(options) {
             ...(0, entry_policy_1.recommendForemanEntry)({
                 cwd: options.cwd,
                 request: options.goal,
+                foremanConfig,
             }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing),
             workflow_variant_selection: options.workflowVariantSelection,
         };
@@ -4366,6 +4610,8 @@ async function startForemanRun(options) {
                 tool_owner_role: recommendedForGoal.companion_tool_owner_role,
                 tool_owner_model: recommendedForGoal.companion_tool_model,
                 tool_owner_variant: recommendedForGoal.companion_tool_variant,
+                tool_execution_state: recommendedForGoal.companion_tool_owner_role === null ? 'not_applicable' : 'route_backed_specialist_owned',
+                tool_execution_owner: recommendedForGoal.companion_tool_owner_role,
                 workflow_variant_selection: options.workflowVariantSelection,
                 selected_role: selectedRole,
                 execution_path: 'new_run',
@@ -4492,6 +4738,21 @@ function shouldSuppressNewRunCreationForAutoEntry(recommendation) {
 }
 function getRunWorkflowVariantSelection(run) {
     return run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
+}
+function shouldKeepExploreInvestigationSingleSlice(run, taskCard) {
+    if (taskCard.task_kind !== 'explore' || taskCard.workflow_skill_id !== 'captain_investigate_only') {
+        return false;
+    }
+    const answerTrace = run.latest_entry_trace?.answer_trace;
+    if (!answerTrace || answerTrace.companion_tool_route_class === 'multi_source_evidence') {
+        return false;
+    }
+    return (answerTrace.request_shape === 'existence_check' ||
+        answerTrace.budget_class === 'low_cost_read_only' ||
+        (answerTrace.request_shape === 'lookup' && answerTrace.companion_tool_route_class !== 'none'));
+}
+function resolveExploreInvestigationWorkerCap(run, taskCard, maxActiveWorkers) {
+    return shouldKeepExploreInvestigationSingleSlice(run, taskCard) ? 1 : maxActiveWorkers;
 }
 function requiresDelegatedEntryLaunchForWorkflowRoute(run, taskCard) {
     return (0, workflow_variants_1.doesWorkflowRouteRequireDelegatedEntryLaunch)({
@@ -4713,6 +4974,18 @@ function deriveAutoEntryCompletionRule(input) {
     }
     return 'answer_now';
 }
+function deriveAutoEntryToolExecutionState(input) {
+    if (input.recommendation.companion_tool_route_class === 'none' ||
+        input.recommendation.companion_tool_owner_role === null) {
+        return 'not_applicable';
+    }
+    if (input.executionPath === 'run_reused' || input.executionPath === 'new_run') {
+        return 'route_backed_specialist_owned';
+    }
+    return input.recommendation.automatic_entry_supported
+        ? 'degraded_host_fallback'
+        : 'selected_policy_only';
+}
 function createAutoEntryAnswerTrace(input) {
     const selectedRole = deriveAutoEntrySelectedRole(input);
     const executionPath = input.runSelection === 'existing_run_reused'
@@ -4725,6 +4998,10 @@ function createAutoEntryAnswerTrace(input) {
         recommendation: input.recommendation,
     });
     const followProof = deriveAutoEntryFollowProof({
+        recommendation: input.recommendation,
+        executionPath,
+    });
+    const toolExecutionState = deriveAutoEntryToolExecutionState({
         recommendation: input.recommendation,
         executionPath,
     });
@@ -4795,6 +5072,10 @@ function createAutoEntryAnswerTrace(input) {
         tool_owner_role: input.recommendation.companion_tool_owner_role,
         tool_owner_model: input.recommendation.companion_tool_model,
         tool_owner_variant: input.recommendation.companion_tool_variant,
+        tool_execution_state: toolExecutionState,
+        tool_execution_owner: toolExecutionState === 'route_backed_specialist_owned'
+            ? input.recommendation.companion_tool_owner_role
+            : null,
         workflow_variant_selection: input.recommendation.workflow_variant_selection,
         selected_role: selectedRole,
         execution_path: executionPath,
@@ -4818,6 +5099,8 @@ function renderAutoEntryAnswerTrace(trace) {
         `tool_owner=${trace.tool_owner_role ?? 'none'}`,
         `tool_model=${trace.tool_owner_model ?? 'none'}`,
         `tool_variant=${trace.tool_owner_variant ?? 'none'}`,
+        `tool_execution=${trace.tool_execution_state}`,
+        `tool_execution_owner=${trace.tool_execution_owner ?? 'none'}`,
         `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `selected_role=${trace.selected_role}`,
         `execution_path=${trace.execution_path}`,
@@ -4899,6 +5182,7 @@ async function autoEnterForemanUnlocked(options) {
     const recommendation = (0, entry_policy_1.recommendForemanEntry)({
         cwd: options.cwd,
         request: routingRequest.request,
+        foremanConfig,
     }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
     if (recommendation.automatic_entry_supported) {
         await (0, session_run_binding_1.cleanupStaleSessionBoundRuns)(options.cwd);
@@ -6243,7 +6527,7 @@ async function replanForemanRun(options) {
         if (!nextTaskCard) {
             throw new Error('Planner output validated without any task-cards.');
         }
-        if (nextTaskCard.assigned_role === taskCard.assigned_role) {
+        if (nextTaskCard.assigned_role === taskCard.role_config_snapshot.role) {
             nextTaskCard.role_config_snapshot = {
                 ...taskCard.role_config_snapshot,
                 config_entries: [...taskCard.role_config_snapshot.config_entries],

@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.isExplicitlyReadOnlyRequest = isExplicitlyReadOnlyRequest;
+exports.countImplementationSignals = countImplementationSignals;
 exports.detectMutationIntent = detectMutationIntent;
 exports.classifyForemanRequest = classifyForemanRequest;
 const PLAN_KEYWORDS = [
@@ -120,6 +122,22 @@ const READ_ONLY_PATTERNS = [
     '읽기 전용',
     '읽기만',
 ];
+function isExplicitlyReadOnlyRequest(request) {
+    return includesAnyKeyword(request.trim().toLowerCase(), READ_ONLY_PATTERNS);
+}
+function countImplementationSignals(request) {
+    const normalizedRequest = request.trim().toLowerCase();
+    if (isExplicitlyReadOnlyRequest(request)) {
+        return 0;
+    }
+    let matchCount = 0;
+    for (const keyword of MUTATION_VERBS) {
+        if (normalizedRequest.includes(keyword)) {
+            matchCount += 1;
+        }
+    }
+    return matchCount;
+}
 function includesAnyKeyword(normalizedRequest, keywords) {
     return keywords.some((keyword) => normalizedRequest.includes(keyword));
 }
@@ -137,7 +155,7 @@ function detectMutationIntent(request) {
     const hasMutationTargetHint = includesAnyKeyword(normalizedRequest, MUTATION_TARGET_HINTS) ||
         /(?:^|[\s`'"])(?:src|docs|tests|readme)[/a-z0-9_.-]*/u.test(normalizedRequest) ||
         /\b[a-z0-9_.-]+\.(?:md|ts|tsx|js|jsx|json|yaml|yml|toml|css|html|py|go|rs|java|swift)\b/u.test(normalizedRequest);
-    const explicitlyReadOnly = includesAnyKeyword(normalizedRequest, READ_ONLY_PATTERNS);
+    const explicitlyReadOnly = isExplicitlyReadOnlyRequest(request);
     return (hasKoreanMutationCommand || (hasMutationVerb && hasMutationTargetHint)) && !explicitlyReadOnly
         ? 'explicit_or_strong'
         : 'none';

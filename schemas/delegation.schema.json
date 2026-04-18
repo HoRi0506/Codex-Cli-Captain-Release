@@ -245,6 +245,22 @@
           "type": "string",
           "minLength": 1
         },
+        "workflow_skill_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "workflow_step_index": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "workflow_step_skill_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "workflow_next_step_skill_id": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "scope": {
           "type": ["string", "null"],
           "minLength": 1

@@ -73,19 +73,20 @@ function createEntryBoundary(policy) {
     };
 }
 function createOrchestratorScopeSummary() {
-    return ('Orchestrator settings stay bounded to persisted synthesis/decision work plus one read-only advisory Codex pass and visibility surfaces. ' +
-        'Today advise consumes them for one advisory Codex pass, while latest_orchestrator_synthesis and status/watch surfaces expose the bounded decision-and-response layer without turning the orchestrator into a generic execution worker or a general orchestration loop.');
+    return ('Orchestrator settings stay bounded to persisted synthesis, route selection, state supervision, and operator-facing visibility surfaces. ' +
+        'Status/watch/latest_orchestrator_synthesis expose that bounded captain layer without turning host Codex into a generic execution worker or a separate read-only worker lane.');
 }
 function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig, toolRoutingConfig) {
     const normalizedRequest = options.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(options.request);
     const planKeywordMatches = countKeywordMatches(normalizedRequest, PLAN_KEYWORDS);
-    const startKeywordMatches = countKeywordMatches(normalizedRequest, START_KEYWORDS);
+    const startKeywordMatches = (0, request_shape_1.countImplementationSignals)(options.request);
     const requestClassification = (0, request_shape_1.classifyForemanRequest)({ request: options.request });
     const companionRouting = (0, tool_routing_1.deriveCompanionRoutingDecision)({
         request: options.request,
         mutationIntent: requestClassification.mutationIntent,
         toolRouting: toolRoutingConfig ?? (0, tool_routing_1.createDefaultForemanToolRoutingConfig)(),
+        foremanConfig: options.foremanConfig,
     });
     const rationale = [];
     let recommendedEntrypoint = requestClassification.recommendedEntrypoint;
@@ -108,7 +109,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     rationale.push(`Request shape classified as ${requestClassification.requestShape}.`);
     rationale.push(requestClassification.mutationIntent === 'explicit_or_strong'
         ? 'Mutation intent is explicit or strongly implied, so the bounded mutation path is allowed.'
-        : 'Mutation intent is not explicit, so bounded read-only, explorer-first, or synthesis-first routing is preferred.');
+        : 'Mutation intent is not explicit, so bounded read-only, scout-first, or synthesis-first routing is preferred.');
     if (companionRouting.routeClass !== 'none') {
         rationale.push(`Companion routing classified this request as ${companionRouting.routeClass} using ${companionRouting.toolNames.join(', ')} under ${companionRouting.ownerRole ?? 'none'}.`);
     }
@@ -124,12 +125,12 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         if (recommendedTaskKind === 'explore') {
             summary =
                 requestClassification.requestShape === 'synthesis'
-                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through explorer evidence and captain synthesis first.'
-                    : 'Recommend `start` because the request looks like one bounded read-heavy or investigation-first task that captain can route to the explorer path first.';
+                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through scout evidence and captain synthesis first.'
+                    : 'Recommend `start` because the request looks like one bounded read-heavy or investigation-first task that captain can route to the scout path first.';
         }
         else if (recommendedTaskKind === 'review') {
             summary =
-                'Recommend `start` because the request looks like one bounded verification or review task that captain can route to the verifier path first.';
+                'Recommend `start` because the request looks like one bounded verification or review task that captain can route to the arbiter path first.';
         }
     }
     if (rationale.length === 0) {
@@ -157,12 +158,12 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         if (recommendedTaskKind === 'explore') {
             summary =
                 requestClassification.requestShape === 'synthesis'
-                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through explorer evidence and captain synthesis first.'
-                    : 'Recommend `start` because the selected hidden route begins with bounded explorer evidence before later synthesis, mutation, or review.';
+                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through scout evidence and captain synthesis first.'
+                    : 'Recommend `start` because the selected hidden route begins with bounded scout evidence before later synthesis, mutation, or review.';
         }
         else if (recommendedTaskKind === 'review') {
             summary =
-                'Recommend `start` because the selected hidden route begins at a bounded verification or review step.';
+                'Recommend `start` because the selected hidden route begins at a bounded arbiter verification or review step.';
         }
     }
     return {
@@ -175,7 +176,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         entry_boundary_summary: entryBoundary.entry_boundary_summary,
         upstream_codex_binary_intercept_supported: false,
         upstream_codex_binary_intercept_summary: 'Hidden upstream Codex CLI binary interception is not a supported Foreman entry boundary. The current maximum supported boundary is bounded session guidance plus the explicit wrapper surface.',
-        orchestrator_scope: 'bounded_synthesis_decision_and_read_only_advisory',
+        orchestrator_scope: 'bounded_synthesis_decision_and_state_supervision',
         orchestrator_scope_summary: createOrchestratorScopeSummary(),
         orchestrator_agent: {
             role: 'orchestrator',

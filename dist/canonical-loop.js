@@ -212,7 +212,12 @@ function deriveForemanLoopState(input) {
     const currentOwnerRole = currentStage === 'blocked' || currentStage === 'completed'
         ? input.activeRole ?? input.taskCard?.owner_role ?? null
         : input.taskCard?.owner_role ?? input.activeRole ?? null;
-    const selectedSpecialistRole = input.taskCard?.assigned_role && input.taskCard.assigned_role !== 'orchestrator' ? input.taskCard.assigned_role : null;
+    const activeSelectedRole = input.taskCard?.owner_role === 'verifier'
+        ? 'verifier'
+        : input.taskCard?.assigned_role && input.taskCard.assigned_role !== 'orchestrator'
+            ? input.taskCard.assigned_role
+            : null;
+    const selectedSpecialistRole = activeSelectedRole;
     return {
         current_stage: currentStage,
         path_variant: pathVariant,

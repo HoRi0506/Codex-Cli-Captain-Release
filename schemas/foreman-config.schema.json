@@ -142,6 +142,39 @@
           ]
         }
       }
+    },
+    "companion_agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companion_reader", "companion_operator"],
+      "properties": {
+        "companion_reader": {
+          "allOf": [
+            { "$ref": "#/definitions/agentConfig" },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "companion_reader"
+                }
+              }
+            }
+          ]
+        },
+        "companion_operator": {
+          "allOf": [
+            { "$ref": "#/definitions/agentConfig" },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "companion_operator"
+                }
+              }
+            }
+          ]
+        }
+      }
     }
   },
   "definitions": {
@@ -191,6 +224,26 @@
         "variant": {
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "owner_companion_agent": {
+          "type": ["string", "null"],
+          "enum": ["companion_reader", "companion_operator", null]
+        },
+        "mutation_owner_role": {
+          "type": ["string", "null"],
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+        },
+        "mutation_model": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "mutation_variant": {
+          "type": ["string", "null"],
+          "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "mutation_owner_companion_agent": {
+          "type": ["string", "null"],
+          "enum": ["companion_reader", "companion_operator", null]
         },
         "allowed_operations": {
           "type": "array",

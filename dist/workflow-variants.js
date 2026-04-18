@@ -7,6 +7,7 @@ exports.getWorkflowRouteNextStep = getWorkflowRouteNextStep;
 exports.getWorkflowPublicLabel = getWorkflowPublicLabel;
 exports.doesWorkflowRouteRequireDelegatedEntryLaunch = doesWorkflowRouteRequireDelegatedEntryLaunch;
 exports.deriveWorkflowVariantSelection = deriveWorkflowVariantSelection;
+const workflow_route_catalog_1 = require("./workflow-route-catalog");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
 const DRIFT_HINTS = [
     'drift',
@@ -47,80 +48,6 @@ function createSelection(input) {
 function isDocShapedMutation(requestShape, normalizedRequest) {
     return requestShape === 'mutation' && includesAnyKeyword(normalizedRequest, DOC_HINTS);
 }
-const WORKFLOW_ROUTE_CONTRACTS = [
-    {
-        workflow_variant: 'investigate_only',
-        workflow_skill_id: 'captain_investigate_only',
-        workflow_agent_route: ['captain', 'scout', 'captain'],
-        entry_task_kind: 'explore',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'investigate_then_document',
-        workflow_skill_id: 'captain_investigate_then_document',
-        workflow_agent_route: ['captain', 'scout', 'raider', 'captain'],
-        entry_task_kind: 'explore',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'diagnose_then_fix',
-        workflow_skill_id: 'captain_diagnose_then_fix',
-        workflow_agent_route: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
-        entry_task_kind: 'explore',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'fix_only',
-        workflow_skill_id: 'captain_fix_only',
-        workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'],
-        entry_task_kind: 'execution',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'plan_then_implement',
-        workflow_skill_id: 'captain_plan_then_implement',
-        workflow_agent_route: ['captain', 'tactician', 'raider', 'arbiter', 'captain'],
-        entry_task_kind: 'plan',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'implement_then_review',
-        workflow_skill_id: 'captain_implement_then_review',
-        workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'],
-        entry_task_kind: 'execution',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'verify_only',
-        workflow_skill_id: 'captain_verify_only',
-        workflow_agent_route: ['captain', 'arbiter', 'captain'],
-        entry_task_kind: 'review',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'ownership_drift_check',
-        workflow_skill_id: 'captain_ownership_drift_check',
-        workflow_agent_route: ['captain', 'scout', 'arbiter', 'captain'],
-        entry_task_kind: 'explore',
-        execution_mode: 'serial',
-        release_visibility: 'internal_only',
-    },
-    {
-        workflow_variant: 'parallel_fanout',
-        workflow_skill_id: 'captain_parallel_fanout',
-        workflow_agent_route: ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'captain'],
-        entry_task_kind: null,
-        execution_mode: 'parallel',
-        release_visibility: 'internal_only',
-    },
-];
 function mapRoleToInternalRouteStep(role) {
     switch (role) {
         case 'orchestrator':
@@ -141,7 +68,7 @@ function getWorkflowRouteContract(selection) {
     if (!selection) {
         return null;
     }
-    const baseContract = WORKFLOW_ROUTE_CONTRACTS.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ?? null;
+    const baseContract = workflow_route_catalog_1.WORKFLOW_ROUTE_CONTRACTS.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ?? null;
     if (!baseContract) {
         return null;
     }

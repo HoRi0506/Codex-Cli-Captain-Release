@@ -21,8 +21,8 @@ function createHealthyCheckInstallExample(packageVersion) {
         `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent tool_policy=coherent run_hygiene=clean`,
         `Current package: codex-foreman@${packageVersion}`,
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
-        'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium',
-        'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem=scout/gpt-5.4-mini/medium git=scout/gpt-5.4-mini/medium context7=scout/gpt-5.4-mini/medium fetch=scout/gpt-5.4-mini/medium openaiDeveloperDocs=scout/gpt-5.4-mini/medium',
+        'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium',
+        'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.',
         'Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.',
     ].join('\n');
 }
@@ -77,6 +77,8 @@ function createReleaseInstallGuide(input) {
     return `# Install Codex-Foreman
 
 Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
+
+This is the supported beta install path. Beta releases are distributed through GitHub Release tarballs from the install-only release repository, not through the public npm registry.
 
 ## Paste Into Codex CLI
 
@@ -195,6 +197,8 @@ Codex-Foreman is for requests that benefit from a more structured path than one 
 
 Beta warning: this release surface is still beta. Expect changes, fixes, and update cadence to stay relatively fast and sometimes irregular while the harness contract continues to harden.
 
+Install warning: beta releases are distributed through GitHub Release tarballs from this install-only release repository. The public npm registry is not the supported install surface for the beta train.
+
 The public entrypoint is \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`. That entry keeps the host Codex session as \`captain\` first.
 
 ## What It Is For
@@ -212,7 +216,7 @@ Use Codex-Foreman when you want one or more of these:
 
 It is most useful for multi-step work, repository investigation, scoped implementation, verification-sensitive tasks, and any request where you want the path of work to stay inspectable.
 
-It is also useful when you want read-heavy repository questions, doc lookups, or bounded explanation work to stay on a cheaper explorer-first path unless mutation is explicitly requested.
+It is also useful when you want read-heavy repository questions, doc lookups, or bounded explanation work to stay on a cheaper scout-first path unless mutation is explicitly requested.
 
 For trivial answers or short conversational turns, the normal Codex path is often enough.
 
@@ -244,7 +248,7 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - the routing surface can explain workload class, path weight, model-tier budget, reasoning-effort budget, and review requirement for the current bounded route
 - the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
 - \`codex-foreman status --run-id <id>\` can show the latest answer path separately from the persisted current task when those truths differ
-- read-heavy repository questions can stay on a cheaper explorer-first path instead of silently normalizing into heavy implementation routing
+- read-heavy repository questions can stay on a cheaper scout-first path instead of silently normalizing into heavy implementation routing
 - bounded companion-shaped read-only auto-entry can prefer safe reuse or a visible low-cost scout route instead of accumulating throwaway active runs or opaque host-local fallback
 - one Codex CLI session can keep one current workstream until the operator explicitly closes it or asks for a new run
 - follow-up \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` input can queue onto the current session workstream instead of overwriting the in-flight request
@@ -385,7 +389,7 @@ function createReleasePackageJson(rootPackage) {
     return {
         name: rootPackage.name,
         version: rootPackage.version,
-        private: false,
+        private: true,
         description: rootPackage.description ?? public_surface_1.FOREMAN_PACKAGE_DESCRIPTION,
         main: rootPackage.main ?? 'dist/index.js',
         bin: rootPackage.bin ?? {

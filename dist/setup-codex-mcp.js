@@ -15,6 +15,7 @@ const public_surface_1 = require("./public-surface");
 const run_lifecycle_1 = require("./run-lifecycle");
 const runtime_1 = require("./runtime");
 const tool_routing_1 = require("./tool-routing");
+const role_roster_1 = require("./role-roster");
 const DEFAULT_CODEX_MCP_INSPECTION_TIMEOUT_MS = 8_000;
 const RUN_HYGIENE_WARNING_THRESHOLD = 1;
 class CodexMcpSetupConflictError extends Error {
@@ -99,6 +100,22 @@ function createConfiguredRoleModelsSummary(config) {
             model: config.agents.verifier.model,
             variant: config.agents.verifier.variant,
         },
+        ...(config.companion_agents
+            ? [
+                {
+                    role: 'companion_reader',
+                    rosterName: config.companion_agents.companion_reader.name,
+                    model: config.companion_agents.companion_reader.model,
+                    variant: config.companion_agents.companion_reader.variant,
+                },
+                {
+                    role: 'companion_operator',
+                    rosterName: config.companion_agents.companion_operator.name,
+                    model: config.companion_agents.companion_operator.model,
+                    variant: config.companion_agents.companion_operator.variant,
+                },
+            ]
+            : []),
     ];
     const status = entries.every((entry) => entry.model && entry.variant) ? 'coherent' : 'warning';
     const summary = entries
@@ -113,18 +130,26 @@ function createConfiguredRoleModelsSummary(config) {
 function createConfiguredToolRoutesSummary(config) {
     const entries = Object.keys(config.tool_routing.tools).map((tool) => {
         const policy = config.tool_routing.tools[tool];
+        const ownerTarget = policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
+            ? policy.mutation_owner_companion_agent ?? policy.mutation_owner_role ?? policy.owner_companion_agent ?? policy.owner_role
+            : policy.owner_companion_agent ?? policy.owner_role;
+        const ownerRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(ownerTarget, config);
         return {
             tool,
-            ownerRole: policy.owner_role,
-            model: policy.model ?? config.tool_routing.default_model,
-            variant: policy.variant ?? config.tool_routing.default_variant,
+            ownerRole: (0, role_roster_1.getOwnershipTargetName)(ownerTarget, config),
+            model: (policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
+                ? policy.mutation_model ?? ownerRoleConfig.model
+                : policy.model) ?? config.tool_routing.default_model,
+            variant: (policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
+                ? policy.mutation_variant ?? ownerRoleConfig.variant
+                : policy.variant) ?? config.tool_routing.default_variant,
             fallbackMode: policy.fallback_mode ?? config.tool_routing.fallback_mode,
         };
     });
     const status = entries.every((entry) => entry.model && entry.variant) ? 'coherent' : 'warning';
     return {
         status,
-        summary: (0, tool_routing_1.summarizeConfiguredToolRoutes)(config.tool_routing),
+        summary: (0, tool_routing_1.summarizeConfiguredToolRoutes)(config.tool_routing, config),
         entries,
     };
 }

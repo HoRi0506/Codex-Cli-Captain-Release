@@ -39,6 +39,16 @@ exports.FOREMAN_NAMED_AGENT_SURFACES = [
         customAgentName: 'foreman_sentinel',
         packagedFileName: 'foreman-sentinel.toml',
     },
+    {
+        rosterName: 'companion_reader',
+        customAgentName: 'foreman_companion_reader',
+        packagedFileName: 'foreman-companion-reader.toml',
+    },
+    {
+        rosterName: 'companion_operator',
+        customAgentName: 'foreman_companion_operator',
+        packagedFileName: 'foreman-companion-operator.toml',
+    },
 ];
 exports.FOREMAN_PACKAGED_CUSTOM_AGENT_FILES = exports.FOREMAN_NAMED_AGENT_SURFACES.map((entry) => entry.packagedFileName);
 exports.FOREMAN_PACKAGED_CUSTOM_AGENT_NAMES = exports.FOREMAN_NAMED_AGENT_SURFACES.map((entry) => entry.packagedFileName.replace(/\.toml$/, ''));

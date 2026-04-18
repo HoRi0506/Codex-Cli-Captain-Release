@@ -4,6 +4,7 @@ exports.createDefaultForemanToolRoutingConfig = createDefaultForemanToolRoutingC
 exports.normalizeForemanToolRoutingConfig = normalizeForemanToolRoutingConfig;
 exports.summarizeConfiguredToolRoutes = summarizeConfiguredToolRoutes;
 exports.deriveCompanionRoutingDecision = deriveCompanionRoutingDecision;
+const role_roster_1 = require("./role-roster");
 const GIT_MUTATION_KEYWORDS = ['commit', 'push', 'add', 'stage', '커밋', '푸시', '스테이지', '브랜치에 반영'];
 const GIT_KEYWORDS = ['git', 'branch', 'status', 'diff', 'log', 'commit', 'push', 'pull', 'rebase', 'stash', '커밋', '푸시', '브랜치'];
 const DOCS_KEYWORDS = ['context7', 'docs', 'documentation', 'reference', 'api', 'sdk', '문서', '레퍼런스', 'reference'];
@@ -40,6 +41,11 @@ function createDefaultForemanToolRoutingConfig() {
         owner_role: ownerRole,
         model,
         variant,
+        owner_companion_agent: null,
+        mutation_owner_role: null,
+        mutation_model: null,
+        mutation_variant: null,
+        mutation_owner_companion_agent: null,
         allowed_operations: [...allowedOperations],
         fallback_mode: fallbackMode,
     });
@@ -48,11 +54,18 @@ function createDefaultForemanToolRoutingConfig() {
         default_variant: 'medium',
         fallback_mode: 'visible_degraded_host_fallback',
         tools: {
-            filesystem: createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'),
-            git: createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read', 'mutation'], 'visible_degraded_host_fallback'),
-            context7: createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'),
-            fetch: createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'),
-            openaiDeveloperDocs: createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'),
+            git: {
+                ...createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read', 'mutation'], 'visible_degraded_host_fallback'),
+                owner_companion_agent: 'companion_reader',
+                mutation_owner_companion_agent: 'companion_operator',
+                mutation_owner_role: 'code specialist',
+                mutation_model: null,
+                mutation_variant: null,
+            },
+            context7: { ...createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'), owner_companion_agent: 'companion_reader' },
+            fetch: { ...createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'), owner_companion_agent: 'companion_reader' },
+            openaiDeveloperDocs: { ...createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'), owner_companion_agent: 'companion_reader' },
+            filesystem: { ...createEntry('explorer', 'gpt-5.4-mini', 'medium', ['read'], 'visible_degraded_host_fallback'), owner_companion_agent: 'companion_reader' },
         },
     };
 }
@@ -78,6 +91,32 @@ function normalizeForemanToolRoutingConfig(candidate) {
         const variant = entry.variant === 'low' || entry.variant === 'medium' || entry.variant === 'high' || entry.variant === 'xhigh' || entry.variant === null
             ? entry.variant
             : toolDefaults.variant;
+        const mutationOwnerRole = typeof entry.mutation_owner_role === 'string' || entry.mutation_owner_role === null
+            ? entry.mutation_owner_role
+            : (toolDefaults.mutation_owner_role ?? null);
+        const ownerCompanionAgent = entry.owner_companion_agent === 'companion_reader' || entry.owner_companion_agent === 'companion_operator' || entry.owner_companion_agent === null
+            ? entry.owner_companion_agent
+            : (toolDefaults.owner_companion_agent ?? null);
+        const mutationModel = typeof entry.mutation_model === 'string' || entry.mutation_model === null
+            ? entry.mutation_model
+            : (toolDefaults.mutation_model ?? null);
+        const mutationOwnerCompanionAgent = entry.mutation_owner_companion_agent === 'companion_reader' ||
+            entry.mutation_owner_companion_agent === 'companion_operator' ||
+            entry.mutation_owner_companion_agent === null
+            ? entry.mutation_owner_companion_agent
+            : (toolDefaults.mutation_owner_companion_agent ?? null);
+        const mutationVariant = entry.mutation_variant === 'low' ||
+            entry.mutation_variant === 'medium' ||
+            entry.mutation_variant === 'high' ||
+            entry.mutation_variant === 'xhigh' ||
+            entry.mutation_variant === null
+            ? entry.mutation_variant
+            : (toolDefaults.mutation_variant ?? null);
+        const looksLikeLegacyGitMutationDefault = tool === 'git' &&
+            mutationOwnerCompanionAgent === 'companion_operator' &&
+            mutationOwnerRole === 'code specialist' &&
+            mutationModel === 'gpt-5.3-codex' &&
+            mutationVariant === 'high';
         const fallbackMode = entry.fallback_mode === 'visible_degraded_host_fallback' || entry.fallback_mode === 'deny_host_fallback'
             ? entry.fallback_mode
             : toolDefaults.fallback_mode;
@@ -85,6 +124,11 @@ function normalizeForemanToolRoutingConfig(candidate) {
             owner_role: ownerRole,
             model,
             variant,
+            owner_companion_agent: ownerCompanionAgent,
+            mutation_owner_role: mutationOwnerRole,
+            mutation_model: looksLikeLegacyGitMutationDefault ? null : mutationModel,
+            mutation_variant: looksLikeLegacyGitMutationDefault ? null : mutationVariant,
+            mutation_owner_companion_agent: mutationOwnerCompanionAgent,
             allowed_operations: normalizeAllowedOperations(entry.allowed_operations, toolDefaults.allowed_operations),
             fallback_mode: fallbackMode,
         };
@@ -112,10 +156,23 @@ function normalizeForemanToolRoutingConfig(candidate) {
         },
     };
 }
-function summarizeConfiguredToolRoutes(toolRouting) {
+function summarizeConfiguredToolRoutes(toolRouting, foremanConfig) {
     const entries = Object.keys(toolRouting.tools).map((tool) => {
         const policy = toolRouting.tools[tool];
-        return `${tool}->${policy.owner_role}/${policy.model ?? toolRouting.default_model ?? 'none'}/${policy.variant ?? toolRouting.default_variant ?? 'none'}`;
+        const readOwnerTarget = policy.owner_companion_agent ?? policy.owner_role;
+        const readOwner = (0, role_roster_1.getOwnershipTargetName)(readOwnerTarget, foremanConfig);
+        const readOwnerConfig = (0, role_roster_1.getOwnershipTargetConfig)(readOwnerTarget, foremanConfig);
+        const readModel = policy.model ?? readOwnerConfig.model ?? toolRouting.default_model ?? 'none';
+        const readVariant = policy.variant ?? readOwnerConfig.variant ?? toolRouting.default_variant ?? 'none';
+        if (!policy.allowed_operations.includes('mutation') || (!policy.mutation_owner_role && !policy.mutation_owner_companion_agent)) {
+            return `${tool}->${readOwner}/${readModel}/${readVariant}`;
+        }
+        const mutationOwnerTarget = policy.mutation_owner_companion_agent ?? policy.mutation_owner_role ?? policy.owner_companion_agent ?? policy.owner_role;
+        const mutationOwner = (0, role_roster_1.getOwnershipTargetName)(mutationOwnerTarget, foremanConfig);
+        const mutationRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(mutationOwnerTarget, foremanConfig);
+        const mutationModel = policy.mutation_model ?? mutationRoleConfig.model ?? readModel;
+        const mutationVariant = policy.mutation_variant ?? mutationRoleConfig.variant ?? readVariant;
+        return `${tool}(read)->${readOwner}/${readModel}/${readVariant} ${tool}(mutation)->${mutationOwner}/${mutationModel}/${mutationVariant}`;
     });
     return `Configured companion routing keeps tool work under specialist ownership: ${entries.join(', ')}.`;
 }
@@ -162,13 +219,21 @@ function deriveCompanionRoutingDecision(input) {
                 : toolNames[0]) ?? 'filesystem'
         : toolNames[0] ?? 'filesystem';
     const policy = input.toolRouting.tools[primaryTool] ?? createDefaultForemanToolRoutingConfig().tools[primaryTool];
+    const effectiveOwnerTarget = operation === 'mutation'
+        ? policy.mutation_owner_companion_agent ?? policy.mutation_owner_role ?? policy.owner_companion_agent ?? policy.owner_role
+        : policy.owner_companion_agent ?? policy.owner_role;
+    const effectiveRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(effectiveOwnerTarget, input.foremanConfig);
     return {
         routeClass,
         toolNames,
         operation,
-        ownerRole: policy.owner_role,
-        model: policy.model ?? input.toolRouting.default_model,
-        variant: policy.variant ?? input.toolRouting.default_variant,
+        ownerRole: (0, role_roster_1.getOwnershipTargetName)(effectiveOwnerTarget, input.foremanConfig),
+        model: operation === 'mutation'
+            ? policy.mutation_model ?? effectiveRoleConfig.model ?? policy.model ?? input.toolRouting.default_model
+            : policy.model ?? effectiveRoleConfig.model ?? input.toolRouting.default_model,
+        variant: operation === 'mutation'
+            ? policy.mutation_variant ?? effectiveRoleConfig.variant ?? policy.variant ?? input.toolRouting.default_variant
+            : policy.variant ?? effectiveRoleConfig.variant ?? input.toolRouting.default_variant,
         fallbackMode: policy.fallback_mode ?? input.toolRouting.fallback_mode,
     };
 }

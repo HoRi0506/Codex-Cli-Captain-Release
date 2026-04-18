@@ -97,7 +97,9 @@ async function withBoundedToolBudget(input) {
                 return;
             }
             settled = true;
-            resolve(input.onTimeout(createTimeoutDiagnosis(input.toolName, input.stage, budgetMs)));
+            void Promise.resolve(input.onTimeout(createTimeoutDiagnosis(input.toolName, input.stage, budgetMs)))
+                .then(resolve)
+                .catch(reject);
         }, budgetMs);
         void input
             .work()
@@ -150,8 +152,8 @@ const EMPTY_TASK_GRAPH_SUMMARY = {
         verifier: 0,
     },
 };
-const ORCHESTRATOR_SCOPE = 'bounded_synthesis_decision_and_read_only_advisory';
-const ORCHESTRATOR_SCOPE_SUMMARY = 'Orchestrator settings stay bounded to persisted synthesis/decision work plus one read-only advisory Codex pass and visibility surfaces. Today advise consumes them for one advisory Codex pass, while latest_orchestrator_synthesis and status/watch surfaces expose the bounded decision-and-response layer without turning the orchestrator into a generic execution worker or a general orchestration loop.';
+const ORCHESTRATOR_SCOPE = 'bounded_synthesis_decision_and_state_supervision';
+const ORCHESTRATOR_SCOPE_SUMMARY = 'Orchestrator settings stay bounded to persisted synthesis, route selection, state supervision, and operator-facing visibility surfaces. Status/watch/latest_orchestrator_synthesis expose that bounded captain layer without turning host Codex into a generic execution worker or a separate read-only worker lane.';
 function roleConfigSnapshotsMatch(left, right) {
     return (left.role === right.role &&
         left.profile === right.profile &&
@@ -1458,7 +1460,18 @@ function createOrchestratorRequestSettingsPreview(foremanConfig) {
 function createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig) {
     const activeRole = taskCard.owner_role;
     const agentConfigSummary = createTaskCardAgentConfigSummary(activeRole, foremanConfig);
-    if (activeRole === taskCard.assigned_role) {
+    if (activeRole === 'verifier' && orchestratorState.verification_request !== null) {
+        const extracted = extractResolvedRequestSettings(orchestratorState.verification_request.config_entries);
+        return {
+            source: 'persisted_request',
+            request_kind: 'verification',
+            profile: orchestratorState.verification_request.profile,
+            model: extracted.model ?? agentConfigSummary?.model ?? null,
+            variant: extracted.variant ?? agentConfigSummary?.variant ?? null,
+            config_entries: extracted.config_entries,
+        };
+    }
+    if (activeRole !== 'verifier' && activeRole === taskCard.assigned_role) {
         const extracted = extractResolvedRequestSettings(taskCard.role_config_snapshot.config_entries);
         return {
             source: 'role_config_fallback',
@@ -1475,17 +1488,6 @@ function createTaskCardResolvedRequestSettings(taskCard, orchestratorState, fore
             source: 'persisted_request',
             request_kind: 'execution',
             profile: orchestratorState.execution_request.profile,
-            model: extracted.model ?? agentConfigSummary?.model ?? null,
-            variant: extracted.variant ?? agentConfigSummary?.variant ?? null,
-            config_entries: extracted.config_entries,
-        };
-    }
-    if (activeRole === 'verifier' && orchestratorState.verification_request !== null) {
-        const extracted = extractResolvedRequestSettings(orchestratorState.verification_request.config_entries);
-        return {
-            source: 'persisted_request',
-            request_kind: 'verification',
-            profile: orchestratorState.verification_request.profile,
             model: extracted.model ?? agentConfigSummary?.model ?? null,
             variant: extracted.variant ?? agentConfigSummary?.variant ?? null,
             config_entries: extracted.config_entries,
@@ -1538,12 +1540,18 @@ function createCurrentTaskExecutionAssignmentState(taskCard, ownershipChain) {
     }
 }
 function selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations) {
+    const activeRole = taskCard.owner_role === 'verifier' ? 'verifier' : taskCard.assigned_role ?? taskCard.owner_role;
     const taskLinkedDelegationEvidence = taskDelegations
-        .filter((delegation) => delegation.task_card_id === taskCard.task_card_id && delegation.worker_launch_evidence)
+        .filter((delegation) => delegation.task_card_id === taskCard.task_card_id &&
+        delegation.child_agent.role === activeRole &&
+        delegation.worker_launch_evidence)
         .sort((left, right) => right.updated_at.localeCompare(left.updated_at))
         .map((delegation) => delegation.worker_launch_evidence ?? null)
         .find((evidence) => evidence !== null);
-    return taskLinkedDelegationEvidence ?? taskCard.latest_model_launch;
+    if (taskLinkedDelegationEvidence !== null && taskLinkedDelegationEvidence !== undefined) {
+        return taskLinkedDelegationEvidence;
+    }
+    return taskCard.latest_model_launch?.role === activeRole ? taskCard.latest_model_launch : null;
 }
 function createCurrentTaskExecutionProof(input) {
     const model = input.actualModelLaunch?.actual_model ??
@@ -1661,6 +1669,10 @@ function createOperatorFacingTaskTitle(run, taskCard) {
 }
 function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorState, mcpMutationLease, taskDelegations, foremanConfig) {
     const taskLinkedDelegations = taskDelegations.filter((delegation) => delegation.task_card_id === taskCard.task_card_id);
+    const currentAssignedRole = taskCard.owner_role === 'verifier' ? 'verifier' : taskCard.assigned_role ?? taskCard.owner_role;
+    const currentAssignedAgentId = taskCard.owner_role === 'verifier' && taskCard.verification_state === 'pending'
+        ? ((0, runtime_1.getAgentIdForRole)('verifier') ?? taskCard.assigned_agent_id)
+        : taskCard.assigned_agent_id;
     const activeDelegation = taskLinkedDelegations.find((delegation) => (delegation.child_agent.status === 'queued' || delegation.child_agent.status === 'running'));
     const latestTaskDelegation = taskLinkedDelegations
         .slice()
@@ -1668,9 +1680,9 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         .at(0) ?? null;
     const actualModelLaunch = selectCurrentTaskModelLaunchEvidence(taskCard, taskDelegations);
     const ownerAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.owner_role, foremanConfig);
-    const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(taskCard.assigned_role ?? taskCard.owner_role, foremanConfig);
-    const ownerRolePlaybook = createRolePlaybookContractView(taskCard.owner_role, ownerAgentConfigSummary, taskCard.assigned_agent_id);
-    const assignedRolePlaybook = createRolePlaybookContractView(taskCard.assigned_role ?? taskCard.owner_role, assignedAgentConfigSummary, taskCard.assigned_agent_id);
+    const assignedAgentConfigSummary = createTaskCardAgentConfigSummary(currentAssignedRole, foremanConfig);
+    const ownerRolePlaybook = createRolePlaybookContractView(taskCard.owner_role, ownerAgentConfigSummary, currentAssignedAgentId);
+    const assignedRolePlaybook = createRolePlaybookContractView(currentAssignedRole, assignedAgentConfigSummary, currentAssignedAgentId);
     const resolvedRequestSettings = createTaskCardResolvedRequestSettings(taskCard, orchestratorState, foremanConfig);
     const taskNavigationHint = taskCard.task_kind === 'explore' || taskCard.task_kind === 'plan'
         ? (0, navigation_aids_1.resolveNavigationBundleHint)({
@@ -1711,7 +1723,10 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
     const readOnlyFallbackAllowed = isCaptainOwnedReadOnlyFallbackAllowed(taskCard);
     const hostExecutionEvidenceVisible = taskCard.thread_ids.length > 0 || actualModelLaunch !== null;
     const executionProof = createCurrentTaskExecutionProof({
-        taskCard,
+        taskCard: {
+            assigned_agent_id: currentAssignedAgentId,
+            role_config_snapshot: taskCard.role_config_snapshot,
+        },
         ownershipChain,
         executionOwner,
         concreteWorkerId,
@@ -1722,7 +1737,11 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         hostExecutionEvidenceVisible,
     });
     const specialistExecutionTruth = createCurrentTaskSpecialistExecutionTruth({
-        taskCard,
+        taskCard: {
+            assigned_role: currentAssignedRole,
+            owner_role: taskCard.owner_role,
+            assigned_agent_id: currentAssignedAgentId,
+        },
         ownershipChain,
         executionOwner,
         executionProof,
@@ -1742,8 +1761,12 @@ function createCurrentTaskCardView(cwd, run, taskCard, decision, orchestratorSta
         title: operatorFacingTitle,
         status: taskCard.status,
         owner_role: taskCard.owner_role,
-        assigned_role: taskCard.assigned_role,
-        assigned_agent_id: taskCard.assigned_agent_id,
+        assigned_role: currentAssignedRole,
+        assigned_agent_id: currentAssignedAgentId,
+        workflow_skill_id: taskCard.workflow_skill_id,
+        workflow_step_index: taskCard.workflow_step_index,
+        workflow_step_skill_id: taskCard.workflow_step_skill_id,
+        workflow_next_step_skill_id: taskCard.workflow_next_step_skill_id,
         role_config_snapshot: taskCard.role_config_snapshot,
         model_tier_intent: taskCard.model_tier_intent,
         child_aggregation_contract: taskCard.child_aggregation_contract,
@@ -2112,11 +2135,13 @@ async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CON
             timeout_diagnosis: diagnosis,
         }),
     });
-    const sessionRegistrationMatch = serverIdentity.entrypoint_path === null || installCheck.registeredEntrypointPath === null
-        ? 'unknown'
-        : serverIdentity.entrypoint_path === installCheck.registeredEntrypointPath
-            ? 'matches_registered_target'
-            : 'differs_from_registered_target';
+    const sessionRegistrationMatch = installCheck.registrationStatus === 'matching_registration'
+        ? 'matches_registered_target'
+        : serverIdentity.entrypoint_path === null || installCheck.registeredEntrypointPath === null
+            ? 'unknown'
+            : serverIdentity.entrypoint_path === installCheck.registeredEntrypointPath
+                ? 'matches_registered_target'
+                : 'differs_from_registered_target';
     return {
         server_identity: serverIdentity,
         install_check: {
@@ -2248,14 +2273,20 @@ function deriveWorkflowRouteContractState(input) {
             routeContractState: 'not_applicable',
             currentRouteStep: 'none',
             nextRouteStep: 'none',
+            currentRouteStepSkillId: 'none',
+            nextRouteStepSkillId: 'none',
         };
     }
+    const contract = (0, workflow_variants_1.getWorkflowRouteContract)(input.workflowVariantSelection);
     const firstSpecialistStep = (0, workflow_variants_1.getWorkflowRouteFirstSpecialistStep)(input.workflowVariantSelection);
+    const firstStepSkillId = contract?.linked_step_skill_ids[0] ?? 'none';
     if (input.status === 'completed') {
         return {
             routeContractState: 'completed',
             currentRouteStep: 'captain',
             nextRouteStep: 'none',
+            currentRouteStepSkillId: 'none',
+            nextRouteStepSkillId: 'none',
         };
     }
     const proofState = input.currentTaskCard?.specialist_execution_truth?.proof_state ?? null;
@@ -2268,6 +2299,8 @@ function deriveWorkflowRouteContractState(input) {
             routeContractState: 'in_progress',
             currentRouteStep: activeRouteStep,
             nextRouteStep: nextRouteStep ?? 'none',
+            currentRouteStepSkillId: input.currentTaskCard?.workflow_step_skill_id ?? firstStepSkillId,
+            nextRouteStepSkillId: input.currentTaskCard?.workflow_next_step_skill_id ?? 'none',
         };
     }
     if (proofState === 'host_session_fallback' || proofState === 'captain_read_only_fallback') {
@@ -2275,19 +2308,25 @@ function deriveWorkflowRouteContractState(input) {
             routeContractState: 'degraded',
             currentRouteStep: activeRouteStep,
             nextRouteStep: nextRouteStep ?? 'captain',
+            currentRouteStepSkillId: input.currentTaskCard?.workflow_step_skill_id ?? firstStepSkillId,
+            nextRouteStepSkillId: input.currentTaskCard?.workflow_next_step_skill_id ?? 'none',
         };
     }
     if (proofState === 'planned_assignment_only') {
         return {
             routeContractState: workerCount > 0 ? 'launching' : 'declared_only',
             currentRouteStep: activeRouteStep,
-            nextRouteStep: nextRouteStep ?? activeRouteStep,
+            nextRouteStep: nextRouteStep ?? 'captain',
+            currentRouteStepSkillId: input.currentTaskCard?.workflow_step_skill_id ?? firstStepSkillId,
+            nextRouteStepSkillId: input.currentTaskCard?.workflow_next_step_skill_id ?? 'none',
         };
     }
     return {
         routeContractState: 'declared_only',
         currentRouteStep: firstSpecialistStep ?? 'captain',
-        nextRouteStep: firstSpecialistStep ?? 'captain',
+        nextRouteStep: 'captain',
+        currentRouteStepSkillId: firstStepSkillId,
+        nextRouteStepSkillId: 'none',
     };
 }
 async function createWorkflowOperatorStateView(input) {
@@ -2340,6 +2379,8 @@ async function createWorkflowOperatorStateView(input) {
             `route_contract=${routeContract.routeContractState} ` +
             `current_route_step=${routeContract.currentRouteStep} ` +
             `next_route_step=${routeContract.nextRouteStep} ` +
+            `current_route_step_skill=${routeContract.currentRouteStepSkillId} ` +
+            `next_route_step_skill=${routeContract.nextRouteStepSkillId} ` +
             `session_continuity=${requesterSessionContinuity} ` +
             `worker_alignment=${workerSessionAlignment} ` +
             `plan_update=${latestPlanUpdate.artifact === null ? 'missing' : 'recorded'} ` +
@@ -2352,6 +2393,8 @@ async function createWorkflowOperatorStateView(input) {
         workflow_variant: workflowVariantSelection?.workflow_variant ?? 'none',
         workflow_skill_id: workflowVariantSelection?.workflow_skill_id ?? 'none',
         workflow_agent_route: workflowVariantSelection?.workflow_agent_route ? [...workflowVariantSelection.workflow_agent_route] : [],
+        current_route_step_skill_id: routeContract.currentRouteStepSkillId,
+        next_route_step_skill_id: routeContract.nextRouteStepSkillId,
         workflow_progress: workflowProgress,
         route_contract_state: routeContract.routeContractState,
         current_route_step: routeContract.currentRouteStep,
@@ -2417,7 +2460,7 @@ function sanitizeLatestEntryTraceRecord(record) {
     }
     return {
         ...record,
-        request: 'details recorded in persisted state.',
+        request: record.request,
         run_decision_reason: SAFE_PERSISTED_DETAIL_SUMMARY,
         summary: SAFE_PERSISTED_DETAIL_SUMMARY,
     };
@@ -3725,6 +3768,8 @@ function createWorkflowOperatorVisibilitySummary(input) {
         `workflow_route_contract=${input.workflow_operator_state.route_contract_state ?? 'not_applicable'}`,
         `workflow_current_step=${input.workflow_operator_state.current_route_step ?? 'none'}`,
         `workflow_next_step=${input.workflow_operator_state.next_route_step ?? 'none'}`,
+        `workflow_current_step_skill=${input.workflow_operator_state.current_route_step_skill_id ?? 'none'}`,
+        `workflow_next_step_skill=${input.workflow_operator_state.next_route_step_skill_id ?? 'none'}`,
         `workflow_session=${input.workflow_operator_state.requester_session_continuity}`,
         `workflow_alignment=${input.workflow_operator_state.worker_session_alignment}`,
         `explore_evidence=${input.workflow_operator_state.explore_evidence_state}`,
@@ -3737,7 +3782,8 @@ function createWorkflowOperatorDisplayLine(workflowOperatorState) {
     }
     return (`Workflow: ${(0, workflow_variants_1.getWorkflowPublicLabel)(workflowOperatorState)} ` +
         `(${workflowOperatorState.phase}, ${workflowOperatorState.workflow_progress}, ${workflowOperatorState.route_contract_state ?? 'not_applicable'}, ${workflowOperatorState.requester_session_continuity}, ${workflowOperatorState.worker_session_alignment}) ` +
-        `step=${workflowOperatorState.current_route_step ?? 'none'}->${workflowOperatorState.next_route_step ?? 'none'}`);
+        `step=${workflowOperatorState.current_route_step ?? 'none'}->${workflowOperatorState.next_route_step ?? 'none'} ` +
+        `skill=${workflowOperatorState.current_route_step_skill_id ?? 'none'}->${workflowOperatorState.next_route_step_skill_id ?? 'none'}`);
 }
 function createCaptainLoopOperatorVisibilitySummary(input) {
     if (!input.current_task_card) {
@@ -3960,11 +4006,36 @@ function requireCodexBin(codexBin, nextStep, handler) {
     }
     throw new Error(`foreman_orchestrate requires codex_bin when the current persisted decision is ${nextStep} and it dispatches ${handler}.`);
 }
-async function loadForemanStatusForOrchestration(cwd, runId) {
+async function loadForemanStatusForOrchestration(cwd, runId, sessionContext) {
     return getForemanStatus({
         run_id: runId,
         cwd,
+    }, sessionContext);
+}
+function didForemanStatusAdvanceAfterTimeout(before, after) {
+    return (before.status !== after.status ||
+        before.stage !== after.stage ||
+        before.next_step !== after.next_step ||
+        before.can_advance !== after.can_advance ||
+        before.run_truth_surface.summary !== after.run_truth_surface.summary ||
+        before.run_truth_surface.degraded !== after.run_truth_surface.degraded ||
+        before.current_task_card?.specialist_execution_truth?.state !== after.current_task_card?.specialist_execution_truth?.state ||
+        before.current_task_card?.specialist_execution_truth?.proof_state !==
+            after.current_task_card?.specialist_execution_truth?.proof_state ||
+        before.current_task_card?.specialist_execution_truth?.visibility !==
+            after.current_task_card?.specialist_execution_truth?.visibility ||
+        before.worker_visibility?.summary !== after.worker_visibility?.summary);
+}
+async function loadForemanStatusAfterTimeout(cwd, runId, before, sessionContext) {
+    let latestStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
+    if (didForemanStatusAdvanceAfterTimeout(before, latestStatus)) {
+        return latestStatus;
+    }
+    await new Promise((resolve) => {
+        setTimeout(resolve, 150);
     });
+    latestStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
+    return latestStatus;
 }
 function resolveForemanOrchestrateProgressionStepCount(input) {
     if (input.fast_mode === undefined) {
@@ -4027,6 +4098,8 @@ function renderCompactAutoEntryAnswerTrace(trace) {
     const toolOwner = trace.tool_owner_role ?? 'none';
     const toolModel = trace.tool_owner_model ?? 'none';
     const toolVariant = trace.tool_owner_variant ?? 'none';
+    const toolExecutionState = trace.tool_execution_state ?? 'not_applicable';
+    const toolExecutionOwner = trace.tool_execution_owner ?? 'none';
     return [
         `workflow=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `role=${trace.selected_role}`,
@@ -4036,6 +4109,8 @@ function renderCompactAutoEntryAnswerTrace(trace) {
         `tool_route=${toolRoute}`,
         `tool_owner=${toolOwner}`,
         `tool_model=${toolModel}/${toolVariant}`,
+        `tool_exec=${toolExecutionState}`,
+        `tool_exec_owner=${toolExecutionOwner}`,
         `budget=${trace.budget_class}`,
         `review=${trace.review_requirement}`,
     ].join(' ');
@@ -4173,6 +4248,7 @@ async function recommendForemanEntryForMcp(input) {
             return (0, entry_policy_1.recommendForemanEntry)({
                 cwd,
                 request: input.request,
+                foremanConfig,
             }, foremanConfig.entry_policy, foremanConfig.agents.orchestrator, foremanConfig.tool_routing);
         },
         onTimeout: (diagnosis) => ({
@@ -4296,6 +4372,8 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
                 tool_owner_role: null,
                 tool_owner_model: null,
                 tool_owner_variant: null,
+                tool_execution_state: 'not_applicable',
+                tool_execution_owner: null,
                 workflow_variant_selection: (0, workflow_variants_1.deriveWorkflowVariantSelection)({
                     request: input.request,
                     recommendation: {
@@ -4549,7 +4627,7 @@ async function runForemanMcpRun(input, sessionContext = DEFAULT_MCP_SESSION_CONT
 async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
     const locator = resolveForemanRunLocator(input);
     const { cwd, run_id: runId } = locator;
-    const currentStatus = await loadForemanStatusForOrchestration(cwd, runId);
+    const currentStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
     const progressionStepCount = resolveForemanOrchestrateProgressionStepCount(input);
     validateForemanOrchestrateLoopInputs(input, progressionStepCount, currentStatus);
     await acquireForemanMcpMutationLease({
@@ -4574,7 +4652,7 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                 maxSteps: progressionStepCount,
                 stopAtTaskBoundary: true,
             });
-            const nextStatus = await loadForemanStatusForOrchestration(cwd, runId);
+            const nextStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
             const dispatchedStep = loopResult.attempt.steps.at(-1);
             if (dispatchedStep) {
                 const dispatchedStopReason = progressionStepCount === 2 &&
@@ -4605,15 +4683,21 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                     (currentStatus.decision_summary ?? 'No task-backed orchestrator summary is available for this run state.'),
             });
         },
-        onTimeout: (diagnosis) => createForemanOrchestrateResult(currentStatus, {
-            orchestration_status: 'timeout_acknowledged',
-            dispatched_command: null,
-            dispatched_via: null,
-            stop_reason: null,
-            orchestration_summary: `foreman_orchestrate exceeded the bounded ${diagnosis.budget_ms}ms budget and returned a visible timeout acknowledgement. ` +
-                'Check foreman_status for current run truth, then retry foreman_orchestrate only if the next bounded move is still pending.',
-            timeout_diagnosis: diagnosis,
-        }),
+        onTimeout: async (diagnosis) => {
+            const latestStatus = await loadForemanStatusAfterTimeout(cwd, runId, currentStatus, sessionContext);
+            const statusAdvanced = didForemanStatusAdvanceAfterTimeout(currentStatus, latestStatus);
+            return createForemanOrchestrateResult(latestStatus, {
+                orchestration_status: 'timeout_acknowledged',
+                dispatched_command: null,
+                dispatched_via: null,
+                stop_reason: null,
+                orchestration_summary: `foreman_orchestrate exceeded the bounded ${diagnosis.budget_ms}ms budget and returned a visible timeout acknowledgement. ` +
+                    (statusAdvanced
+                        ? 'The returned payload was refreshed from the latest persisted run state after timeout so visible worker or delegation progress is not dropped. Retry only if the next bounded move is still pending.'
+                        : 'Check foreman_status for current run truth, then retry foreman_orchestrate only if the next bounded move is still pending.'),
+                timeout_diagnosis: diagnosis,
+            });
+        },
     });
 }
 async function tickForemanAlwaysOnCompanion(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {

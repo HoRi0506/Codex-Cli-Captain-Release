@@ -112,6 +112,7 @@ const constants_1 = require("./constants");
 const orchestrator_1 = require("./orchestrator");
 const workflow_variants_1 = require("./workflow-variants");
 const tool_routing_1 = require("./tool-routing");
+const role_roster_1 = require("./role-roster");
 const validation_1 = require("./validation");
 function writeJsonDocument(filePath, value) {
     return (0, promises_1.writeFile)(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
@@ -550,6 +551,17 @@ function normalizeLoadedWorkerRequest(candidate) {
     }
     return {
         ...candidate,
+        workflow_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_skill_id') ? candidate.workflow_skill_id : null,
+        workflow_step_index: Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_index') &&
+            typeof candidate.workflow_step_index === 'number'
+            ? candidate.workflow_step_index
+            : null,
+        workflow_step_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_skill_id')
+            ? candidate.workflow_step_skill_id
+            : null,
+        workflow_next_step_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_next_step_skill_id')
+            ? candidate.workflow_next_step_skill_id
+            : null,
         scope: Object.prototype.hasOwnProperty.call(candidate, 'scope') ? candidate.scope : null,
         slice_label: Object.prototype.hasOwnProperty.call(candidate, 'slice_label') ? candidate.slice_label : null,
         partition_strategy: Object.prototype.hasOwnProperty.call(candidate, 'partition_strategy')
@@ -743,6 +755,18 @@ const DEFAULT_FOREMAN_AGENT_SETTINGS = {
         variant: 'medium',
     },
 };
+const DEFAULT_FOREMAN_COMPANION_AGENT_SETTINGS = {
+    companion_reader: {
+        name: 'companion_reader',
+        model: 'gpt-5.4-mini',
+        variant: 'medium',
+    },
+    companion_operator: {
+        name: 'companion_operator',
+        model: 'gpt-5.4-mini',
+        variant: 'medium',
+    },
+};
 function createEmptyRoleDefaults() {
     return {
         version: 1,
@@ -768,6 +792,17 @@ function createEmptyRoleDefaults() {
 }
 function createDefaultForemanAgentConfig(role) {
     const defaults = DEFAULT_FOREMAN_AGENT_SETTINGS[role];
+    const configEntries = role === 'code specialist' ? ['approval_policy=never', 'sandbox_mode=workspace-write'] : [];
+    return {
+        name: defaults.name,
+        profile: null,
+        model: defaults.model,
+        variant: defaults.variant,
+        config_entries: configEntries,
+    };
+}
+function createDefaultForemanCompanionAgentConfig(role) {
+    const defaults = DEFAULT_FOREMAN_COMPANION_AGENT_SETTINGS[role];
     return {
         name: defaults.name,
         profile: null,
@@ -798,6 +833,10 @@ function createDefaultForemanConfig() {
             explorer: createDefaultForemanAgentConfig('explorer'),
             'code specialist': createDefaultForemanAgentConfig('code specialist'),
             verifier: createDefaultForemanAgentConfig('verifier'),
+        },
+        companion_agents: {
+            companion_reader: createDefaultForemanCompanionAgentConfig('companion_reader'),
+            companion_operator: createDefaultForemanCompanionAgentConfig('companion_operator'),
         },
     };
 }
@@ -859,6 +898,25 @@ function getRunActiveAgentIdForRole(role) {
     }
 }
 function getForemanAgentConfigForRole(foremanConfig, role) {
+    const applyRoleDefaults = (config) => {
+        if (role !== 'code specialist') {
+            return config;
+        }
+        const nextConfigEntries = [...config.config_entries];
+        if (!nextConfigEntries.some((entry) => entry.startsWith('approval_policy='))) {
+            nextConfigEntries.push('approval_policy=never');
+        }
+        if (!nextConfigEntries.some((entry) => entry.startsWith('sandbox=') || entry.startsWith('sandbox_mode='))) {
+            nextConfigEntries.push('sandbox_mode=workspace-write');
+        }
+        if (nextConfigEntries.length === config.config_entries.length) {
+            return config;
+        }
+        return {
+            ...config,
+            config_entries: nextConfigEntries,
+        };
+    };
     switch (role) {
         case 'orchestrator':
             return foremanConfig.agents.orchestrator;
@@ -867,7 +925,7 @@ function getForemanAgentConfigForRole(foremanConfig, role) {
         case 'explorer':
             return foremanConfig.agents.explorer ?? getDefaultForemanAgentConfigForRole('explorer');
         case 'code specialist':
-            return foremanConfig.agents['code specialist'];
+            return applyRoleDefaults(foremanConfig.agents['code specialist']);
         case 'verifier':
             return foremanConfig.agents.verifier;
     }
@@ -1025,6 +1083,16 @@ function normalizeForemanConfigCandidate(candidate) {
                     : candidateAgents['code specialist'],
             }
             : candidate.agents,
+        companion_agents: isRecord(candidate.companion_agents)
+            ? {
+                companion_reader: isRecord(candidate.companion_agents.companion_reader)
+                    ? candidate.companion_agents.companion_reader
+                    : defaultConfig.companion_agents?.companion_reader,
+                companion_operator: isRecord(candidate.companion_agents.companion_operator)
+                    ? candidate.companion_agents.companion_operator
+                    : defaultConfig.companion_agents?.companion_operator,
+            }
+            : defaultConfig.companion_agents,
     };
 }
 async function loadWorkspaceForemanConfigIfPresent(baseDirectory) {
@@ -1631,6 +1699,10 @@ function createInitialTaskCardRecord(input) {
         scope: input.scope,
         execution_prompt: input.executionPrompt,
         planner_attempt_id: input.plannerAttemptId ?? null,
+        workflow_skill_id: input.workflowSkillId ?? null,
+        workflow_step_index: input.workflowStepIndex ?? null,
+        workflow_step_skill_id: input.workflowStepSkillId ?? null,
+        workflow_next_step_skill_id: input.workflowNextStepSkillId ?? null,
         task_kind: taskKind,
         acceptance_checks: [...(input.acceptanceChecks ?? [])],
         review_of_task_card_ids: [...(input.reviewOfTaskCardIds ?? [])],
@@ -1837,7 +1909,7 @@ function activatePlannedTask(run, taskCard, handoff) {
 }
 function reactivateBlockedTask(run, taskCard, handoff) {
     const timestamp = handoff.created_at;
-    const assignedRole = taskCard.assigned_role;
+    const assignedRole = taskCard.role_config_snapshot.role;
     const assignedAgentId = getRunActiveAgentIdForRole(assignedRole);
     run.status = 'active';
     run.stage = 'execution';
@@ -1852,6 +1924,7 @@ function reactivateBlockedTask(run, taskCard, handoff) {
     run.completed_at = null;
     taskCard.status = 'active';
     taskCard.owner_role = assignedRole;
+    taskCard.assigned_role = assignedRole;
     taskCard.assigned_agent_id = assignedAgentId;
     taskCard.input_handoff_id = handoff.handoff_id;
     taskCard.verification_state = 'pending';
@@ -1936,6 +2009,7 @@ function markExecutionCompleted(run, taskCard, handoff) {
     run.updated_at = timestamp;
     taskCard.status = 'active';
     taskCard.owner_role = 'verifier';
+    taskCard.assigned_role = 'verifier';
     taskCard.assigned_agent_id = verifierAgentId;
     taskCard.output_handoff_id = handoff.handoff_id;
     taskCard.verification_state = 'pending';
@@ -2095,6 +2169,10 @@ function createVisibilityProjection(run, taskCard, latestHandoff, orchestratorDe
             owner_role: taskCard.owner_role,
             assigned_role: taskCard.assigned_role,
             assigned_agent_id: taskCard.assigned_agent_id,
+            workflow_skill_id: taskCard.workflow_skill_id,
+            workflow_step_index: taskCard.workflow_step_index,
+            workflow_step_skill_id: taskCard.workflow_step_skill_id,
+            workflow_next_step_skill_id: taskCard.workflow_next_step_skill_id,
             role_config_snapshot: taskCard.role_config_snapshot,
             model_tier_intent: taskCard.model_tier_intent,
             child_aggregation_contract: taskCard.child_aggregation_contract,
@@ -2474,6 +2552,10 @@ function normalizeLoadedOrchestrationAttemptSnapshot(candidate) {
 function normalizeLoadedTaskCardRecord(candidate) {
     if (!isRecord(candidate) ||
         (Object.prototype.hasOwnProperty.call(candidate, 'review_pass_count') &&
+            Object.prototype.hasOwnProperty.call(candidate, 'workflow_skill_id') &&
+            Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_index') &&
+            Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_skill_id') &&
+            Object.prototype.hasOwnProperty.call(candidate, 'workflow_next_step_skill_id') &&
             Object.prototype.hasOwnProperty.call(candidate, 'depends_on_task_card_ids') &&
             Object.prototype.hasOwnProperty.call(candidate, 'fan_in_from_task_card_ids') &&
             Object.prototype.hasOwnProperty.call(candidate, 'node_kind') &&
@@ -2514,6 +2596,16 @@ function normalizeLoadedTaskCardRecord(candidate) {
     const normalizedCandidate = {
         ...candidate,
         review_pass_count: 0,
+        workflow_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_skill_id') ? candidate.workflow_skill_id : null,
+        workflow_step_index: Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_index') && typeof candidate.workflow_step_index === 'number'
+            ? candidate.workflow_step_index
+            : null,
+        workflow_step_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_step_skill_id')
+            ? candidate.workflow_step_skill_id
+            : null,
+        workflow_next_step_skill_id: Object.prototype.hasOwnProperty.call(candidate, 'workflow_next_step_skill_id')
+            ? candidate.workflow_next_step_skill_id
+            : null,
         task_kind: taskKind,
         acceptance_checks: Object.prototype.hasOwnProperty.call(candidate, 'acceptance_checks')
             ? candidate.acceptance_checks
@@ -2797,14 +2889,7 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     answerTrace.companion_tool_operation === 'mutation'
                     ? answerTrace.companion_tool_operation
                     : 'none',
-                tool_owner_role: answerTrace.tool_owner_role === 'orchestrator' ||
-                    answerTrace.tool_owner_role === 'planner' ||
-                    answerTrace.tool_owner_role === 'explorer' ||
-                    answerTrace.tool_owner_role === 'code specialist' ||
-                    answerTrace.tool_owner_role === 'verifier' ||
-                    answerTrace.tool_owner_role === null
-                    ? answerTrace.tool_owner_role
-                    : null,
+                tool_owner_role: (0, role_roster_1.normalizePublicAgentName)(answerTrace.tool_owner_role),
                 tool_owner_model: typeof answerTrace.tool_owner_model === 'string' || answerTrace.tool_owner_model === null
                     ? answerTrace.tool_owner_model
                     : null,
@@ -2815,6 +2900,13 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     answerTrace.tool_owner_variant === null
                     ? answerTrace.tool_owner_variant
                     : null,
+                tool_execution_state: answerTrace.tool_execution_state === 'not_applicable' ||
+                    answerTrace.tool_execution_state === 'selected_policy_only' ||
+                    answerTrace.tool_execution_state === 'route_backed_specialist_owned' ||
+                    answerTrace.tool_execution_state === 'degraded_host_fallback'
+                    ? answerTrace.tool_execution_state
+                    : 'not_applicable',
+                tool_execution_owner: (0, role_roster_1.normalizePublicAgentName)(answerTrace.tool_execution_owner),
                 workflow_variant_selection: workflowVariantSelection,
                 selected_role: answerTrace.selected_role === 'captain' ||
                     answerTrace.selected_role === 'tactician' ||

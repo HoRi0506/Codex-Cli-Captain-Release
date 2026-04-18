@@ -561,6 +561,8 @@
             "tool_owner_role",
             "tool_owner_model",
             "tool_owner_variant",
+            "tool_execution_state",
+            "tool_execution_owner",
             "workflow_variant_selection",
             "selected_role",
             "execution_path",
@@ -598,7 +600,7 @@
             },
             "tool_owner_role": {
               "type": ["string", "null"],
-              "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+              "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
             },
             "tool_owner_model": {
               "type": ["string", "null"],
@@ -607,6 +609,14 @@
             "tool_owner_variant": {
               "type": ["string", "null"],
               "enum": ["low", "medium", "high", "xhigh", null]
+            },
+            "tool_execution_state": {
+              "type": "string",
+              "enum": ["not_applicable", "selected_policy_only", "route_backed_specialist_owned", "degraded_host_fallback"]
+            },
+            "tool_execution_owner": {
+              "type": ["string", "null"],
+              "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
             },
             "workflow_variant_selection": {
               "type": "object",

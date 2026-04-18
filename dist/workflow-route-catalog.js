@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.WORKFLOW_ROUTE_CONTRACTS = void 0;
+function createLinkedStepSkillIds(workflowSkillId, workflowAgentRoute) {
+    return workflowAgentRoute
+        .filter((step) => step !== 'captain')
+        .map((step) => `${workflowSkillId}__${step}`);
+}
+exports.WORKFLOW_ROUTE_CONTRACTS = [
+    { workflow_variant: 'investigate_only', workflow_skill_id: 'captain_investigate_only', workflow_agent_route: ['captain', 'scout', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_investigate_only', ['captain', 'scout', 'captain']), entry_task_kind: 'explore', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'investigate_then_document', workflow_skill_id: 'captain_investigate_then_document', workflow_agent_route: ['captain', 'scout', 'raider', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_investigate_then_document', ['captain', 'scout', 'raider', 'captain']), entry_task_kind: 'explore', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'diagnose_then_fix', workflow_skill_id: 'captain_diagnose_then_fix', workflow_agent_route: ['captain', 'scout', 'raider', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_diagnose_then_fix', ['captain', 'scout', 'raider', 'arbiter', 'captain']), entry_task_kind: 'explore', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'fix_only', workflow_skill_id: 'captain_fix_only', workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_fix_only', ['captain', 'raider', 'arbiter', 'captain']), entry_task_kind: 'execution', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'plan_then_implement', workflow_skill_id: 'captain_plan_then_implement', workflow_agent_route: ['captain', 'tactician', 'raider', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_plan_then_implement', ['captain', 'tactician', 'raider', 'arbiter', 'captain']), entry_task_kind: 'plan', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'implement_then_review', workflow_skill_id: 'captain_implement_then_review', workflow_agent_route: ['captain', 'raider', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_implement_then_review', ['captain', 'raider', 'arbiter', 'captain']), entry_task_kind: 'execution', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'verify_only', workflow_skill_id: 'captain_verify_only', workflow_agent_route: ['captain', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_verify_only', ['captain', 'arbiter', 'captain']), entry_task_kind: 'review', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'ownership_drift_check', workflow_skill_id: 'captain_ownership_drift_check', workflow_agent_route: ['captain', 'scout', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_ownership_drift_check', ['captain', 'scout', 'arbiter', 'captain']), entry_task_kind: 'explore', execution_mode: 'serial', release_visibility: 'internal_only' },
+    { workflow_variant: 'parallel_fanout', workflow_skill_id: 'captain_parallel_fanout', workflow_agent_route: ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'captain'], linked_step_skill_ids: createLinkedStepSkillIds('captain_parallel_fanout', ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'captain']), entry_task_kind: null, execution_mode: 'parallel', release_visibility: 'internal_only' },
+];
+//# sourceMappingURL=workflow-route-catalog.js.map
