@@ -1306,7 +1306,7 @@ function buildAdvisorPrompt(run, taskCard, orchestrationPolicy, decision, allowe
         'END UNTRUSTED RUN CONTEXT JSON',
     ].join('\n');
 }
-function buildVerificationPrompt(run, taskCard) {
+function buildVerificationPrompt(run, taskCard, evidenceContext) {
     const verifierFraming = (0, helper_agents_1.createTaskAssignmentFraming)({
         assigned_role: 'verifier',
         assigned_agent_id: (0, runtime_1.getAgentIdForRole)('verifier'),
@@ -1316,6 +1316,12 @@ function buildVerificationPrompt(run, taskCard) {
         acceptance: taskCard.acceptance,
     });
     const untrustedTaskMetadata = stringifyPromptJson({
+        r: {
+            id: run.run_id,
+            cwd: evidenceContext?.cwd,
+            dir: evidenceContext?.runDirectory,
+            a: run.active_task_card_id,
+        },
         g: shouldCollapsePlannerGoal(run.goal, taskCard.execution_prompt) ||
             normalizeInlinePromptText(run.goal) === normalizeInlinePromptText(taskCard.scope)
             ? undefined
@@ -1328,13 +1334,35 @@ function buildVerificationPrompt(run, taskCard) {
             chk: taskCard.acceptance_checks.length > 0 ? taskCard.acceptance_checks : undefined,
             ro: taskCard.review_of_task_card_ids.length > 0 ? taskCard.review_of_task_card_ids : undefined,
             p: taskCard.execution_prompt,
+            id: taskCard.task_card_id,
         },
+        ev: evidenceContext
+            ? {
+                src: evidenceContext.sourceTaskCards.map((sourceTaskCard) => ({
+                    id: sourceTaskCard.taskCardId,
+                    ttl: sourceTaskCard.title,
+                    st: sourceTaskCard.status,
+                    v: sourceTaskCard.verificationState,
+                })),
+                wr: evidenceContext.workerResults.map((workerResult) => ({
+                    id: workerResult.delegationId,
+                    t: workerResult.taskCardId,
+                    src: workerResult.sourceTaskCardId,
+                    r: workerResult.role,
+                    st: workerResult.status,
+                    s: workerResult.summary,
+                    ep: workerResult.evidencePaths,
+                })),
+            }
+            : undefined,
     });
     return [
         verifierFraming.prompt_prefix,
         '',
         'You are the verifier for a Codex-Foreman task.',
         'Review the current repository state against the scoped task and acceptance criteria.',
+        'Use the current-run evidence boundary in the task metadata. If you inspect .foreman artifacts, inspect only the listed run id, task card id, reviewed task card ids, and evidence paths.',
+        'Do not treat sibling or older .foreman/runs artifacts, old smoke directories, or unrelated prior successful/failed runs as evidence for this verification.',
         UNTRUSTED_JSON_PROMPT_RULE,
         STRICT_VERIFIER_CONTRACT,
         '',
@@ -1343,9 +1371,9 @@ function buildVerificationPrompt(run, taskCard) {
         'END UNTRUSTED TASK METADATA JSON',
     ].join('\n');
 }
-function buildVerificationRequest(run, taskCard, profile, configEntries) {
+function buildVerificationRequest(run, taskCard, profile, configEntries, evidenceContext) {
     return {
-        prompt: buildVerificationPrompt(run, taskCard),
+        prompt: buildVerificationPrompt(run, taskCard, evidenceContext),
         profile,
         config_entries: [...configEntries],
     };
@@ -1835,6 +1863,47 @@ function syncOrchestratorStateRequests(orchestratorState, cwd, run, taskCard) {
         return;
     }
     orchestratorState.verification_request = buildVerificationRequest(run, taskCard, orchestratorState.verification_request.profile, orchestratorState.verification_request.config_entries);
+}
+function buildVerificationPromptEvidenceContext(input) {
+    const sourceTaskCardIds = new Set(input.taskCard.review_of_task_card_ids.length > 0
+        ? input.taskCard.review_of_task_card_ids
+        : [input.taskCard.task_card_id]);
+    const sourceTaskCards = input.taskCards
+        .filter((candidate) => sourceTaskCardIds.has(candidate.task_card_id))
+        .map((sourceTaskCard) => ({
+        taskCardId: sourceTaskCard.task_card_id,
+        title: sourceTaskCard.title,
+        status: sourceTaskCard.status,
+        verificationState: sourceTaskCard.verification_state,
+    }));
+    const workerResults = input.delegations
+        .filter((delegation) => {
+        if (delegation.child_agent.role === 'verifier') {
+            return false;
+        }
+        return (sourceTaskCardIds.has(delegation.task_card_id) ||
+            (delegation.source_task_card_id !== null &&
+                delegation.source_task_card_id !== undefined &&
+                sourceTaskCardIds.has(delegation.source_task_card_id)));
+    })
+        .map((delegation) => ({
+        delegationId: delegation.delegation_id,
+        taskCardId: delegation.task_card_id,
+        sourceTaskCardId: delegation.source_task_card_id ?? null,
+        role: delegation.child_agent.role,
+        status: delegation.child_agent.status,
+        summary: delegation.worker_result?.summary ?? delegation.result_summary,
+        evidencePaths: [...(delegation.worker_result?.evidence_paths ?? [])],
+    }));
+    return {
+        cwd: input.cwd,
+        runDirectory: input.runPaths.runDir,
+        sourceTaskCards,
+        workerResults,
+    };
+}
+function buildBoundedReviewerVerificationRequest(input) {
+    return buildVerificationRequest(input.run, input.taskCard, input.verificationRequest.profile, input.verificationRequest.config_entries, buildVerificationPromptEvidenceContext(input));
 }
 function shouldUseNavigationHintForTask(taskCard) {
     return taskCard.task_kind === 'explore' || taskCard.task_kind === 'plan';
@@ -6737,11 +6806,21 @@ async function verifyForemanRun(options) {
     }
     const reviewerCap = Math.max(1, orchestratorState.orchestration_policy.review.max_active_reviewers);
     let verified = false;
-    const existingReviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
+    const preReviewDelegations = await (0, runtime_1.loadDelegationArtifacts)(runPaths);
+    const existingReviewDelegations = getCurrentReviewRoundDelegations(taskCard, preReviewDelegations);
     if (existingReviewDelegations.length > 0) {
         throw new Error(`verify cannot launch a new bounded reviewer swarm because review round ${taskCard.review_pass_count} already has ${existingReviewDelegations.length} persisted verifier delegation artifact${existingReviewDelegations.length === 1 ? '' : 's'}.`);
     }
-    await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, orchestratorState.verification_request, reviewerCap, await (0, runtime_1.loadForemanConfig)(options.cwd));
+    const reviewerVerificationRequest = buildBoundedReviewerVerificationRequest({
+        cwd: options.cwd,
+        runPaths,
+        run,
+        taskCard,
+        taskCards: await ensureTaskCards(),
+        delegations: preReviewDelegations,
+        verificationRequest: orchestratorState.verification_request,
+    });
+    await executeBoundedReviewerSwarm(options, runPaths, run, taskCard, reviewerVerificationRequest, reviewerCap, await (0, runtime_1.loadForemanConfig)(options.cwd));
     const reviewDelegations = getCurrentReviewRoundDelegations(taskCard, await (0, runtime_1.loadDelegationArtifacts)(runPaths));
     const aggregatedOutcome = aggregateReviewerOutcomes(taskCard, reviewDelegations);
     if (aggregatedOutcome) {
