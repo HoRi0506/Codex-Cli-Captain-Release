@@ -13,7 +13,6 @@ const public_surface_1 = require("./public-surface");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const RELEASE_REPO_MANIFEST_FILE = 'release-repo-manifest.json';
 const RELEASE_REPO_GITIGNORE_FILE = '.gitignore';
-const RELEASE_REPO_GITIGNORE_CONTENT = 'node_modules/\n.DS_Store\n*.tgz\nforeman-smoke-*/\nforeman-sweep-*/\n';
 const RELEASE_REPO_URL = public_surface_1.FOREMAN_RELEASE_REPO_URL;
 const RELEASES_URL = `${RELEASE_REPO_URL}/releases`;
 function createHealthyCheckInstallExample(packageVersion) {
@@ -24,6 +23,17 @@ function createHealthyCheckInstallExample(packageVersion) {
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium',
         'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.',
         'Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.',
+    ].join('\n');
+}
+function createReleaseRepoGitignore(packageName, packageVersion) {
+    return [
+        'node_modules/',
+        '.DS_Store',
+        `${packageName}-*.tgz`,
+        `!${packageName}-${packageVersion}.tgz`,
+        'foreman-smoke-*/',
+        'foreman-sweep-*/',
+        '',
     ].join('\n');
 }
 function toPosixRelativePath(filePath) {
@@ -456,6 +466,8 @@ async function buildInstallOnlyReleaseRepo(options) {
     const agentsPath = node_path_1.default.join(sourceRoot, 'agents');
     const pluginMcpPath = node_path_1.default.join(sourceRoot, '.mcp.json');
     const rootPackage = await readJsonDocument(packageJsonPath);
+    const releaseNoteFileName = `v${rootPackage.version}.md`;
+    const releaseNotePath = node_path_1.default.join(sourceRoot, 'docs', 'release', 'notes', releaseNoteFileName);
     const sourceGitCommit = await resolveSourceGitCommit(sourceRoot);
     if (!(await pathExists(distPath))) {
         throw new Error(`Built dist/ is missing at ${distPath}. Run the build before exporting the release repo.`);
@@ -492,11 +504,16 @@ async function buildInstallOnlyReleaseRepo(options) {
         packageVersion: rootPackage.version,
         sourceGitCommit,
     }), 'utf8');
-    await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, RELEASE_REPO_GITIGNORE_FILE), RELEASE_REPO_GITIGNORE_CONTENT, 'utf8');
+    await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, RELEASE_REPO_GITIGNORE_FILE), createReleaseRepoGitignore(rootPackage.name, rootPackage.version), 'utf8');
     await (0, promises_1.writeFile)(node_path_1.default.join(outputDir, 'docs', 'install.md'), createReleaseInstallGuide({
         packageName: rootPackage.name,
         packageVersion: rootPackage.version,
     }), 'utf8');
+    if (await pathExists(releaseNotePath)) {
+        const releaseNoteOutputPath = node_path_1.default.join(outputDir, 'docs', 'release', 'notes', releaseNoteFileName);
+        await (0, promises_1.mkdir)(node_path_1.default.dirname(releaseNoteOutputPath), { recursive: true });
+        await (0, promises_1.cp)(releaseNotePath, releaseNoteOutputPath);
+    }
     const manifest = {
         generated_at: new Date().toISOString(),
         source_repo_path: sourceRoot,
