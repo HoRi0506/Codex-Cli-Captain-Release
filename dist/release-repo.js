@@ -318,6 +318,13 @@ Reach for Codex-Foreman when:
 
 These remain companion tools under configured specialist ownership, not public worker routes.
 
+\`v1.5.38\` makes that ownership split explicit:
+
+- \`git\` read work such as status, diff, log, and release provenance routes to \`companion_reader\`
+- \`git\` mutation work such as add, commit, push, tag, and release asset publication routes to \`companion_operator\`
+- \`filesystem\`, \`context7\`, \`fetch\`, and \`openaiDeveloperDocs\` read/reference work routes to \`companion_reader\`
+- direct host-side companion MCP calls should be surfaced as \`visible_degraded_host_fallback\`, not as silent Foreman-owned execution
+
 ## Packaged Harness Surface
 
 The packaged install surface ships:
