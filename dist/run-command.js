@@ -148,11 +148,26 @@ async function withAutoEntrySessionGate(gateKey, work) {
         }
     }
 }
-function buildCodexArgs(executionRequest) {
-    const args = ['exec', '--json', '--skip-git-repo-check'];
-    for (const serverId of INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS) {
-        args.push('-c', `mcp_servers.${serverId}.enabled=false`);
+function deriveRouteEnabledMcpServerIds(run) {
+    const trace = run.latest_entry_trace?.answer_trace;
+    if (!trace || trace.tool_execution_state !== 'route_backed_specialist_owned') {
+        return new Set();
     }
+    return new Set(trace.companion_tool_names.filter((toolName) => toolName === 'git' ||
+        toolName === 'fetch' ||
+        toolName === 'context7' ||
+        toolName === 'filesystem' ||
+        toolName === 'openaiDeveloperDocs'));
+}
+function appendInternalCodexMcpArgs(args, enabledServerIds) {
+    for (const serverId of INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS) {
+        const enabled = serverId !== 'codex-foreman' && enabledServerIds.has(serverId);
+        args.push('-c', `mcp_servers.${serverId}.enabled=${enabled ? 'true' : 'false'}`);
+    }
+}
+function buildCodexArgs(executionRequest, run) {
+    const args = ['exec', '--json', '--skip-git-repo-check'];
+    appendInternalCodexMcpArgs(args, deriveRouteEnabledMcpServerIds(run));
     if (executionRequest.profile) {
         args.push('--profile', executionRequest.profile);
     }
@@ -164,9 +179,7 @@ function buildCodexArgs(executionRequest) {
 }
 function buildPlainCodexArgs(request) {
     const args = ['exec', '--skip-git-repo-check'];
-    for (const serverId of INTERNAL_CODEX_DISABLED_MCP_SERVER_IDS) {
-        args.push('-c', `mcp_servers.${serverId}.enabled=false`);
-    }
+    appendInternalCodexMcpArgs(args, new Set());
     if (request.profile) {
         args.push('--profile', request.profile);
     }
@@ -3834,7 +3847,7 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
     const initialMutationFingerprint = requiresWorkspaceMutationEvidence(taskCard)
         ? await captureWorkspaceMutationFingerprint(options.cwd)
         : null;
-    const codexArgs = buildCodexArgs(executionRequest);
+    const codexArgs = buildCodexArgs(executionRequest, run);
     const pendingRawEventsPath = node_path_1.default.join(runPaths.rawEventsDir, 'pending.jsonl');
     const rawStream = (0, node_fs_1.createWriteStream)(pendingRawEventsPath, { flags: 'a' });
     const child = (0, node_child_process_1.spawn)(options.codexPath, codexArgs, {

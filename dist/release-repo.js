@@ -323,6 +323,7 @@ These remain companion tools under configured specialist ownership, not public w
 - \`git\` read work such as status, diff, log, and release provenance routes to \`companion_reader\`
 - \`git\` mutation work such as add, commit, push, tag, and release asset publication routes to \`companion_operator\`
 - \`filesystem\`, \`context7\`, \`fetch\`, and \`openaiDeveloperDocs\` read/reference work routes to \`companion_reader\`
+- route-selected companion MCPs are explicitly enabled in the dispatched worker \`codex exec\` args while unselected internal MCPs remain disabled
 - direct host-side companion MCP calls should be surfaced as \`visible_degraded_host_fallback\`, not as silent Foreman-owned execution
 
 ## Packaged Harness Surface
