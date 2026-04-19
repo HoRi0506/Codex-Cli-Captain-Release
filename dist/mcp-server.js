@@ -30,6 +30,7 @@ const navigation_aids_1 = require("./navigation-aids");
 const package_metadata_1 = require("./package-metadata");
 const orchestration_loop_1 = require("./orchestration-loop");
 const run_lifecycle_1 = require("./run-lifecycle");
+const session_route_journal_1 = require("./session-route-journal");
 const workflow_variants_1 = require("./workflow-variants");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
@@ -2506,6 +2507,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         latestEntryRequest: run.latest_entry_trace?.request ?? null,
     });
     const sessionWorkstream = await loadSessionWorkstreamViewForRun(cwd, run);
+    const sessionRouteJournal = await (0, session_route_journal_1.loadSessionRouteJournalView)(cwd, serverIdentity.session_id);
     const specialistRoleRoster = createSpecialistRoleRosterView(foremanConfig);
     const operatorSummary = createOperatorSummary(currentTaskCard, {
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
@@ -2590,6 +2592,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         latest_response: sanitizeLatestSummaryRecord(run.latest_response),
         latest_entry_trace: sanitizeLatestEntryTraceRecord(run.latest_entry_trace),
         session_workstream: sessionWorkstream,
+        session_route_journal: sessionRouteJournal,
         hydration,
         always_on_mode: alwaysOnMode,
         always_on_operator_state: createAlwaysOnOperatorStateView(alwaysOnMode, visibility.orchestrator.next_step, visibility.orchestrator.can_advance),
@@ -2625,6 +2628,77 @@ function sanitizePlanningClarificationRequest(clarificationRequest) {
     return {
         ...clarificationRequest,
     };
+}
+async function recordSessionRouteJournalFromStatus(status, eventName, summary) {
+    const currentTaskCard = status.current_task_card;
+    const workflowVariantSelection = status.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
+    const workflowAgentRoute = status.workflow_operator_state?.workflow_agent_route ?? workflowVariantSelection?.workflow_agent_route ?? [];
+    const workflowVariant = status.workflow_operator_state?.workflow_variant ?? workflowVariantSelection?.workflow_variant ?? null;
+    const workflowSkillId = status.workflow_operator_state?.workflow_skill_id ?? workflowVariantSelection?.workflow_skill_id ?? null;
+    const model = currentTaskCard?.actual_model_launch?.actual_model ??
+        currentTaskCard?.execution_proof?.model ??
+        currentTaskCard?.resolved_request_settings?.model ??
+        null;
+    const variant = currentTaskCard?.actual_model_launch?.actual_variant ??
+        currentTaskCard?.execution_proof?.variant ??
+        currentTaskCard?.resolved_request_settings?.variant ??
+        null;
+    const view = await (0, session_route_journal_1.recordSessionRouteJournalEvent)({
+        cwd: status.cwd,
+        sessionId: status.server_identity.session_id,
+        eventName,
+        runId: status.run_id,
+        taskCardId: currentTaskCard?.task_card_id ?? null,
+        runLabel: status.run_label ?? null,
+        status: status.status,
+        stage: status.stage,
+        nextStep: status.next_step,
+        canAdvance: status.can_advance,
+        workflowVariant,
+        workflowSkillId,
+        route: workflowAgentRoute,
+        currentRouteStep: status.workflow_operator_state?.current_route_step ?? null,
+        nextRouteStep: status.workflow_operator_state?.next_route_step ?? null,
+        ownerRole: currentTaskCard?.owner_role ?? null,
+        ownerAgentId: currentTaskCard?.assigned_agent_id ?? null,
+        executionOwner: currentTaskCard?.execution_owner ?? null,
+        proofState: currentTaskCard?.execution_proof?.proof_state ?? currentTaskCard?.specialist_execution_truth?.proof_state ?? null,
+        model,
+        variant,
+        companionMcps: status.latest_entry_trace?.answer_trace.companion_tool_names ?? [],
+        summary,
+    });
+    status.session_route_journal = view;
+}
+async function recordSessionRouteJournalFromAutoEntry(input) {
+    if (input.result.run_id === null) {
+        return;
+    }
+    await (0, session_route_journal_1.recordSessionRouteJournalEvent)({
+        cwd: input.cwd,
+        sessionId: input.sessionContext.session_id,
+        eventName: 'auto_entry_decided',
+        runId: input.result.run_id,
+        taskCardId: input.result.task_card_id,
+        runLabel: input.result.run_label ?? null,
+        status: input.result.status,
+        stage: input.result.stage,
+        nextStep: input.result.next_step,
+        canAdvance: input.result.can_advance,
+        workflowVariant: input.result.answer_trace.workflow_variant_selection.workflow_variant,
+        workflowSkillId: input.result.answer_trace.workflow_variant_selection.workflow_skill_id,
+        route: input.result.answer_trace.workflow_variant_selection.workflow_agent_route,
+        currentRouteStep: input.result.answer_trace.selected_role,
+        nextRouteStep: null,
+        ownerRole: input.result.answer_trace.selected_role === 'captain' ? 'orchestrator' : null,
+        ownerAgentId: input.result.answer_trace.selected_role,
+        executionOwner: input.result.answer_trace.tool_execution_owner,
+        proofState: input.result.answer_trace.follow_proof,
+        model: input.result.answer_trace.tool_owner_model,
+        variant: input.result.answer_trace.tool_owner_variant,
+        companionMcps: input.result.answer_trace.companion_tool_names,
+        summary: input.result.summary,
+    });
 }
 async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
@@ -2995,6 +3069,7 @@ function createForemanActivityResult(input) {
         latest_orchestrator_synthesis: input.status.latest_orchestrator_synthesis,
         latest_response: input.status.latest_response,
         latest_entry_trace: input.status.latest_entry_trace,
+        session_route_journal: input.status.session_route_journal ?? null,
         hydration: input.status.hydration,
         always_on_mode: input.status.always_on_mode,
         always_on_operator_state: input.status.always_on_operator_state,
@@ -3689,6 +3764,7 @@ function createDefaultOperatorVisibilitySummary(currentTaskCard, _runLifecycle, 
         `Truth: ${describeCurrentTaskSpecialistExecutionTruth(currentTaskCard)}`,
         latestAnswer,
         createWorkflowOperatorDisplayLine(_workflowOperatorState),
+        createSessionRouteJournalDisplayLine(guidanceSource?.session_route_journal ?? null),
         `Loop: ${loopState ? `${loopState.current_stage} (${loopState.path_variant})` : 'none'}`,
         `State: ${runTruthSurface ? `${runTruthSurface.boundary_state} / next=${runTruthSurface.resume_action}` : 'none'}`,
         `Graph: ${graphSummary}`,
@@ -3738,6 +3814,25 @@ function createOrchestratorSynthesisOperatorVisibilitySummary(input) {
 }
 function createHydrationOperatorVisibilitySummary(hydration) {
     return `hydration=${hydration?.mode ?? 'none'}`;
+}
+function createSessionRouteJournalOperatorVisibilitySummary(input) {
+    const journal = input.session_route_journal;
+    if (!journal || journal.state === 'missing') {
+        return 'route_journal=missing route_journal_events=0';
+    }
+    return [
+        `route_journal=${journal.state}`,
+        `route_journal_events=${journal.event_count}`,
+        `route_journal_hot_bytes=${journal.hot_summary_bytes}`,
+        `route_journal_latest=${journal.latest_summary_path}`,
+        `route_journal_more=${String(journal.has_more_history)}`,
+    ].join(' ');
+}
+function createSessionRouteJournalDisplayLine(journal) {
+    if (!journal || journal.state === 'missing') {
+        return null;
+    }
+    return `Route Journal: events=${journal.event_count} hot=${journal.hot_summary_bytes}B latest=${journal.latest_summary_path}`;
 }
 function createLeaseOperatorVisibilitySummary(lease) {
     return `lease=${lease.state}`;
@@ -3902,6 +3997,7 @@ function createForemanDelegationsResult(status, counts, delegations) {
         orchestrator_scope: status.orchestrator_scope,
         orchestrator_scope_summary: status.orchestrator_scope_summary,
         latest_orchestrator_synthesis: status.latest_orchestrator_synthesis,
+        session_route_journal: status.session_route_journal ?? null,
         hydration: status.hydration,
         workflow_operator_state: status.workflow_operator_state,
         mcp_mutation_lease: status.mcp_mutation_lease,
@@ -4326,6 +4422,11 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
                     startedAt: sessionContext.started_at,
                 },
             });
+            await recordSessionRouteJournalFromAutoEntry({
+                cwd,
+                sessionContext,
+                result,
+            });
             return {
                 ...result,
                 mcp_elapsed_ms: Date.now() - startedAt,
@@ -4607,6 +4708,7 @@ async function startForemanMcpRun(input, sessionContext = DEFAULT_MCP_SESSION_CO
         prompt: input.prompt,
     });
     const status = await getForemanStatus({ run_id: result.runId, cwd }, sessionContext);
+    await recordSessionRouteJournalFromStatus(status, 'task_created', `Started run ${result.runId} through foreman_start.`);
     return createForemanStartResult(cwd, result, status);
 }
 async function runForemanMcpRun(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
@@ -4622,6 +4724,7 @@ async function runForemanMcpRun(input, sessionContext = DEFAULT_MCP_SESSION_CONT
         codexPath: input.codex_bin,
     });
     const status = await getForemanStatus({ run_id: result.runId, cwd }, sessionContext);
+    await recordSessionRouteJournalFromStatus(status, 'orchestration_updated', `Ran start+advance for run ${result.runId}.`);
     return createForemanRunResult(cwd, result, status);
 }
 async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
@@ -4659,6 +4762,11 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                     (loopResult.stopReason === 'await_verification' || loopResult.stopReason === 'await_repair_decision')
                     ? loopResult.stopReason
                     : null;
+                await recordSessionRouteJournalFromStatus(nextStatus, 'orchestration_updated', buildForemanOrchestrateDispatchedSummary({
+                    startingNextStep: currentStatus.next_step,
+                    commands: loopResult.attempt.steps.map((step) => step.command),
+                    stopReason: loopResult.stopReason,
+                }));
                 return createForemanOrchestrateResult(nextStatus, {
                     orchestration_status: 'dispatched',
                     dispatched_command: dispatchedStep.command,
@@ -4674,6 +4782,7 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
             if (!isResultStopReason(loopResult.stopReason)) {
                 throw new Error(`Unexpected orchestration loop stop reason ${loopResult.stopReason} for zero-step foreman_orchestrate execution.`);
             }
+            await recordSessionRouteJournalFromStatus(nextStatus, 'status_snapshot', `No automatic orchestration action is available when next_step=${currentStatus.next_step}.`);
             return createForemanOrchestrateResult(nextStatus, {
                 orchestration_status: 'stopped',
                 dispatched_command: null,
@@ -4686,6 +4795,7 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
         onTimeout: async (diagnosis) => {
             const latestStatus = await loadForemanStatusAfterTimeout(cwd, runId, currentStatus, sessionContext);
             const statusAdvanced = didForemanStatusAdvanceAfterTimeout(currentStatus, latestStatus);
+            await recordSessionRouteJournalFromStatus(latestStatus, 'orchestration_updated', `foreman_orchestrate timed out after ${diagnosis.budget_ms}ms; statusAdvanced=${String(statusAdvanced)}.`);
             return createForemanOrchestrateResult(latestStatus, {
                 orchestration_status: 'timeout_acknowledged',
                 dispatched_command: null,
@@ -4898,6 +5008,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                         `${createOrchestratorSynthesisOperatorVisibilitySummary(status)} ` +
                         `${createTaskGraphOperatorVisibilitySummary(status)} ` +
                         `${createHydrationOperatorVisibilitySummary(status.hydration)} ` +
+                        `${createSessionRouteJournalOperatorVisibilitySummary(status)} ` +
                         `${createLeaseOperatorVisibilitySummary(status.mcp_mutation_lease)} ` +
                         `${createServerIdentityOperatorVisibilitySummary(status)} ` +
                         `${createAlwaysOnOperatorVisibilitySummary(status.always_on_operator_state)}.`;
@@ -4931,6 +5042,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                         `${createOrchestratorSynthesisOperatorVisibilitySummary(result)} ` +
                         `${createTaskGraphOperatorVisibilitySummary(result)} ` +
                         `${createHydrationOperatorVisibilitySummary(result.hydration)} ` +
+                        `${createSessionRouteJournalOperatorVisibilitySummary(result)} ` +
                         `${createLeaseOperatorVisibilitySummary(result.mcp_mutation_lease)} ` +
                         `${createServerIdentityOperatorVisibilitySummary(result)} ` +
                         `${createAlwaysOnOperatorVisibilitySummary(result.always_on_operator_state)}.`;
