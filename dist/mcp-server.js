@@ -2330,6 +2330,28 @@ function deriveWorkflowRouteContractState(input) {
         nextRouteStepSkillId: 'none',
     };
 }
+function deriveWorkflowPendingLaunchReason(input) {
+    if (input.routeContractState !== 'declared_only' && input.routeContractState !== 'launching') {
+        return null;
+    }
+    if (!input.currentRouteStep || input.currentRouteStep === 'none' || input.currentRouteStep === 'captain') {
+        return null;
+    }
+    const skillSuffix = input.currentRouteStepSkillId && input.currentRouteStepSkillId !== 'none'
+        ? ` via ${input.currentRouteStepSkillId}`
+        : '';
+    return `${input.currentRouteStep} specialist launch is pending${skillSuffix}; continue bounded orchestration instead of treating the route as complete.`;
+}
+function deriveWorkflowWorkerExecutionMode(workflowVariantSelection) {
+    if (!workflowVariantSelection) {
+        return 'not_applicable';
+    }
+    const contract = (0, workflow_variants_1.getWorkflowRouteContract)(workflowVariantSelection);
+    if (contract?.execution_mode === 'parallel') {
+        return 'bounded_parallel_fanout';
+    }
+    return 'sequential_ephemeral';
+}
 async function createWorkflowOperatorStateView(input) {
     const runPaths = (0, runtime_1.createRunPaths)(input.cwd, input.run.run_id);
     const plannerAttemptId = input.taskCard?.planner_attempt_id ?? input.run.planning_clarification_request?.planner_attempt_id ?? null;
@@ -2356,6 +2378,15 @@ async function createWorkflowOperatorStateView(input) {
         currentTaskCard: input.currentTaskCard,
         status: input.run.status,
     });
+    const pendingLaunchReason = deriveWorkflowPendingLaunchReason({
+        routeContractState: routeContract.routeContractState,
+        currentRouteStep: routeContract.currentRouteStep,
+        currentRouteStepSkillId: routeContract.currentRouteStepSkillId,
+    });
+    const requiresAdditionalOrchestrate = pendingLaunchReason !== null &&
+        (recommendedOperatorAction === 'advance' || recommendedOperatorAction === 'none') &&
+        input.run.status === 'active';
+    const workerExecutionMode = deriveWorkflowWorkerExecutionMode(workflowVariantSelection);
     const workflowProgress = deriveWorkflowProgress({
         taskCard: input.taskCard,
         currentTaskCard: input.currentTaskCard,
@@ -2382,6 +2413,9 @@ async function createWorkflowOperatorStateView(input) {
             `next_route_step=${routeContract.nextRouteStep} ` +
             `current_route_step_skill=${routeContract.currentRouteStepSkillId} ` +
             `next_route_step_skill=${routeContract.nextRouteStepSkillId} ` +
+            `pending_launch=${pendingLaunchReason === null ? 'none' : 'yes'} ` +
+            `requires_additional_orchestrate=${requiresAdditionalOrchestrate ? 'yes' : 'no'} ` +
+            `worker_execution=${workerExecutionMode} ` +
             `session_continuity=${requesterSessionContinuity} ` +
             `worker_alignment=${workerSessionAlignment} ` +
             `plan_update=${latestPlanUpdate.artifact === null ? 'missing' : 'recorded'} ` +
@@ -2400,6 +2434,9 @@ async function createWorkflowOperatorStateView(input) {
         route_contract_state: routeContract.routeContractState,
         current_route_step: routeContract.currentRouteStep,
         next_route_step: routeContract.nextRouteStep,
+        pending_launch_reason: pendingLaunchReason,
+        requires_additional_orchestrate: requiresAdditionalOrchestrate,
+        worker_execution_mode: workerExecutionMode,
         requester_session_continuity: requesterSessionContinuity,
         worker_session_alignment: workerSessionAlignment,
     };
@@ -2863,6 +2900,14 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         workflow_skill_id: 'none',
         workflow_agent_route: [],
         workflow_progress: 'captain_synthesis',
+        route_contract_state: 'not_applicable',
+        current_route_step: 'none',
+        next_route_step: 'none',
+        current_route_step_skill_id: 'none',
+        next_route_step_skill_id: 'none',
+        pending_launch_reason: null,
+        requires_additional_orchestrate: false,
+        worker_execution_mode: 'not_applicable',
         requester_session_continuity: 'workspace_unbound',
         worker_session_alignment: 'not_applicable',
     };
@@ -3853,7 +3898,7 @@ function createTaskGraphOperatorVisibilitySummary(input) {
 }
 function createWorkflowOperatorVisibilitySummary(input) {
     if (!input.workflow_operator_state) {
-        return 'workflow_phase=none workflow_next=none workflow_path=none workflow_progress=captain_synthesis workflow_route_contract=not_applicable workflow_current_step=none workflow_next_step=none workflow_session=workspace_unbound workflow_alignment=not_applicable explore_evidence=none plan_update=missing';
+        return 'workflow_phase=none workflow_next=none workflow_path=none workflow_progress=captain_synthesis workflow_route_contract=not_applicable workflow_current_step=none workflow_next_step=none workflow_pending_launch=none workflow_requires_orchestrate=no workflow_worker_execution=not_applicable workflow_session=workspace_unbound workflow_alignment=not_applicable explore_evidence=none plan_update=missing';
     }
     return [
         `workflow_phase=${input.workflow_operator_state.phase}`,
@@ -3865,6 +3910,9 @@ function createWorkflowOperatorVisibilitySummary(input) {
         `workflow_next_step=${input.workflow_operator_state.next_route_step ?? 'none'}`,
         `workflow_current_step_skill=${input.workflow_operator_state.current_route_step_skill_id ?? 'none'}`,
         `workflow_next_step_skill=${input.workflow_operator_state.next_route_step_skill_id ?? 'none'}`,
+        `workflow_pending_launch=${input.workflow_operator_state.pending_launch_reason === null ? 'none' : 'yes'}`,
+        `workflow_requires_orchestrate=${input.workflow_operator_state.requires_additional_orchestrate ? 'yes' : 'no'}`,
+        `workflow_worker_execution=${input.workflow_operator_state.worker_execution_mode}`,
         `workflow_session=${input.workflow_operator_state.requester_session_continuity}`,
         `workflow_alignment=${input.workflow_operator_state.worker_session_alignment}`,
         `explore_evidence=${input.workflow_operator_state.explore_evidence_state}`,

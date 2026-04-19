@@ -117,13 +117,16 @@ Reach for Codex-Foreman when:
 
 These remain companion tools under configured specialist ownership, not public worker routes.
 
-`v1.5.38` makes that ownership split explicit:
+`v1.5.39` keeps that ownership split explicit and adds the `$cap` route-selection contract:
 
 - `git` read work such as status, diff, log, and release provenance routes to `companion_reader`
 - `git` mutation work such as add, commit, push, tag, and release asset publication routes to `companion_operator`
 - `filesystem`, `context7`, `fetch`, and `openaiDeveloperDocs` read/reference work routes to `companion_reader`
 - route-selected companion MCPs are explicitly enabled in the dispatched worker `codex exec` args while unselected internal MCPs remain disabled
 - direct host-side companion MCP calls should be surfaced as `visible_degraded_host_fallback`, not as silent Foreman-owned execution
+- `$cap` captain must select the hidden Foreman route before specialist work begins and must keep route completion tied to worker launch, role/model match, mutation or evidence proof, and review/fan-in truth
+- Foreman worker chains are treated as bounded sequential `codex exec` steps by default, with bounded parallelism reserved for explicit fan-out routes
+- run lifecycle status exposes local retention policy so structured `.foreman` state stays canonical while markdown remains an operator summary
 
 ## Packaged Harness Surface
 
@@ -144,7 +147,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.38/codex-foreman-1.5.38.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.39/codex-foreman-1.5.39.tgz
 codex-foreman setup
 codex-foreman check-install
 

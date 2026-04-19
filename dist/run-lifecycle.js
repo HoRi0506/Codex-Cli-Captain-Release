@@ -35,6 +35,36 @@ function isManualHoldRun(run) {
         run.latest_orchestrator_synthesis?.boundary === 'manual_hold' ||
         run.status === 'blocked');
 }
+function deriveRetentionPolicy(cleanupAction) {
+    if (cleanupAction === 'prune_candidate') {
+        return {
+            tier: 'prunable_after_checkpoint',
+            canonical_state: 'structured_local_state',
+            markdown_role: 'operator_summary_only',
+            raw_artifact_action: 'prune_after_structured_checkpoint',
+            cleanup_guard: 'Prune only after compact summary, route/proof/failure index, and changed-files evidence have been preserved.',
+            summary: 'This run is outside the bounded retention window; raw artifacts may be pruned only after structured checkpoint proof remains local.',
+        };
+    }
+    if (cleanupAction === 'archive_candidate') {
+        return {
+            tier: 'warm_archive_candidate',
+            canonical_state: 'structured_local_state',
+            markdown_role: 'operator_summary_only',
+            raw_artifact_action: 'compress_after_compact_summary',
+            cleanup_guard: 'Archive only after active/resumable state is closed and compact summary plus proof indexes are available.',
+            summary: 'This run can move out of the hot working set after compact summary and structured proof indexes are retained.',
+        };
+    }
+    return {
+        tier: 'hot',
+        canonical_state: 'structured_local_state',
+        markdown_role: 'operator_summary_only',
+        raw_artifact_action: 'retain',
+        cleanup_guard: 'Retain active, blocked, manual-hold, or recently updated runs in the hot local working set.',
+        summary: 'This run remains hot local state; markdown is only an operator summary and structured artifacts stay canonical.',
+    };
+}
 function deriveRunLifecycleView(run, activeWorkspaceRuns, nowMs = Date.now()) {
     const ageMs = parseAgeMs(run.updated_at, nowMs);
     const freshness = classifyRunFreshness(run.updated_at, nowMs);
@@ -100,6 +130,7 @@ function deriveRunLifecycleView(run, activeWorkspaceRuns, nowMs = Date.now()) {
         newer_active_run_count: newerActiveRuns.length,
         newer_fresh_active_run_count: newerFreshActiveRuns.length,
         cleanup_action: cleanupAction,
+        retention_policy: deriveRetentionPolicy(cleanupAction),
         resume_recommended: resumeRecommended,
         decision_reason: decisionReason,
         recovery_hint: recoveryHint,
