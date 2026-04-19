@@ -100,6 +100,7 @@ function createTimeoutExecutionContinuity(status) {
         persisted_stage: status.stage,
         next_step: status.next_step,
         safe_to_wait: safeToWait,
+        recommended_next_poll_ms: safeToWait ? status.recommended_next_poll_ms : null,
         summary,
     };
 }
@@ -2042,6 +2043,44 @@ function createWorkerVisibility(input) {
             `${returnedWorkerCount} returned, ${staleWorkerCount} stale, and ${timedOutWorkerCount} timed out.`,
     };
 }
+function createRecommendedNextPollMs(input) {
+    const workerVisibility = input.worker_visibility;
+    const hasActiveWorkerSignal = (workerVisibility?.active_worker_count ?? 0) > 0 ||
+        (workerVisibility?.queued_worker_count ?? 0) > 0 ||
+        (workerVisibility?.launching_worker_count ?? 0) > 0 ||
+        (workerVisibility?.running_worker_count ?? 0) > 0;
+    const hasPendingLaunch = input.workflow_operator_state?.pending_launch_reason != null;
+    if (hasActiveWorkerSignal || hasPendingLaunch || input.next_step === 'await_fan_in') {
+        return input.foremanConfig.runtime.worker_poll_interval_ms;
+    }
+    return null;
+}
+function createCompactCurrentTaskCardView(taskCard) {
+    if (!isRecord(taskCard)) {
+        return taskCard;
+    }
+    const compactTaskCard = { ...taskCard };
+    for (const key of [
+        'owner_role_playbook',
+        'assigned_role_playbook',
+        'assignment_framing',
+        'ownership_guard',
+        'ownership_chain',
+    ]) {
+        delete compactTaskCard[key];
+    }
+    return compactTaskCard;
+}
+function createCompactStatusLikeStructuredContent(result, verbosity) {
+    if (verbosity === 'debug' || !isRecord(result)) {
+        return result;
+    }
+    const compactResult = { ...result };
+    if (isRecord(compactResult.current_task_card)) {
+        compactResult.current_task_card = createCompactCurrentTaskCardView(compactResult.current_task_card);
+    }
+    return compactResult;
+}
 function createVisibleWorkerRequest(workerRequest) {
     if (workerRequest === null) {
         return null;
@@ -2545,6 +2584,13 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
     const workerLabel = run.stage === 'verification' && taskCard.owner_role === 'verifier' && taskCard.verification_state === 'pending'
         ? 'reviewer'
         : 'delegated worker';
+    const workerVisibility = createWorkerVisibility({
+        task_delegations: currentStageDelegations,
+        task_card: currentTaskCard,
+        max_active_workers: maxActiveWorkers,
+        worker_label: workerLabel,
+        foremanConfig,
+    });
     const continuity = (0, runtime_1.createContinuityProjection)({
         run,
         taskCard,
@@ -2588,6 +2634,12 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
             currentTaskCard.assigned_role_playbook?.contract_validation_state === 'unavailable',
     });
     const allowedNextCommands = (0, orchestrator_1.getAllowedExplicitCommandsForDecision)(visibility.orchestrator);
+    const recommendedNextPollMs = createRecommendedNextPollMs({
+        worker_visibility: workerVisibility,
+        next_step: visibility.orchestrator.next_step,
+        workflow_operator_state: workflowOperatorState,
+        foremanConfig,
+    });
     const runTruthSurface = createRunTruthSurfaceView({
         run,
         runLifecycle,
@@ -2628,13 +2680,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         active_thread_id: visibility.active_thread_id,
         child_agents: visibility.child_agents,
         specialist_executors: visibility.specialist_executors,
-        worker_visibility: createWorkerVisibility({
-            task_delegations: currentStageDelegations,
-            task_card: currentTaskCard,
-            max_active_workers: maxActiveWorkers,
-            worker_label: workerLabel,
-            foremanConfig,
-        }),
+        worker_visibility: workerVisibility,
         server_identity: serverIdentity,
         task_graph_summary: taskGraphSummary,
         current_task_card: currentTaskCard,
@@ -2663,6 +2709,7 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         continuity,
         planning_clarification_request: planningClarificationRequest,
         next_step: visibility.orchestrator.next_step,
+        recommended_next_poll_ms: recommendedNextPollMs,
         can_advance: visibility.orchestrator.can_advance,
         decision_summary: visibility.orchestrator.summary,
         mutation_guardrails_summary: mutationGuardrailsMetadata.mutation_guardrails_summary,
@@ -2852,6 +2899,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         continuity,
         planning_clarification_request: planningClarificationRequest,
         next_step: 'await_clarification',
+        recommended_next_poll_ms: null,
         can_advance: false,
         decision_summary: null,
         mutation_guardrails_summary: null,
@@ -2997,6 +3045,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         continuity: createPlanningTerminalContinuityProjection(run),
         planning_clarification_request: null,
         next_step: nextStep,
+        recommended_next_poll_ms: null,
         can_advance: false,
         decision_summary: sanitizeLatestSummaryRecord(run.latest_failure)?.summary ?? null,
         mutation_guardrails_summary: null,
@@ -3148,6 +3197,7 @@ function createForemanActivityResult(input) {
         continuity: input.status.continuity,
         planning_clarification_request: input.status.planning_clarification_request,
         next_step: input.status.next_step,
+        recommended_next_poll_ms: input.status.recommended_next_poll_ms,
         can_advance: input.status.can_advance,
         decision_summary: input.status.decision_summary,
         mutation_guardrails_summary: input.status.mutation_guardrails_summary,
@@ -4008,6 +4058,7 @@ function createForemanStartResult(cwd, result, status) {
         latest_orchestrator_synthesis: status.latest_orchestrator_synthesis,
         workflow_operator_state: status.workflow_operator_state,
         next_step: result.nextStep,
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         can_advance: result.canAdvance,
         allowed_next_commands: (0, orchestrator_1.getAllowedExplicitCommandsForDecision)({
             next_step: result.nextStep,
@@ -4039,6 +4090,7 @@ function createForemanRunResult(cwd, result, status) {
         workflow_operator_state: status.workflow_operator_state,
         thread_id: result.threadId,
         next_step: result.nextStep,
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         can_advance: result.canAdvance,
         advanced: result.advanced,
         routing_summary: result.routingSummary,
@@ -4077,6 +4129,7 @@ function createForemanDelegationsResult(status, counts, delegations) {
         mcp_mutation_lease: status.mcp_mutation_lease,
         planning_clarification_request: status.planning_clarification_request,
         next_step: status.next_step,
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         can_advance: status.can_advance,
         allowed_next_commands: status.allowed_next_commands,
         delegation_counts: counts,
@@ -4160,6 +4213,7 @@ function createForemanOrchestrateResult(status, detail) {
         workflow_operator_state: status.workflow_operator_state,
         mcp_mutation_lease: status.mcp_mutation_lease,
         next_step: status.next_step,
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         can_advance: status.can_advance,
         allowed_next_commands: status.allowed_next_commands,
         decision_summary: status.decision_summary,
@@ -4937,6 +4991,7 @@ async function tickForemanAlwaysOnCompanion(input, sessionContext = DEFAULT_MCP_
         orchestration_status: result.companionExecution.continued ? 'dispatched' : 'stopped',
         steps_executed: result.companionExecution.stepsExecuted,
         stop_reason: result.companionExecution.stopReason,
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         request_settings: result.companionExecution.requestSettings,
         orchestration_summary: result.companionExecution.summary,
     };
@@ -4995,6 +5050,7 @@ async function runForemanAlwaysOnLoop(input, sessionContext = DEFAULT_MCP_SESSIO
         orchestration_status: result.companionLoop.tickCount > 0 ? 'dispatched' : 'stopped',
         steps_executed: finalTick?.stepsExecuted ?? 0,
         stop_reason: finalTick?.stopReason ?? 'await_operator',
+        recommended_next_poll_ms: status.recommended_next_poll_ms,
         request_settings: finalTick?.requestSettings ?? {
             execution_request: {
                 profile: null,
@@ -5102,7 +5158,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     : appendClarificationText(`Run ${status.run_id} is blocked at stage planning with next_step=await_clarification. No active task runtime exists yet.`),
                             },
                         ],
-                        structuredContent: status,
+                        structuredContent: createCompactStatusLikeStructuredContent(status, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_ACTIVITY_TOOL.name) {
@@ -5141,7 +5197,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                 text: activityText,
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_RECOMMEND_ENTRY_TOOL.name) {
@@ -5213,7 +5269,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.run_truth_surface, result.workflow_operator_state, result.task_graph_summary, result),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_RUN_TOOL.name) {
@@ -5238,7 +5294,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.run_truth_surface, result.workflow_operator_state, result.task_graph_summary, result),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_DELEGATIONS_TOOL.name) {
@@ -5275,7 +5331,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                     : appendClarificationText(`Run ${result.run_id} is blocked awaiting planner clarification, so no task-scoped delegation artifacts exist yet.`),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_DELEGATE_TOOL.name) {
@@ -5320,7 +5376,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         : createDefaultOperatorVisibilitySummary(result.current_task_card, null, result.next_step, result.loop_state, result.run_truth_surface, result.workflow_operator_state, result.task_graph_summary, result) + (result.timeout_diagnosis ? `\nTimeout diagnosis: ${result.timeout_diagnosis.summary}` : ''),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_ALWAYS_ON_TICK_TOOL.name) {
@@ -5345,7 +5401,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         ].join('\n'),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 if (toolName === FOREMAN_ALWAYS_ON_LOOP_TOOL.name) {
@@ -5370,7 +5426,7 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                         ].join('\n'),
                             },
                         ],
-                        structuredContent: result,
+                        structuredContent: createCompactStatusLikeStructuredContent(result, verbosity),
                     });
                 }
                 return createErrorResponse(value.id, -32601, `Unknown tool: ${toolName}.`);

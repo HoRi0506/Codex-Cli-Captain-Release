@@ -44,6 +44,8 @@ const DOC_FIX_HINTS = [
     '보완',
     '갭',
     '격차',
+    '맞춰',
+    '작업',
 ];
 function includesAnyKeyword(normalizedRequest, keywords) {
     return keywords.some((keyword) => normalizedRequest.includes(keyword));

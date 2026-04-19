@@ -15,6 +15,7 @@ exports.resolveForemanRunRef = resolveForemanRunRef;
 exports.createEmptyRoleDefaults = createEmptyRoleDefaults;
 exports.createDefaultForemanEntryPolicy = createDefaultForemanEntryPolicy;
 exports.createDefaultForemanOutputConfig = createDefaultForemanOutputConfig;
+exports.createDefaultForemanRuntimeConfig = createDefaultForemanRuntimeConfig;
 exports.createDefaultForemanConfig = createDefaultForemanConfig;
 exports.createRequestSettingsFromForemanAgentConfig = createRequestSettingsFromForemanAgentConfig;
 exports.getDefaultForemanAgentConfigForRole = getDefaultForemanAgentConfigForRole;
@@ -823,11 +824,17 @@ function createDefaultForemanOutputConfig() {
         verbosity: 'default',
     };
 }
+function createDefaultForemanRuntimeConfig() {
+    return {
+        worker_poll_interval_ms: 90_000,
+    };
+}
 function createDefaultForemanConfig() {
     return {
         version: 1,
         entry_policy: createDefaultForemanEntryPolicy(),
         output: createDefaultForemanOutputConfig(),
+        runtime: createDefaultForemanRuntimeConfig(),
         tool_routing: (0, tool_routing_1.createDefaultForemanToolRoutingConfig)(),
         agents: {
             orchestrator: createDefaultForemanAgentConfig('orchestrator'),
@@ -1069,10 +1076,19 @@ function normalizeForemanConfigCandidate(candidate) {
             candidate.output.verbosity === 'debug')
         ? candidate.output
         : createDefaultForemanOutputConfig();
+    const runtime = isRecord(candidate.runtime) &&
+        typeof candidate.runtime.worker_poll_interval_ms === 'number' &&
+        Number.isFinite(candidate.runtime.worker_poll_interval_ms) &&
+        candidate.runtime.worker_poll_interval_ms > 0
+        ? {
+            worker_poll_interval_ms: Math.trunc(candidate.runtime.worker_poll_interval_ms),
+        }
+        : createDefaultForemanRuntimeConfig();
     return {
         ...candidate,
         entry_policy: isRecord(candidate.entry_policy) ? candidate.entry_policy : createDefaultForemanEntryPolicy(),
         output,
+        runtime,
         tool_routing: (0, tool_routing_1.normalizeForemanToolRoutingConfig)(candidate.tool_routing),
         agents: candidateAgents
             ? {

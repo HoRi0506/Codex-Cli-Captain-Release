@@ -21,6 +21,15 @@ function fallbackResolveForemanConfigFilePath() {
 function fallbackCreateDefaultForemanConfig() {
   return {
     version: 1,
+    entry_policy: {
+      mode: 'codex_cli_foreman_first',
+    },
+    output: {
+      verbosity: 'default',
+    },
+    runtime: {
+      worker_poll_interval_ms: 90000,
+    },
     agents: {
       orchestrator: {
         name: 'captain',
