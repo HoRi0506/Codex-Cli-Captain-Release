@@ -4981,11 +4981,15 @@ function deriveAutoEntrySelectedRole(input) {
     }
 }
 function deriveAutoEntryBudgetClass(input) {
+    const workflowRoute = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection);
+    const routeHasExecutionIntent = workflowRoute?.workflow_agent_route.includes('raider') ?? false;
     switch (input.selectedRole) {
         case 'captain':
             return 'low_cost_read_only';
         case 'scout':
-            return 'low_cost_investigation';
+            return routeHasExecutionIntent && input.recommendation.mutation_intent === 'explicit_or_strong'
+                ? 'implementation_budget'
+                : 'low_cost_investigation';
         case 'tactician':
             return 'planning_budget';
         case 'arbiter':
@@ -4997,8 +5001,13 @@ function deriveAutoEntryBudgetClass(input) {
                 : 'low_cost_investigation';
     }
 }
-function deriveAutoEntryReviewRequirement(selectedRole) {
-    switch (selectedRole) {
+function deriveAutoEntryReviewRequirement(input) {
+    const workflowRoute = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection);
+    const routeHasReviewIntent = workflowRoute?.workflow_agent_route.includes('arbiter') ?? false;
+    if (routeHasReviewIntent) {
+        return 'required';
+    }
+    switch (input.selectedRole) {
         case 'raider':
         case 'arbiter':
             return 'required';
@@ -5078,7 +5087,10 @@ function createAutoEntryAnswerTrace(input) {
         recommendation: input.recommendation,
         executionPath,
     });
-    const reviewRequirement = deriveAutoEntryReviewRequirement(selectedRole);
+    const reviewRequirement = deriveAutoEntryReviewRequirement({
+        selectedRole,
+        recommendation: input.recommendation,
+    });
     let whySelected = 'captain kept the request on the local synthesis path.';
     let whyNotLocal = 'captain local path already won for this bounded request.';
     if (executionPath === 'run_reused' && input.selectedRun) {

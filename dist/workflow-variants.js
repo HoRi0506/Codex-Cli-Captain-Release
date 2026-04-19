@@ -26,6 +26,24 @@ const DRIFT_HINTS = [
 ];
 const DIAGNOSIS_HINTS = ['why', 'cause', 'root cause', 'failure', 'error', 'bug', 'issue', 'problem', '왜', '원인', '오류', '문제'];
 const PARALLEL_HINTS = ['across', 'parallel', 'fan-out', 'fan out', '병렬', '여러', '다수'];
+const DOC_FIX_HINTS = [
+    'fix',
+    'repair',
+    'resolve',
+    'patch',
+    'regression',
+    'gap',
+    'contract gap',
+    'route gap',
+    'route contract',
+    'harden',
+    'correct',
+    '수정',
+    '해결',
+    '보완',
+    '갭',
+    '격차',
+];
 function includesAnyKeyword(normalizedRequest, keywords) {
     return keywords.some((keyword) => normalizedRequest.includes(keyword));
 }
@@ -154,6 +172,8 @@ function deriveWorkflowVariantSelection(input) {
     const hasDriftHints = includesAnyKeyword(normalizedRequest, DRIFT_HINTS);
     const hasDiagnosisHints = includesAnyKeyword(normalizedRequest, DIAGNOSIS_HINTS);
     const hasParallelHints = includesAnyKeyword(normalizedRequest, PARALLEL_HINTS) || filePathMentions.length >= 4;
+    const docShapedMutation = isDocShapedMutation(input.recommendation.request_shape, normalizedRequest);
+    const hasDocFixHints = includesAnyKeyword(normalizedRequest, DOC_FIX_HINTS);
     if (hasDriftHints) {
         return createSelection({
             workflowVariant: 'ownership_drift_check',
@@ -183,12 +203,12 @@ function deriveWorkflowVariantSelection(input) {
         });
     }
     if (input.recommendation.mutation_intent === 'explicit_or_strong') {
-        if (isDocShapedMutation(input.recommendation.request_shape, normalizedRequest) && hasDiagnosisHints) {
+        if (docShapedMutation && (hasDiagnosisHints || hasDocFixHints)) {
             return createSelection({
-                workflowVariant: 'investigate_then_document',
-                workflowSkillId: 'captain_investigate_then_document',
-                workflowAgentRoute: ['captain', 'scout', 'raider', 'captain'],
-                workflowSummary: 'Captain should use the hidden investigate-then-document route so bounded evidence arrives before the document-authoring specialist pass.',
+                workflowVariant: 'diagnose_then_fix',
+                workflowSkillId: 'captain_diagnose_then_fix',
+                workflowAgentRoute: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
+                workflowSummary: 'Captain should use the hidden diagnose-then-fix route so bounded evidence, implementation, and review intent remain preserved for this document-and-fix request.',
             });
         }
         if (hasDiagnosisHints) {
@@ -199,7 +219,7 @@ function deriveWorkflowVariantSelection(input) {
                 workflowSummary: 'Captain should use the hidden diagnose-then-fix route so scout gathers bounded evidence before raider mutates and arbiter reviews.',
             });
         }
-        if (isDocShapedMutation(input.recommendation.request_shape, normalizedRequest)) {
+        if (docShapedMutation) {
             return createSelection({
                 workflowVariant: 'investigate_then_document',
                 workflowSkillId: 'captain_investigate_then_document',
