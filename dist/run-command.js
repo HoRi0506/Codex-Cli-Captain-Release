@@ -484,6 +484,26 @@ async function enforceWorkspaceMutationEvidence(input) {
         summary: `Codex reported completion for "${input.taskCard.title}", but Foreman could not observe any workspace mutation outside .foreman for this mutation-required task.`,
     };
 }
+async function recoverFileChangeOnlyCompletion(input) {
+    if (input.initialFingerprint === null || !requiresWorkspaceMutationEvidence(input.taskCard)) {
+        return input.outcome;
+    }
+    const finalFingerprint = await captureWorkspaceMutationFingerprint(input.cwd);
+    if (finalFingerprint === null || finalFingerprint === input.initialFingerprint) {
+        return input.outcome;
+    }
+    const changedPaths = extractChangedPathsFromMutationFingerprints(input.initialFingerprint, finalFingerprint);
+    if (changedPaths.length === 0) {
+        return input.outcome;
+    }
+    return {
+        kind: 'completed',
+        threadId: input.outcome.threadId,
+        rawEventsFile: input.outcome.rawEventsFile,
+        changedPaths,
+        summary: `${input.outcome.summary} Foreman observed workspace changes after Codex exit, so this is recorded as file-change-only completion and routed to verification instead of terminal failure.`,
+    };
+}
 function resolveRequestSettings(options, roleDefaults) {
     return {
         profile: hasExplicitOption(options, 'profile') ? options.profile ?? null : roleDefaults.profile,
@@ -840,6 +860,10 @@ function createWorkflowRouteStepPrompt(input) {
         case 'scout':
             return `Inspect only the bounded evidence needed for this request before the next route step: ${compactRequest}`;
         case 'raider':
+            if ((0, request_shape_1.looksLikeConditionalMutationRequest)(input.request)) {
+                return ('Implement only if the prior route evidence shows a concrete mismatch or required repair. ' +
+                    `If no mismatch is proven, do not mutate files and return a bounded no-op result contract: ${compactRequest}`);
+            }
             return input.nextStep === 'captain'
                 ? compactRequest
                 : `Implement only the bounded result needed for this request and leave it ready for the next route step: ${compactRequest}`;
@@ -888,6 +912,112 @@ function createWorkflowRouteTaskMetadata(contract, step) {
         workflowNextStepSkillId,
     };
 }
+function isConditionalDiagnoseThenFixRoute(input) {
+    return input.contract.workflow_skill_id === 'captain_diagnose_then_fix' && (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
+}
+function createConditionalWorkflowStepMetadata(input) {
+    return {
+        workflowSkillId: input.contract.workflow_skill_id,
+        workflowStepIndex: input.stepIndex,
+        workflowStepSkillId: input.stepSkillId,
+        workflowNextStepSkillId: input.nextStepSkillId,
+    };
+}
+function createConditionalDiagnoseThenFixTaskCards(input) {
+    const scoutTaskId = (0, node_crypto_1.randomUUID)();
+    const compareGateTaskId = (0, node_crypto_1.randomUUID)();
+    const raiderTaskId = (0, node_crypto_1.randomUUID)();
+    const finalReviewTaskId = (0, node_crypto_1.randomUUID)();
+    const scoutSkillId = `${input.contract.workflow_skill_id}__scout`;
+    const compareGateSkillId = `${input.contract.workflow_skill_id}__compare_gate`;
+    const raiderSkillId = `${input.contract.workflow_skill_id}__raider`;
+    const arbiterSkillId = `${input.contract.workflow_skill_id}__arbiter`;
+    const scoutTask = (0, runtime_1.createInitialTaskCardRecord)({
+        taskCardId: scoutTaskId,
+        runId: input.runId,
+        title: createWorkflowRouteStepTitle('scout', input.title),
+        intent: createWorkflowRouteStepIntent('scout', input.title),
+        scope: createWorkflowRouteStepScope('scout', input.request),
+        acceptance: 'Return only the bounded evidence needed to decide whether mutation is required; do not mutate files.',
+        executionPrompt: createWorkflowRouteStepPrompt({
+            step: 'scout',
+            request: input.request,
+            nextStep: 'arbiter',
+        }),
+        taskKind: 'explore',
+        ownerRole: 'orchestrator',
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('explorer', input.foremanConfig),
+        ...createConditionalWorkflowStepMetadata({
+            contract: input.contract,
+            stepIndex: 1,
+            stepSkillId: scoutSkillId,
+            nextStepSkillId: compareGateSkillId,
+        }),
+    });
+    const compareGateTask = (0, runtime_1.createQueuedTaskCardRecord)({
+        taskCardId: compareGateTaskId,
+        runId: input.runId,
+        title: `Compare evidence before conditional mutation for ${input.title}`,
+        intent: `Decide whether the conditional mutation request for "${input.title}" requires a raider step.`,
+        scope: `Review the scout evidence against the original conditional request without mutating files: ${input.request}`,
+        acceptance: 'Return passed when no mutation is needed, needs_work when a concrete mismatch requires raider repair, or blocked when evidence is insufficient.',
+        executionPrompt: `Compare the scout evidence with the request and decide the conditional gate. ` +
+            `Return passed if no mutation is needed; return needs_work only when a concrete mismatch requires raider repair; return blocked if evidence is insufficient: ${compactAutoEntryPrompt(input.request)}`,
+        taskKind: 'review',
+        acceptanceChecks: [input.acceptance],
+        reviewOfTaskCardIds: [scoutTaskId],
+        dependsOnTaskCardIds: [scoutTaskId],
+        nodeKind: 'execution',
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+        ...createConditionalWorkflowStepMetadata({
+            contract: input.contract,
+            stepIndex: 2,
+            stepSkillId: compareGateSkillId,
+            nextStepSkillId: raiderSkillId,
+        }),
+    });
+    const raiderTask = (0, runtime_1.createQueuedTaskCardRecord)({
+        taskCardId: raiderTaskId,
+        runId: input.runId,
+        title: createWorkflowRouteStepTitle('raider', input.title),
+        intent: createWorkflowRouteStepIntent('raider', input.title),
+        scope: createWorkflowRouteStepScope('raider', input.request),
+        acceptance: createWorkflowRouteStepAcceptance({
+            step: 'raider',
+            nextStep: 'arbiter',
+            originalAcceptance: input.acceptance,
+        }),
+        executionPrompt: createWorkflowRouteStepPrompt({
+            step: 'raider',
+            request: input.request,
+            nextStep: 'arbiter',
+        }),
+        taskKind: 'execution',
+        dependsOnTaskCardIds: [compareGateTaskId],
+        nodeKind: 'execution',
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+        ...createConditionalWorkflowStepMetadata({
+            contract: input.contract,
+            stepIndex: 3,
+            stepSkillId: raiderSkillId,
+            nextStepSkillId: arbiterSkillId,
+        }),
+    });
+    const finalReviewTask = createQueuedWorkflowReviewTask({
+        runId: input.runId,
+        taskCardId: finalReviewTaskId,
+        title: input.title,
+        request: input.request,
+        acceptance: input.acceptance,
+        dependsOnTaskCardId: raiderTaskId,
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
+        workflowSkillId: input.contract.workflow_skill_id,
+        workflowStepIndex: 4,
+        workflowStepSkillId: arbiterSkillId,
+        workflowNextStepSkillId: null,
+    });
+    return [scoutTask, compareGateTask, raiderTask, finalReviewTask];
+}
 function createWorkflowRouteStartTaskCards(input) {
     const contract = (0, workflow_variants_1.getWorkflowRouteContract)(input.workflowVariantSelection);
     if (!contract) {
@@ -896,6 +1026,16 @@ function createWorkflowRouteStartTaskCards(input) {
     const specialistSteps = contract.workflow_agent_route.filter((step) => step !== 'captain');
     if (specialistSteps.length === 0) {
         return null;
+    }
+    if (isConditionalDiagnoseThenFixRoute({ contract, request: input.request })) {
+        return createConditionalDiagnoseThenFixTaskCards({
+            runId: input.runId,
+            title: input.title,
+            request: input.request,
+            acceptance: input.acceptance,
+            contract,
+            foremanConfig: input.foremanConfig,
+        });
     }
     if (contract.execution_mode === 'parallel') {
         const firstStep = specialistSteps[0];
@@ -3058,6 +3198,53 @@ function completeWorkflowRouteAtCaptain(run, taskCard, handoff, summary) {
     run.updated_at = handoff.created_at;
     run.completed_at = handoff.created_at;
 }
+function isConditionalMutationCompareGateTask(taskCard) {
+    return taskCard.workflow_step_skill_id === 'captain_diagnose_then_fix__compare_gate';
+}
+async function completeConditionalMutationGateWithoutRepair(input) {
+    cancelQueuedTailAfterTask(input.run, input.taskCards, input.taskCard);
+    const captainReturnHandoff = (0, runtime_1.createHandoffRecord)({
+        handoffId: (0, node_crypto_1.randomUUID)(),
+        runId: input.run.run_id,
+        taskCardId: input.taskCard.task_card_id,
+        fromRole: 'verifier',
+        toRole: 'orchestrator',
+        summary: `Conditional mutation gate passed without opening raider: ${input.outcome.summary}`,
+    });
+    completeWorkflowRouteAtCaptain(input.run, input.taskCard, captainReturnHandoff, `Conditional mutation gate found no required mutation. ${input.outcome.summary}`);
+    await (0, runtime_1.persistHandoffRecord)(input.runPaths, captainReturnHandoff);
+    return {
+        activeTaskCard: input.taskCard,
+        latestPersistedHandoff: captainReturnHandoff,
+    };
+}
+async function promoteConditionalMutationRepairStep(input) {
+    const nextQueuedTaskCard = (0, runtime_1.findNextQueuedTaskCard)(input.run, input.taskCards.map((candidate) => candidate.task_card_id === input.taskCard.task_card_id ? { ...candidate, status: 'completed' } : candidate));
+    if (!nextQueuedTaskCard) {
+        (0, runtime_1.applyVerificationResolution)(input.run, input.taskCard, {
+            outcome: 'blocked',
+            summary: `Conditional mutation gate returned needs_work, but no queued raider repair step was available: ${input.outcome.summary}`,
+        });
+        return {
+            activeTaskCard: input.taskCard,
+            latestPersistedHandoff: null,
+        };
+    }
+    const promotionHandoff = (0, runtime_1.createHandoffRecord)({
+        handoffId: (0, node_crypto_1.randomUUID)(),
+        runId: input.run.run_id,
+        taskCardId: nextQueuedTaskCard.task_card_id,
+        fromRole: 'verifier',
+        toRole: nextQueuedTaskCard.assigned_role,
+        summary: `Conditional mutation gate found repair work and promoted raider: ${input.outcome.summary}`,
+    });
+    (0, runtime_1.promoteNextPlannedTask)(input.run, input.taskCard, nextQueuedTaskCard, `Conditional mutation gate found repair work: ${input.outcome.summary}`, promotionHandoff);
+    await (0, runtime_1.persistHandoffRecord)(input.runPaths, promotionHandoff);
+    return {
+        activeTaskCard: nextQueuedTaskCard,
+        latestPersistedHandoff: promotionHandoff,
+    };
+}
 async function progressWorkflowRouteAfterSuccessfulExecution(input) {
     const selection = getRunWorkflowVariantSelection(input.run);
     const contract = (0, workflow_variants_1.getWorkflowRouteContract)(selection);
@@ -3965,12 +4152,21 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
         };
     }
     if (compatibilityFailure) {
-        return {
+        const compatibilityOutcome = {
             kind: 'compatibility_failed',
             threadId,
             rawEventsFile,
             summary: compatibilityFailure,
         };
+        if (closeResult.code === 0 && closeResult.signal === null) {
+            return recoverFileChangeOnlyCompletion({
+                cwd: options.cwd,
+                taskCard,
+                initialFingerprint: initialMutationFingerprint,
+                outcome: compatibilityOutcome,
+            });
+        }
+        return compatibilityOutcome;
     }
     if (closeResult.signal) {
         return {
@@ -4014,14 +4210,19 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
     const stderrSummary = stderrChunks.join('').trim();
     const exitSummary = summarizeExit(closeResult);
     if (closeResult.code === 0 && closeResult.signal === null) {
-        return {
-            kind: 'compatibility_failed',
-            threadId,
-            rawEventsFile,
-            summary: threadId
-                ? 'Codex exited without emitting a documented terminal JSONL event.'
-                : 'Codex exited without emitting thread.started or a documented terminal JSONL event.',
-        };
+        return recoverFileChangeOnlyCompletion({
+            cwd: options.cwd,
+            taskCard,
+            initialFingerprint: initialMutationFingerprint,
+            outcome: {
+                kind: 'compatibility_failed',
+                threadId,
+                rawEventsFile,
+                summary: threadId
+                    ? 'Codex exited without emitting a documented terminal JSONL event.'
+                    : 'Codex exited without emitting thread.started or a documented terminal JSONL event.',
+            },
+        });
     }
     return {
         kind: 'execution_failed',
@@ -4381,6 +4582,26 @@ async function executeAdvisorCodex(options, advisorPrompt, advisorSettings) {
 async function applyVerificationOutcome(cwd, runPaths, run, taskCards, taskCard, latestHandoff, outcome) {
     let activeTaskCard = taskCard;
     let latestPersistedHandoff = latestHandoff;
+    if (isConditionalMutationCompareGateTask(taskCard)) {
+        if (outcome.outcome === 'passed') {
+            return completeConditionalMutationGateWithoutRepair({
+                runPaths,
+                run,
+                taskCards,
+                taskCard,
+                outcome,
+            });
+        }
+        if (outcome.outcome === 'needs_work') {
+            return promoteConditionalMutationRepairStep({
+                runPaths,
+                run,
+                taskCards,
+                taskCard,
+                outcome,
+            });
+        }
+    }
     if (outcome.outcome === 'passed') {
         const parallelFanInLaunch = findParallelFanInLaunchCandidate(run, taskCards.map((candidate) => candidate.task_card_id === taskCard.task_card_id ? { ...candidate, status: 'completed' } : candidate));
         if (parallelFanInLaunch) {
@@ -6255,7 +6476,7 @@ async function advanceForemanRun(options) {
                         taskCardId: taskCard.task_card_id,
                         fromRole: taskCard.assigned_role,
                         toRole: 'verifier',
-                        summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+                        summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier. ${outcome.summary}`,
                     });
                     currentLatestHandoff = verificationHandoff;
                     (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);
@@ -6384,7 +6605,7 @@ async function advanceForemanRun(options) {
                 taskCardId: taskCard.task_card_id,
                 fromRole: taskCard.assigned_role,
                 toRole: 'verifier',
-                summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier.`,
+                summary: `${taskCard.assigned_role} completed execution and handed the task to the verifier. ${outcome.summary}`,
             });
             currentLatestHandoff = verificationHandoff;
             (0, runtime_1.markExecutionCompleted)(run, taskCard, verificationHandoff);

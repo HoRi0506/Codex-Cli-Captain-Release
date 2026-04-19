@@ -7,6 +7,7 @@ exports.getWorkflowRouteNextStep = getWorkflowRouteNextStep;
 exports.getWorkflowPublicLabel = getWorkflowPublicLabel;
 exports.doesWorkflowRouteRequireDelegatedEntryLaunch = doesWorkflowRouteRequireDelegatedEntryLaunch;
 exports.deriveWorkflowVariantSelection = deriveWorkflowVariantSelection;
+const request_shape_1 = require("./request-shape");
 const workflow_route_catalog_1 = require("./workflow-route-catalog");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
 const DRIFT_HINTS = [
@@ -174,6 +175,7 @@ function deriveWorkflowVariantSelection(input) {
     const hasParallelHints = includesAnyKeyword(normalizedRequest, PARALLEL_HINTS) || filePathMentions.length >= 4;
     const docShapedMutation = isDocShapedMutation(input.recommendation.request_shape, normalizedRequest);
     const hasDocFixHints = includesAnyKeyword(normalizedRequest, DOC_FIX_HINTS);
+    const hasConditionalMutationGate = (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
     if (hasDriftHints) {
         return createSelection({
             workflowVariant: 'ownership_drift_check',
@@ -208,7 +210,9 @@ function deriveWorkflowVariantSelection(input) {
                 workflowVariant: 'diagnose_then_fix',
                 workflowSkillId: 'captain_diagnose_then_fix',
                 workflowAgentRoute: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
-                workflowSummary: 'Captain should use the hidden diagnose-then-fix route so bounded evidence, implementation, and review intent remain preserved for this document-and-fix request.',
+                workflowSummary: hasConditionalMutationGate
+                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, raider mutates only if the evidence proves a mismatch, and arbiter reviews the final result.'
+                    : 'Captain should use the hidden diagnose-then-fix route so bounded evidence, implementation, and review intent remain preserved for this document-and-fix request.',
             });
         }
         if (hasDiagnosisHints) {
@@ -216,7 +220,9 @@ function deriveWorkflowVariantSelection(input) {
                 workflowVariant: 'diagnose_then_fix',
                 workflowSkillId: 'captain_diagnose_then_fix',
                 workflowAgentRoute: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
-                workflowSummary: 'Captain should use the hidden diagnose-then-fix route so scout gathers bounded evidence before raider mutates and arbiter reviews.',
+                workflowSummary: hasConditionalMutationGate
+                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, raider mutates only if the evidence proves a concrete repair is needed, and arbiter reviews.'
+                    : 'Captain should use the hidden diagnose-then-fix route so scout gathers bounded evidence before raider mutates and arbiter reviews.',
             });
         }
         if (docShapedMutation) {

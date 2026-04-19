@@ -79,6 +79,30 @@ function createTimeoutDiagnosis(toolName, stage, budgetMs) {
         recorded_at: new Date().toISOString(),
     };
 }
+function createTimeoutExecutionContinuity(status) {
+    const runningWorkerCount = status.specialist_executors.filter((executor) => executor.status === 'running').length +
+        status.child_agents.filter((agent) => agent.status === 'running').length;
+    const queuedWorkerCount = status.specialist_executors.filter((executor) => executor.status === 'queued').length +
+        status.child_agents.filter((agent) => agent.status === 'queued').length;
+    const safeToWait = runningWorkerCount > 0 ||
+        queuedWorkerCount > 0 ||
+        status.next_step === 'await_fan_in' ||
+        status.workflow_operator_state?.pending_launch_reason != null;
+    const summary = safeToWait
+        ? `Persisted run state still has ${runningWorkerCount} running and ${queuedWorkerCount} queued worker signal(s); waiting or retrying status is safe before treating this as failure.`
+        : 'Persisted run state has no running or queued worker signal; inspect status before retrying orchestration.';
+    return {
+        running_worker_count: runningWorkerCount,
+        queued_worker_count: queuedWorkerCount,
+        active_task_card_id: status.current_task_card?.task_card_id ?? null,
+        active_thread_id: status.active_thread_id,
+        persisted_status: status.status,
+        persisted_stage: status.stage,
+        next_step: status.next_step,
+        safe_to_wait: safeToWait,
+        summary,
+    };
+}
 function resolveForemanToolTimeoutBudgetMs() {
     const rawValue = process.env.FOREMAN_TOOL_TIMEOUT_BUDGET_MS;
     if (!rawValue) {
@@ -3869,6 +3893,7 @@ function createSessionRouteJournalOperatorVisibilitySummary(input) {
     return [
         `route_journal=${journal.state}`,
         `route_journal_events=${journal.event_count}`,
+        `route_journal_heartbeat=${journal.latest_heartbeat?.recorded_at ?? 'none'}`,
         `route_journal_hot_bytes=${journal.hot_summary_bytes}`,
         `route_journal_latest=${journal.latest_summary_path}`,
         `route_journal_more=${String(journal.has_more_history)}`,
@@ -3878,7 +3903,7 @@ function createSessionRouteJournalDisplayLine(journal) {
     if (!journal || journal.state === 'missing') {
         return null;
     }
-    return `Route Journal: events=${journal.event_count} hot=${journal.hot_summary_bytes}B latest=${journal.latest_summary_path}`;
+    return `Route Journal: events=${journal.event_count} heartbeat=${journal.latest_heartbeat?.recorded_at ?? 'none'} hot=${journal.hot_summary_bytes}B latest=${journal.latest_summary_path}`;
 }
 function createLeaseOperatorVisibilitySummary(lease) {
     return `lease=${lease.state}`;
@@ -4130,6 +4155,7 @@ function createForemanOrchestrateResult(status, detail) {
         orchestrator_scope: status.orchestrator_scope,
         orchestrator_scope_summary: status.orchestrator_scope_summary,
         latest_orchestrator_synthesis: status.latest_orchestrator_synthesis,
+        session_route_journal: status.session_route_journal ?? null,
         hydration: status.hydration,
         workflow_operator_state: status.workflow_operator_state,
         mcp_mutation_lease: status.mcp_mutation_lease,
@@ -4844,13 +4870,15 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
         onTimeout: async (diagnosis) => {
             const latestStatus = await loadForemanStatusAfterTimeout(cwd, runId, currentStatus, sessionContext);
             const statusAdvanced = didForemanStatusAdvanceAfterTimeout(currentStatus, latestStatus);
-            await recordSessionRouteJournalFromStatus(latestStatus, 'orchestration_updated', `foreman_orchestrate timed out after ${diagnosis.budget_ms}ms; statusAdvanced=${String(statusAdvanced)}.`);
+            diagnosis.execution_continuity = createTimeoutExecutionContinuity(latestStatus);
+            await recordSessionRouteJournalFromStatus(latestStatus, 'worker_heartbeat', `foreman_orchestrate timed out after ${diagnosis.budget_ms}ms; statusAdvanced=${String(statusAdvanced)}; ${diagnosis.execution_continuity.summary}`);
             return createForemanOrchestrateResult(latestStatus, {
                 orchestration_status: 'timeout_acknowledged',
                 dispatched_command: null,
                 dispatched_via: null,
                 stop_reason: null,
                 orchestration_summary: `foreman_orchestrate exceeded the bounded ${diagnosis.budget_ms}ms budget and returned a visible timeout acknowledgement. ` +
+                    `${diagnosis.execution_continuity.summary} ` +
                     (statusAdvanced
                         ? 'The returned payload was refreshed from the latest persisted run state after timeout so visible worker or delegation progress is not dropped. Retry only if the next bounded move is still pending.'
                         : 'Check foreman_status for current run truth, then retry foreman_orchestrate only if the next bounded move is still pending.'),

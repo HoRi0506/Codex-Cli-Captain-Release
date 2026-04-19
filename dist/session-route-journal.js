@@ -64,6 +64,7 @@ function createDefaultIndex(cwd, sessionId) {
         event_count: 0,
         latest_event_id: null,
         latest_run_id: null,
+        latest_heartbeat: null,
         files: {
             current: relativePath(cwd, paths.currentFile),
             latest: relativePath(cwd, paths.latestFile),
@@ -113,6 +114,20 @@ function createEvent(input, eventCount, timestamp) {
         summary: input.summary,
     };
 }
+function createHeartbeatSnapshot(event) {
+    return {
+        event_id: event.event_id,
+        run_id: event.run_id,
+        task_card_id: event.task_card_id,
+        recorded_at: event.recorded_at,
+        status: event.status,
+        stage: event.stage,
+        next_step: event.next_step,
+        owner_role: event.proof.owner_role,
+        proof_state: event.proof.proof_state,
+        summary: event.summary,
+    };
+}
 function summarizeEvent(event) {
     const route = event.route.agent_route.length > 0 ? event.route.agent_route.join(' -> ') : event.route.current_step ?? 'none';
     const proof = [
@@ -140,6 +155,9 @@ function renderLatestMarkdown(input) {
         `- Model: ${input.event.proof.model ?? 'unknown'} / ${input.event.proof.variant ?? 'unknown'}`,
         `- MCPs: ${input.event.proof.companion_mcps.length > 0 ? input.event.proof.companion_mcps.join(', ') : 'none recorded'}`,
         `- Event count: ${input.index.event_count}`,
+        `- Latest heartbeat: ${input.latestHeartbeat
+            ? `${input.latestHeartbeat.recorded_at} run=${input.latestHeartbeat.run_id ?? 'none'} task=${input.latestHeartbeat.task_card_id ?? 'none'}`
+            : 'none'}`,
         `- Detail: ${input.runSummaryFile ?? 'none'}`,
         '',
         summarizeEvent(input.event),
@@ -203,11 +221,13 @@ async function recordSessionRouteJournalEvent(input) {
     index.event_count = nextEventCount;
     index.latest_event_id = event.event_id;
     index.latest_run_id = event.run_id;
+    index.latest_heartbeat = event.event_name === 'worker_heartbeat' ? createHeartbeatSnapshot(event) : index.latest_heartbeat ?? null;
     const current = {
         version: 1,
         session_id: input.sessionId,
         updated_at: timestamp,
         latest_event: event,
+        latest_heartbeat: index.latest_heartbeat,
         bounded_limits: {
             current_json_target_bytes: CURRENT_JSON_TARGET_BYTES,
             latest_md_target_lines: LATEST_MD_TARGET_LINES,
@@ -230,6 +250,7 @@ async function recordSessionRouteJournalEvent(input) {
             event,
             index,
             runSummaryFile: runSummaryFile === null ? null : relativePath(input.cwd, runSummaryFile),
+            latestHeartbeat: index.latest_heartbeat,
         }), 'utf8'),
     ]);
     return loadSessionRouteJournalView(input.cwd, input.sessionId);
@@ -258,6 +279,7 @@ async function loadSessionRouteJournalView(cwd, sessionId) {
             index_path: relativePath(cwd, paths.indexFile),
             ledger_path: relativePath(cwd, paths.ledgerFile),
             latest_run_summary_path: latestRunSummaryPath,
+            latest_heartbeat: index?.latest_heartbeat ?? null,
             hot_summary_bytes: currentBytes,
             latest_summary_lines: latestMarkdown === '' ? 0 : latestMarkdown.split('\n').length,
             event_count: index?.event_count ?? 0,
@@ -273,6 +295,7 @@ async function loadSessionRouteJournalView(cwd, sessionId) {
         index_path: current.files.index,
         ledger_path: current.files.ledger,
         latest_run_summary_path: latestRunSummaryPath,
+        latest_heartbeat: current.latest_heartbeat ?? index.latest_heartbeat ?? null,
         hot_summary_bytes: currentBytes,
         latest_summary_lines: latestMarkdown === '' ? 0 : latestMarkdown.split('\n').length,
         event_count: index.event_count,

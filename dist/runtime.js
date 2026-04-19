@@ -40,6 +40,7 @@ exports.allocatePlannerAttemptId = allocatePlannerAttemptId;
 exports.allocateDelegationId = allocateDelegationId;
 exports.allocateOrchestrationAttemptId = allocateOrchestrationAttemptId;
 exports.createDelegationArtifactFilePath = createDelegationArtifactFilePath;
+exports.createDelegationWorkerResultFilePath = createDelegationWorkerResultFilePath;
 exports.loadDelegationArtifact = loadDelegationArtifact;
 exports.listDelegationArtifactIds = listDelegationArtifactIds;
 exports.loadDelegationArtifacts = loadDelegationArtifacts;
@@ -1371,6 +1372,9 @@ async function allocateOrchestrationAttemptId(paths) {
 function createDelegationArtifactFilePath(paths, delegationId) {
     return node_path_1.default.join(paths.delegationsDir, `${delegationId}.json`);
 }
+function createDelegationWorkerResultFilePath(paths, delegationId) {
+    return node_path_1.default.join(paths.delegationsDir, `${delegationId}.result.json`);
+}
 async function loadDelegationArtifact(paths, delegationId) {
     const candidate = await readJsonDocument(createDelegationArtifactFilePath(paths, delegationId));
     return normalizeLoadedDelegationRecord(candidate);
@@ -1444,6 +1448,20 @@ async function persistDelegationArtifact(paths, delegation) {
     (0, validation_1.assertValidDelegationRecord)(delegation);
     await (0, promises_1.mkdir)(paths.delegationsDir, { recursive: true });
     await writeJsonDocument(createDelegationArtifactFilePath(paths, delegation.delegation_id), delegation);
+    if (delegation.worker_result !== null) {
+        await writeJsonDocument(createDelegationWorkerResultFilePath(paths, delegation.delegation_id), {
+            version: 1,
+            run_id: delegation.run_id,
+            task_card_id: delegation.task_card_id,
+            delegation_id: delegation.delegation_id,
+            child_agent_status: delegation.child_agent.status,
+            executor_status: delegation.executor.status,
+            result_summary: delegation.result_summary,
+            latest_failure: delegation.latest_failure,
+            worker_result: delegation.worker_result,
+            recorded_at: delegation.worker_result.recorded_at ?? delegation.updated_at,
+        });
+    }
 }
 async function persistDelegationWithVisibilitySync(paths, delegation) {
     assertDelegationExecutorIntegrity(delegation);

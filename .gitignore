@@ -1,6 +1,8 @@
 node_modules/
 .DS_Store
+.foreman/
+.sisyphus/
 codex-foreman-*.tgz
-!codex-foreman-1.5.39.tgz
+!codex-foreman-1.5.40.tgz
 foreman-smoke-*/
 foreman-sweep-*/

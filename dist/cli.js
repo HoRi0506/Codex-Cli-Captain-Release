@@ -51,6 +51,8 @@ function usage() {
         '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
         '  codex-foreman clear-runs [--cwd <path>] [--include-blocked]',
         '    Cancel persisted active runs in one workspace through a bounded maintenance path so stale legacy runs do not keep polluting reuse and hygiene surfaces.',
+        '  codex-foreman maintain-runs --action <archive|prune> [--apply] [--cwd <path>]',
+        '    Execute bounded run-retention maintenance. Defaults to dry-run; archive closes lifecycle archive candidates, while prune removes raw event artifacts only after structured proof exists.',
         '  codex-foreman generate-navigation --target-dir <path> [--run-id <id>] [--output-dir <path>] [--validate-only] [--cwd <path>]',
         '    Generate or validate a bounded repository-local navigation bundle for one target directory under .foreman/navigation/. The generated artifacts are derived, non-canonical investigation aids for captain, tactician, and scout.',
         '  codex-foreman run --goal <text> --title <text> --intent <text> --scope <text> --acceptance <text> --prompt <text> [--codex-bin <path>] [--profile <name>] [-c key=value ...] [--cwd <path>]',
@@ -1646,6 +1648,42 @@ function parseClearRunsOptions(rest) {
     }
     return options;
 }
+function parseMaintainRunsOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        dryRun: true,
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--action': {
+                const action = requireValue(token, rest, index);
+                if (action !== 'archive' && action !== 'prune') {
+                    throw new UsageError(`Invalid value for --action: ${action}. Expected archive or prune.\n${usage()}`);
+                }
+                options.action = action;
+                index += 1;
+                break;
+            }
+            case '--apply':
+                options.dryRun = false;
+                break;
+            case '--dry-run':
+                options.dryRun = true;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    if (!options.action) {
+        throw new UsageError(`Missing required flag --action.\n${usage()}`);
+    }
+    return options;
+}
 function parseGenerateNavigationOptions(rest) {
     const options = {
         cwd: process.cwd(),
@@ -1737,6 +1775,9 @@ function parseCliArgs(argv) {
     }
     if (command === 'clear-runs') {
         return { command, options: parseClearRunsOptions(rest) };
+    }
+    if (command === 'maintain-runs') {
+        return { command, options: parseMaintainRunsOptions(rest) };
     }
     if (command === 'generate-navigation') {
         return { command, options: parseGenerateNavigationOptions(rest) };
@@ -1978,6 +2019,20 @@ async function runCli(argv) {
             const hygieneViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(parsed.options.cwd);
             process.stdout.write(`${result.summary}\n`);
             process.stdout.write(`Post-clear hygiene: workspace=${parsed.options.cwd} active_candidates=${hygieneViews.length} include_blocked=${parsed.options.includeBlocked ? 'true' : 'false'}\n`);
+            return 0;
+        }
+        if (parsed.command === 'maintain-runs') {
+            const result = await (0, run_lifecycle_1.maintainWorkspaceRuns)(parsed.options.cwd, {
+                action: parsed.options.action,
+                dryRun: parsed.options.dryRun,
+            });
+            process.stdout.write(`${result.summary}\n`);
+            for (const runId of result.changed_run_ids) {
+                process.stdout.write(`Maintenance candidate ${runId}: ${result.dry_run ? 'would_change' : 'changed'} action=${result.action}\n`);
+            }
+            for (const skipped of result.skipped) {
+                process.stdout.write(`Maintenance skipped ${skipped.run_id}: ${skipped.reason}\n`);
+            }
             return 0;
         }
         if (parsed.command === 'generate-navigation') {

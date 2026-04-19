@@ -7,6 +7,7 @@ exports.AUTO_ENTRY_FRESH_RUN_THRESHOLD_MS = void 0;
 exports.classifyRunFreshness = classifyRunFreshness;
 exports.deriveRunLifecycleView = deriveRunLifecycleView;
 exports.inspectWorkspaceRunLifecycleViews = inspectWorkspaceRunLifecycleViews;
+exports.maintainWorkspaceRuns = maintainWorkspaceRuns;
 exports.clearWorkspaceRuns = clearWorkspaceRuns;
 const promises_1 = require("node:fs/promises");
 const node_path_1 = __importDefault(require("node:path"));
@@ -137,6 +138,14 @@ function deriveRunLifecycleView(run, activeWorkspaceRuns, nowMs = Date.now()) {
     };
 }
 async function inspectWorkspaceRunLifecycleViews(cwd) {
+    const allRuns = await loadWorkspaceRuns(cwd);
+    const activeRuns = allRuns.filter((run) => run.status === 'active' || run.status === 'blocked');
+    const nowMs = Date.now();
+    return activeRuns
+        .map((run) => deriveRunLifecycleView(run, activeRuns, nowMs))
+        .sort(sortLifecycleViews);
+}
+async function loadWorkspaceRuns(cwd) {
     const runsDirectory = (0, runtime_1.createRunPaths)(cwd, 'placeholder').runsDir;
     let runIds = [];
     try {
@@ -176,17 +185,93 @@ async function inspectWorkspaceRunLifecycleViews(cwd) {
             continue;
         }
     }
+    return allRuns;
+}
+function sortLifecycleViews(left, right) {
+    const ageDelta = Date.parse(right.updated_at) - Date.parse(left.updated_at);
+    if (Number.isFinite(ageDelta) && ageDelta !== 0) {
+        return ageDelta;
+    }
+    return left.run_id.localeCompare(right.run_id);
+}
+async function inspectAllWorkspaceRunLifecycleViews(cwd) {
+    const allRuns = await loadWorkspaceRuns(cwd);
     const activeRuns = allRuns.filter((run) => run.status === 'active' || run.status === 'blocked');
     const nowMs = Date.now();
-    return activeRuns
-        .map((run) => deriveRunLifecycleView(run, activeRuns, nowMs))
-        .sort((left, right) => {
-        const ageDelta = Date.parse(right.updated_at) - Date.parse(left.updated_at);
-        if (Number.isFinite(ageDelta) && ageDelta !== 0) {
-            return ageDelta;
+    return allRuns
+        .map((run) => ({
+        run,
+        lifecycle: deriveRunLifecycleView(run, activeRuns, nowMs),
+    }))
+        .sort((left, right) => sortLifecycleViews(left.lifecycle, right.lifecycle));
+}
+function cleanupActionForMaintenance(action) {
+    return action === 'archive' ? 'archive_candidate' : 'prune_candidate';
+}
+function hasPruneCheckpointProof(run) {
+    return run.latest_verified_checkpoint !== null || run.latest_failure !== null || run.latest_response !== null;
+}
+async function maintainWorkspaceRuns(cwd, options) {
+    const action = options.action;
+    const dryRun = options.dryRun ?? true;
+    const expectedCleanupAction = cleanupActionForMaintenance(action);
+    const inspected = await inspectAllWorkspaceRunLifecycleViews(cwd);
+    const candidates = inspected.filter(({ lifecycle }) => lifecycle.cleanup_action === expectedCleanupAction);
+    const timestamp = new Date().toISOString();
+    const changedRunIds = [];
+    const skipped = [];
+    for (const { run, lifecycle } of candidates) {
+        if (lifecycle.state === 'manual_hold' || lifecycle.resume_recommended) {
+            skipped.push({ run_id: run.run_id, reason: 'manual_hold_or_resume_recommended' });
+            continue;
         }
-        return left.run_id.localeCompare(right.run_id);
-    });
+        const paths = (0, runtime_1.createRunPaths)(cwd, run.run_id);
+        if (action === 'archive') {
+            if (run.status !== 'active') {
+                skipped.push({ run_id: run.run_id, reason: 'archive_only_closes_active_candidates' });
+                continue;
+            }
+            if (!dryRun) {
+                run.status = 'cancelled';
+                run.completed_at = run.completed_at ?? timestamp;
+                run.updated_at = timestamp;
+                run.latest_failure = run.latest_failure ?? {
+                    stage: run.stage,
+                    reason: 'cancelled',
+                    summary: 'Archived through the explicit maintain-runs archive command after lifecycle retention classification.',
+                    recorded_at: timestamp,
+                };
+                await (0, runtime_1.persistRunRecord)(paths, run);
+            }
+            changedRunIds.push(run.run_id);
+            continue;
+        }
+        if (run.status === 'active' || run.status === 'blocked') {
+            skipped.push({ run_id: run.run_id, reason: 'active_or_blocked_runs_are_not_pruned' });
+            continue;
+        }
+        if (!hasPruneCheckpointProof(run)) {
+            skipped.push({ run_id: run.run_id, reason: 'missing_structured_checkpoint_or_failure_proof' });
+            continue;
+        }
+        if (!dryRun) {
+            await (0, promises_1.rm)(paths.rawEventsDir, { force: true, recursive: true });
+        }
+        changedRunIds.push(run.run_id);
+    }
+    return {
+        cwd,
+        action,
+        dry_run: dryRun,
+        candidate_count: candidates.length,
+        changed_count: changedRunIds.length,
+        changed_run_ids: changedRunIds,
+        skipped,
+        timestamp,
+        summary: `Run maintenance ${action} ${dryRun ? 'dry-run' : 'applied'} in ${cwd}: ` +
+            `${changedRunIds.length}/${candidates.length} candidate(s) ${dryRun ? 'would change' : 'changed'}, ` +
+            `${skipped.length} skipped.`,
+    };
 }
 async function clearWorkspaceRuns(cwd, options = {}) {
     const runsDirectory = (0, runtime_1.createRunPaths)(cwd, 'placeholder').runsDir;

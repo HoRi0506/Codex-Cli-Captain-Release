@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.isExplicitlyReadOnlyRequest = isExplicitlyReadOnlyRequest;
+exports.looksLikeConditionalMutationRequest = looksLikeConditionalMutationRequest;
 exports.countImplementationSignals = countImplementationSignals;
 exports.detectMutationIntent = detectMutationIntent;
 exports.classifyForemanRequest = classifyForemanRequest;
@@ -89,6 +90,33 @@ const LOOKUP_KEYWORDS = ['locate', 'find', 'where', 'which file', 'which functio
 const SURVEY_KEYWORDS = ['inspect', 'trace', 'map', 'survey', 'overview', 'structure', 'flow', 'codebase', '조사', '탐색', '구조', '흐름'];
 const DIAGNOSIS_KEYWORDS = ['why', 'cause', 'root cause', 'failing', 'failure', 'error', 'bug', 'issue', 'problem', '왜', '원인', '오류', '문제', '실패', '버그'];
 const SYNTHESIS_KEYWORDS = ['summarize', 'summary', 'explain', 'what does', 'how does', 'describe', '요약', '설명', '정리'];
+const DESIGN_QUESTION_KEYWORDS = [
+    'analyze',
+    'analyse',
+    'recommendation',
+    'opinion',
+    'what do you think',
+    'how should',
+    'design question',
+    '분석',
+    '의견',
+    '생각',
+    '판단',
+    '어때',
+    '어떻게 해야',
+];
+const CONDITIONAL_MUTATION_PATTERNS = [
+    /if\s+(?:needed|necessary|required|there(?:'s| is)?\s+(?:a\s+)?(?:mismatch|gap|problem))/iu,
+    /if\s+.*(?:mismatch|gap|problem|issue)/iu,
+    /only\s+if\s+/iu,
+    /필요하면/u,
+    /필요하다면/u,
+    /필요한 경우/u,
+    /맞지 않는.*(?:있다면|있으면|경우)/u,
+    /다르면/u,
+    /차이가\s*있(?:다면|으면)/u,
+    /문제가\s*있(?:다면|으면)/u,
+];
 const KOREAN_MUTATION_COMMAND_PATTERNS = [
     /수정해\s*줘/u,
     /변경해\s*줘/u,
@@ -109,6 +137,10 @@ const READ_ONLY_PATTERNS = [
     'do not change',
     "don't change",
     'without changing',
+    'do not mutate',
+    "don't mutate",
+    'without mutating',
+    'no mutation',
     'read-only',
     'read only',
     '수정하지 마',
@@ -124,6 +156,9 @@ const READ_ONLY_PATTERNS = [
 ];
 function isExplicitlyReadOnlyRequest(request) {
     return includesAnyKeyword(request.trim().toLowerCase(), READ_ONLY_PATTERNS);
+}
+function looksLikeConditionalMutationRequest(request) {
+    return CONDITIONAL_MUTATION_PATTERNS.some((pattern) => pattern.test(request));
 }
 function countImplementationSignals(request) {
     const normalizedRequest = request.trim().toLowerCase();
@@ -174,10 +209,22 @@ function looksLikePlanningRequest(normalizedRequest, filePathMentions) {
     const planSignals = PLAN_KEYWORDS.filter((keyword) => normalizedRequest.includes(keyword)).length;
     return planSignals >= 2 || filePathMentions.length >= 4;
 }
+function looksLikeDesignQuestion(normalizedRequest) {
+    return includesAnyKeyword(normalizedRequest, DESIGN_QUESTION_KEYWORDS);
+}
 function classifyForemanRequest(input) {
     const normalizedRequest = input.request.trim().toLowerCase();
     const filePathMentions = extractFilePathMentions(input.request);
     const mutationIntent = detectMutationIntent(input.request);
+    if (mutationIntent === 'none' && looksLikeDesignQuestion(normalizedRequest)) {
+        return {
+            requestShape: 'synthesis',
+            mutationIntent,
+            recommendedTaskKind: 'explore',
+            recommendedEntrypoint: 'start',
+            taskShape: 'single_scoped_task',
+        };
+    }
     if (mutationIntent === 'explicit_or_strong') {
         return {
             requestShape: 'mutation',
@@ -241,7 +288,7 @@ function classifyForemanRequest(input) {
             taskShape: 'single_scoped_task',
         };
     }
-    if (includesAnyKeyword(normalizedRequest, SYNTHESIS_KEYWORDS)) {
+    if (includesAnyKeyword(normalizedRequest, SYNTHESIS_KEYWORDS) || looksLikeDesignQuestion(normalizedRequest)) {
         return {
             requestShape: 'synthesis',
             mutationIntent,
