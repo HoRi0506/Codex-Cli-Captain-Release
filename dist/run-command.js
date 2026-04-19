@@ -4848,8 +4848,8 @@ function deriveAutoEntryContinuityMetadata(options) {
     if (options.session) {
         return {
             requesterSessionId: options.session.sessionId,
-            continuityStrategy: 'session_bound_first',
-            continuitySummary: 'Requester session continuity is keyed by owner_session_id first; Foreman reuses only the current session-bound run and does not perform default workspace run search for $cap/MCP continuity.',
+            continuityStrategy: 'session_fresh_run_first',
+            continuitySummary: 'Requester session continuity is request-scoped: fresh $cap/MCP requests create a new session-owned run, while explicit continue/resume requests may reuse the current session-bound run.',
         };
     }
     return {
@@ -4858,23 +4858,21 @@ function deriveAutoEntryContinuityMetadata(options) {
         continuitySummary: 'No requester session id was supplied, so Foreman kept workspace active-run search enabled for bounded reuse and resume decisions.',
     };
 }
-function shouldQueuePendingAutoEntryFollowUp(input) {
-    if (input.sessionBoundRun === null || input.sessionBoundRun.snapshot.runId !== input.reusableRun.snapshot.runId) {
+function normalizeAutoEntryRequestText(value) {
+    const normalized = (value ?? '').replace(/\s+/g, ' ').trim();
+    return normalized.length > 0 ? normalized : null;
+}
+function isSameAutoEntryRequest(a, b) {
+    return normalizeAutoEntryRequestText(a) === normalizeAutoEntryRequestText(b);
+}
+function shouldReuseSessionBoundAutoEntryRun(input) {
+    if (input.sessionBoundRun === null) {
         return false;
     }
-    if ((0, session_workstream_1.isContinuationOnlySessionRequest)(input.request)) {
-        return false;
+    if ((0, session_workstream_1.isContinuationOnlySessionRequest)(input.rawRequest)) {
+        return true;
     }
-    if (input.currentWorkstreamRequest === null) {
-        return false;
-    }
-    const normalizedRequest = input.request.replace(/\s+/g, ' ').trim();
-    const normalizedCurrentRequest = input.currentWorkstreamRequest.replace(/\s+/g, ' ').trim();
-    if (normalizedRequest.length === 0 || normalizedRequest === normalizedCurrentRequest) {
-        return false;
-    }
-    return (input.reusableRun.snapshot.status === 'active' ||
-        input.reusableRun.snapshot.status === 'blocked');
+    return isSameAutoEntryRequest(input.rawRequest, input.currentWorkstreamRequest);
 }
 function selectReusableAutoEntryRun(input) {
     if (input.activeRunInspection.fresh.length === 1) {
@@ -5315,7 +5313,14 @@ async function autoEnterForemanUnlocked(options) {
             request: routingRequest.request,
         })
         : null;
-    const reusableRun = sessionDirective === null ? sessionBoundRun ?? defaultReusableRun : null;
+    const shouldReuseSessionBoundRun = sessionDirective === null &&
+        shouldReuseSessionBoundAutoEntryRun({
+            rawRequest: options.request,
+            sessionBoundRun,
+            currentWorkstreamRequest: currentSessionWorkstream?.current_request ?? null,
+        });
+    const reusableRun = sessionDirective === null ? (shouldReuseSessionBoundRun ? sessionBoundRun : defaultReusableRun) : null;
+    const shouldReplaceSessionBoundRunWithFreshRun = Boolean(options.session && sessionDirective === null && sessionBoundRunRecord !== null && !shouldReuseSessionBoundRun);
     if (!recommendation.automatic_entry_supported) {
         return {
             cwd: options.cwd,
@@ -5422,64 +5427,17 @@ async function autoEnterForemanUnlocked(options) {
             runSelection: 'existing_run_reused',
             selectedRun: reusableRun,
         });
-        if (options.session &&
-            shouldQueuePendingAutoEntryFollowUp({
-                request: options.request,
-                sessionBoundRun,
-                reusableRun,
-                currentWorkstreamRequest: currentSessionWorkstream?.current_request ?? null,
-            })) {
-            const queuedWorkstream = await (0, session_workstream_1.enqueueSessionWorkstreamFollowUp)({
-                cwd: options.cwd,
-                session: options.session,
-                runId: reusableRun.snapshot.runId,
-                request: options.request,
-            });
-            const runDecisionReason = 'the current session already owns an active route-bound run, so Foreman queued the new operator follow-up instead of overwriting the in-flight workstream request';
-            const summary = `Foreman kept the current session-bound run ${reusableRun.snapshot.runId} active and queued ` +
-                `${queuedWorkstream.pending_requests.length} pending follow-up` +
-                `${queuedWorkstream.pending_requests.length === 1 ? '' : 's'} for the same session workstream. ` +
-                'Captain should merge the queued request at the next real route boundary instead of replacing the current route mid-flight.';
-            return {
-                cwd: options.cwd,
-                request: options.request,
-                policy_mode: recommendation.policy_mode,
-                automatic_entry_supported: true,
-                entry_boundary: recommendation.entry_boundary,
-                entry_boundary_summary: recommendation.entry_boundary_summary,
-                upstream_codex_binary_intercept_supported: recommendation.upstream_codex_binary_intercept_supported,
-                upstream_codex_binary_intercept_summary: recommendation.upstream_codex_binary_intercept_summary,
-                requester_session_id: continuity.requesterSessionId,
-                continuity_strategy: continuity.continuityStrategy,
-                continuity_summary: continuity.continuitySummary,
-                created: false,
-                run_selection: 'existing_run_reused',
-                inspected_active_run_count: inspectedActiveRunCount,
-                fresh_active_run_count: activeRunInspection.fresh.length,
-                stale_active_run_count: activeRunInspection.stale.length,
-                entrypoint_used: null,
-                scoping_source: 'persisted_active_run_reuse',
-                run_decision_reason: runDecisionReason,
-                active_run_candidates: activeRunCandidates,
-                selected_run_lifecycle: reusableRun.lifecycle,
-                run_id: reusableRun.snapshot.runId,
-                run_label: createAutoEntryRunLabelFromSnapshot(reusableRun.snapshot),
-                task_card_id: reusableRun.snapshot.taskCardId,
-                run_directory: reusableRun.snapshot.runDirectory,
-                status: reusableRun.snapshot.status,
-                stage: reusableRun.snapshot.stage,
-                next_step: reusableRun.snapshot.nextStep,
-                can_advance: reusableRun.snapshot.canAdvance,
-                summary,
-                answer_trace: answerTrace,
-                recommendation,
-            };
-        }
+        const sessionReuseWasContinuation = Boolean(sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId) &&
+            (0, session_workstream_1.isContinuationOnlySessionRequest)(options.request);
         const runDecisionReason = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
-            ? 'current session already owns a persisted run, so Foreman kept reusing it until the operator asks for a new run or closes it'
+            ? sessionReuseWasContinuation
+                ? 'the operator explicitly asked to continue or resume the current session-bound run'
+                : 'the current session already owns an identical in-flight request, so Foreman reused that run to avoid duplicate execution for the same request'
             : reusableRun.lifecycle.decision_reason;
         const preliminarySummary = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
-            ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} without generic workspace run inspection because the current Codex CLI session already owns that run.`
+            ? sessionReuseWasContinuation
+                ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} because the operator explicitly asked to continue or resume it.`
+                : `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} because the same request is already in flight for this Codex CLI session.`
             : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
                 `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} because it was the only fresh active candidate in the workspace.`;
         await persistLatestAutoEntryTrace({
@@ -5499,7 +5457,9 @@ async function autoEnterForemanUnlocked(options) {
         const persistedReusableRun = await (0, runtime_1.loadRunRecord)((0, runtime_1.createRunPaths)(options.cwd, reusableRun.snapshot.runId));
         const reusableRunLabel = createAutoEntryRunLabelFromRun(persistedReusableRun);
         const summary = sessionBoundRun && reusableRun.snapshot.runId === sessionBoundRun.snapshot.runId
-            ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) without generic workspace run inspection because the current Codex CLI session already owns that run.`
+            ? sessionReuseWasContinuation
+                ? `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) because the operator explicitly asked to continue or resume it.`
+                : `Foreman-first auto-entry reused the current session-bound run ${reusableRun.snapshot.runId} (${reusableRunLabel}) because the same request is already in flight for this Codex CLI session.`
             : `Foreman-first auto-entry inspected ${inspectedActiveRunCount} active persisted run` +
                 `${inspectedActiveRunCount === 1 ? '' : 's'} and reused run ${reusableRun.snapshot.runId} (${reusableRunLabel}) because it was the only fresh active candidate in the workspace.`;
         const mergedSummary = routingRequest.merged_from_workstream && routingRequest.merged_pending_count > 0
@@ -5579,7 +5539,7 @@ async function autoEnterForemanUnlocked(options) {
             recommendation,
         };
     }
-    if (shouldSuppressNewRunCreationForAutoEntry(recommendation)) {
+    if (!options.session && shouldSuppressNewRunCreationForAutoEntry(recommendation)) {
         const noRunReason = activeRunInspection.fresh.length > 1
             ? 'multiple fresh active runs were present, but none matched this synthesis-first request safely enough to reuse'
             : activeRunInspection.stale.length > 0
@@ -5625,10 +5585,13 @@ async function autoEnterForemanUnlocked(options) {
             recommendation,
         };
     }
-    if (sessionDirective === 'new_run' && sessionBoundRunRecord && options.session) {
+    const replacedSessionRunId = (sessionDirective === 'new_run' || shouldReplaceSessionBoundRunWithFreshRun) && sessionBoundRunRecord && options.session
+        ? sessionBoundRunRecord.run_id
+        : null;
+    if (replacedSessionRunId && options.session) {
         await (0, session_run_binding_1.releaseRunFromSession)({
             cwd: options.cwd,
-            runId: sessionBoundRunRecord.run_id,
+            runId: replacedSessionRunId,
             session: options.session,
             reason: 'new_run_requested',
             closeRun: true,
@@ -5663,6 +5626,9 @@ async function autoEnterForemanUnlocked(options) {
             ? `${summary} Foreman merged ${routingRequest.merged_pending_count} queued follow-up` +
                 `${routingRequest.merged_pending_count === 1 ? '' : 's'} into the next session workstream request before creating the new run.`
             : summary;
+        const sessionPlanRunDecisionReason = replacedSessionRunId
+            ? `fresh $cap/MCP request policy created a new planner-scoped run and closed previous session-bound run ${replacedSessionRunId} instead of reusing or queueing it`
+            : 'fresh $cap/MCP request policy created a new planner-scoped run and bound it to the requester session';
         await persistLatestAutoEntryTrace({
             cwd: options.cwd,
             runId: result.runId,
@@ -5674,7 +5640,7 @@ async function autoEnterForemanUnlocked(options) {
             entryBoundary: recommendation.entry_boundary,
             upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
             runDecisionReason: options.session
-                ? 'no session-bound run existed for the requester session, so Foreman created a new planner-scoped run and bound it to that session'
+                ? sessionPlanRunDecisionReason
                 : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
                     ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
                     : activeRunInspection.fresh.length > 1
@@ -5718,7 +5684,7 @@ async function autoEnterForemanUnlocked(options) {
             entrypoint_used: 'plan',
             scoping_source: 'planner_scoping',
             run_decision_reason: options.session
-                ? 'no session-bound run existed for the requester session, so Foreman created a new planner-scoped run and bound it to that session'
+                ? sessionPlanRunDecisionReason
                 : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
                     ? 'only stale active runs were available, so Foreman created a new planner-scoped run'
                     : activeRunInspection.fresh.length > 1
@@ -5757,6 +5723,9 @@ async function autoEnterForemanUnlocked(options) {
         ? `${summary} Foreman merged ${routingRequest.merged_pending_count} queued follow-up` +
             `${routingRequest.merged_pending_count === 1 ? '' : 's'} into the next session workstream request before creating the new run.`
         : summary;
+    const sessionStartRunDecisionReason = replacedSessionRunId
+        ? `fresh $cap/MCP request policy created a new conservative start-scoped run and closed previous session-bound run ${replacedSessionRunId} instead of reusing or queueing it`
+        : 'fresh $cap/MCP request policy created a new conservative start-scoped run and bound it to the requester session';
     await persistLatestAutoEntryTrace({
         cwd: options.cwd,
         runId: startResult.runId,
@@ -5768,7 +5737,7 @@ async function autoEnterForemanUnlocked(options) {
         entryBoundary: recommendation.entry_boundary,
         upstreamCodexBinaryInterceptSupported: recommendation.upstream_codex_binary_intercept_supported,
         runDecisionReason: options.session
-            ? 'no session-bound run existed for the requester session, so Foreman created a new conservative start-scoped run and bound it to that session'
+            ? sessionStartRunDecisionReason
             : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
                 ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
                 : activeRunInspection.fresh.length > 1
@@ -5816,7 +5785,7 @@ async function autoEnterForemanUnlocked(options) {
         entrypoint_used: 'start',
         scoping_source: 'bounded_request_defaults',
         run_decision_reason: options.session
-            ? 'no session-bound run existed for the requester session, so Foreman created a new conservative start-scoped run and bound it to that session'
+            ? sessionStartRunDecisionReason
             : activeRunInspection.stale.length > 0 && activeRunInspection.fresh.length === 0
                 ? 'only stale active runs were available, so Foreman created a new conservative start-scoped run'
                 : activeRunInspection.fresh.length > 1

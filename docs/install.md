@@ -58,7 +58,7 @@ codex-foreman check-install
 
 The tarball command refreshes the installed package version, and `setup` refreshes the MCP registration, packaged skill, and packaged custom agents.
 
-If a workspace already has stale persisted active runs outside the current `$cap` session-bound run, clear them with:
+If a workspace already has stale persisted active runs outside the request-scoped `$cap` flow, clear them with:
 
 ```bash
 codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked

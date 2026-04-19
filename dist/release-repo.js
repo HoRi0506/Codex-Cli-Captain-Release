@@ -136,7 +136,7 @@ codex-foreman check-install
 
 The tarball command refreshes the installed package version, and \`setup\` refreshes the MCP registration, packaged skill, and packaged custom agents.
 
-If a workspace already has stale persisted active runs outside the current \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` session-bound run, clear them with:
+If a workspace already has stale persisted active runs outside the request-scoped \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` flow, clear them with:
 
 \`\`\`bash
 codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
@@ -238,9 +238,9 @@ The packaged routing pass is request-shape-aware before it becomes mutation-shap
 
 Token discipline matters here. Captain should spend tokens on state lookup, routing, waiting, and synthesis rather than broad repository survey or specialist-grade mutation work that can be delegated under role-specific settings.
 
-Auto-entry is also reuse-first for lightweight read-heavy work. If one active run is clearly the safe continuation target, captain can reuse it; if not, companion-shaped read-only work can stay on a visible low-cost scout path instead of collapsing into opaque host-local fallback.
+For \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` / MCP session entry, auto-entry is fresh-run-first. Each new operator request opens a new session-owned run and closes the previous session-bound run instead of silently reusing it or queueing the request as hidden follow-up input. Codex should use the live conversation to summarize context such as "fix the issue you just found" into the new request text before sending it through Foreman.
 
-Within one Codex CLI session, Foreman now keeps one current workstream by default. A persisted run may still back that workstream internally, but the main continuity anchor is the current session plus its active route/workstream state. The same session keeps reusing that workstream until the operator explicitly asks for a new run or closes it, and the bound run/workstream state is released when that session ends. Operator-facing surfaces can still show a readable run label when needed, but they now also expose compact route and workstream truth.
+Run reuse is now explicit on the session path. Foreman reuses the current session-bound run only when the operator asks to continue or resume the current run, or when the identical request is already in flight and the second call would duplicate the same work. Detached \`codex-foreman auto-entry\` without a requester session can still use workspace active-run search for bounded CLI reuse decisions.
 
 Default operator views now prefer named roster labels such as \`captain\`, \`scout\`, \`raider\`, and \`arbiter\` over opaque worker ids, and the compact answer trace explains request shape, selected role, execution path, and why a heavier specialist route did or did not win.
 
@@ -259,9 +259,9 @@ The MCP auto-entry surface can now report bounded elapsed timing as part of the 
 - the answer trace can explain request shape, selected role, execution path, and why a heavier specialist path did or did not win
 - \`codex-foreman status --run-id <id>\` can show the latest answer path separately from the persisted current task when those truths differ
 - read-heavy repository questions can stay on a cheaper scout-first path instead of silently normalizing into heavy implementation routing
-- bounded companion-shaped read-only auto-entry can prefer safe reuse or a visible low-cost scout route instead of accumulating throwaway active runs or opaque host-local fallback
-- one Codex CLI session can keep one current workstream until the operator explicitly closes it or asks for a new run
-- follow-up \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` input can queue onto the current session workstream instead of overwriting the in-flight request
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` / MCP session auto-entry creates one fresh session-owned run per new operator request
+- explicit continue/resume requests can still reuse the current session-bound run
+- detached \`codex-foreman auto-entry\` remains on the workspace-run search path for bounded CLI reuse decisions
 - \`codex-foreman check-install\` can also report configured role-model policy and whether run buildup is making auto-entry reuse ambiguous
 - when a bundled directory is named clearly enough, planner and scout prompts can inherit a compact non-canonical navigation hint instead of starting cold
 - the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill keeps the host Codex session as \`captain\`, while packaged custom agents remain internal specialist targets
@@ -353,7 +353,7 @@ ${codexPrompt}
 
 To update an existing install to \`v${input.packageVersion}\`, copy the install block above again and rerun it. The direct tarball install refreshes the package version, and \`codex-foreman setup\` refreshes MCP registration plus the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and custom agents.
 
-If a workspace has stale persisted run buildup outside the current session-bound \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` run, use \`codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked\` to cancel those legacy runs and print the refreshed hygiene summary.
+If a workspace has stale persisted run buildup outside the request-scoped \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` flow, use \`codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked\` to cancel those legacy runs and print the refreshed hygiene summary.
 
 ## What To Expect
 
@@ -382,8 +382,8 @@ If a workspace has stale persisted run buildup outside the current session-bound
 After install and restart:
 
 - use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} <your request>\` when you want the request to enter Foreman through \`captain\`
-- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run\` or \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} clear run session\` when you want to clear the current session-bound run
-- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} start a new run <your request>\` when you want to stop reusing the current run and force a fresh one
+- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run\` or \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} clear run session\` when you want to clear the current session-bound run explicitly
+- use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} continue current run\` or \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} resume current run\` when you want to reuse the current run intentionally
 - use \`codex-foreman check-install\` when you want to confirm the install is healthy
 - restart Codex CLI after install or update so the latest MCP session and skill are loaded
 
@@ -393,12 +393,12 @@ Published release assets live under ${RELEASES_URL}.
 
 ## Using ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} Well
 
-Foreman keeps one current workstream per Codex CLI session by default. When the next request is unrelated to the previous one, say that directly so \`captain\` does not treat it as a follow-up.
+Foreman treats each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request as a new request-run by default. When the next request depends on earlier conversation context, say the actual task plainly; Codex should carry the relevant context into the new Foreman request instead of reusing the older run.
 
 Useful request shapes:
 
-- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} start a new run update the release README with usage tips, then commit and push\`
-- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run\`, then \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} investigate this new bug without changing files\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} update the release README with usage tips, then commit and push\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} investigate this new bug without changing files\`
 - \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} continue the current run and review the README change before answering\`
 - \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} inspect this repository and report findings only; do not edit files\`
 - \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} implement this scoped fix, run the relevant tests, then commit and push\`
@@ -407,7 +407,7 @@ Practical tips:
 
 - include whether the work is read-only or allowed to mutate files
 - name the target file, directory, branch, issue, or release when you know it
-- ask for a new run when the topic changes, and ask to continue the current run when it is a follow-up
+- assume a new run for each fresh request, and ask to continue or resume the current run only when you intentionally want the same run reused
 - request review or tests explicitly when acceptance depends on them
 - after setup, update, or skill changes, restart Codex CLI before relying on the new packaged behavior
 

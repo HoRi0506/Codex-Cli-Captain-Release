@@ -52,7 +52,8 @@ function createMcpEntryPolicyInstructions(policyMode) {
         case 'codex_cli_foreman_first':
             return ('Session entry policy is codex_cli_foreman_first. ' +
                 'For a fresh operator request that is not already about an existing run_id or an explicit Foreman command, call foreman_auto_entry first before answering directly. ' +
-                'When the MCP session already has a session-bound run, treat that session id as the primary continuity key and do not fall back to generic workspace run search unless the operator explicitly asks for run recovery. ' +
+                'Treat ordinary fresh MCP-session requests as fresh-run-first: use the Codex conversation to summarize follow-up context into the new request, and reuse a session-bound run only when the operator explicitly asks to continue/resume the current run or when the identical request is already in flight. ' +
+                'Do not fall back to generic workspace run search for requester-session continuity unless the operator explicitly asks for run recovery. ' +
                 'If auto-entry creates or reuses a run, prefer foreman_status and then foreman_orchestrate over direct host-local completion whenever the next bounded move still belongs to a Foreman specialist path. ' +
                 'This is bounded MCP session guidance plus the explicit launcher wrapper surface, not upstream Codex CLI binary interception. ' +
                 'If auto-entry does not create a run, continue from its recommendation or the normal explicit workflow surface.');
@@ -4491,8 +4492,8 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
             upstream_codex_binary_intercept_supported: false,
             upstream_codex_binary_intercept_summary: 'Codex CLI interception remains unsupported; the current fallback preserves a visible degraded boundary.',
             requester_session_id: sessionContext.session_id,
-            continuity_strategy: 'session_bound_first',
-            continuity_summary: 'Requester session continuity is keyed by owner_session_id first; Foreman reuses only the current session-bound run and does not perform default workspace run search for $cap/MCP continuity.',
+            continuity_strategy: 'session_fresh_run_first',
+            continuity_summary: 'Requester session continuity is request-scoped: fresh $cap/MCP requests create a new session-owned run, while explicit continue/resume requests may reuse the current session-bound run.',
             created: false,
             run_selection: 'no_run_created',
             inspected_active_run_count: 0,

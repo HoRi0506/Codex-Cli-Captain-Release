@@ -528,7 +528,7 @@
         },
         "continuity_strategy": {
           "type": "string",
-          "enum": ["session_bound_first", "workspace_run_search"]
+          "enum": ["session_fresh_run_first", "session_bound_first", "workspace_run_search"]
         },
         "continuity_summary": {
           "type": "string",

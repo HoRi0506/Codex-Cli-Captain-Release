@@ -279,10 +279,10 @@ function isContinuationOnlySessionRequest(request) {
         /^(keep going|go on)[.!?]?(?:\s+(?:please|now))?$/i,
         /^(continue|resume|proceed|advance)\s+(?:the\s+)?(?:current|same)\s+(?:run|workstream)[.!?]?$/i,
         /^(keep going|go on)\s+(?:with\s+)?(?:the\s+)?(?:current|same)\s+(?:run|workstream)[.!?]?$/i,
-        /^(continue|resume|proceed|advance)\s+(?:the\s+)?(?:current|same)(?:\s+[a-z0-9-]+){0,3}\s+(?:task|run|workstream)[.!?]?$/i,
-        /^(keep going|go on)\s+(?:with\s+)?(?:the\s+)?(?:current|same)(?:\s+[a-z0-9-]+){0,3}\s+(?:task|run|workstream)[.!?]?$/i,
-        /^(continue|resume|proceed|advance)\s+(?:the\s+)?(?:current|same)(?:\s+[a-z0-9-]+){0,3}\s+(?:task|run|workstream)\s+(?:through|via|under)\s+(?:captain|foreman)[.!?]?$/i,
-        /^(keep going|go on)\s+(?:with\s+)?(?:the\s+)?(?:current|same)(?:\s+[a-z0-9-]+){0,3}\s+(?:task|run|workstream)\s+(?:through|via|under)\s+(?:captain|foreman)[.!?]?$/i,
+        /^(continue|resume|proceed|advance)\s+(?:the\s+)?(?:current|same)(?:\s+[a-z0-9.-]+){0,4}\s+(?:task|run|workstream)[.!?]?$/i,
+        /^(keep going|go on)\s+(?:with\s+)?(?:the\s+)?(?:current|same)(?:\s+[a-z0-9.-]+){0,4}\s+(?:task|run|workstream)[.!?]?$/i,
+        /^(continue|resume|proceed|advance)\s+(?:the\s+)?(?:current|same)(?:\s+[a-z0-9.-]+){0,4}\s+(?:task|run|workstream)\s+(?:through|via|under)\s+(?:captain|foreman)[.!?]?$/i,
+        /^(keep going|go on)\s+(?:with\s+)?(?:the\s+)?(?:current|same)(?:\s+[a-z0-9.-]+){0,4}\s+(?:task|run|workstream)\s+(?:through|via|under)\s+(?:captain|foreman)[.!?]?$/i,
     ];
     return continuationOnlyPatterns.some((pattern) => pattern.test(normalized));
 }
