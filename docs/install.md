@@ -48,7 +48,7 @@ codex-foreman check-install
 
 ## Update
 
-To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
+To update an existing install on this machine for `v1.5.39`, rerun the same three commands against this release tarball:
 
 ```bash
 npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.39/codex-foreman-1.5.39.tgz

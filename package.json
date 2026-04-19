@@ -19,6 +19,7 @@
     "scripts/bootstrap-foreman-config.cjs",
     "README.md",
     "docs/install.md",
+    "docs/release/notes",
     "release-repo-manifest.json"
   ],
   "engines": {

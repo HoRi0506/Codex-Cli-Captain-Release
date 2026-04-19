@@ -126,7 +126,7 @@ codex-foreman check-install
 
 ## Update
 
-To update an existing install on this machine, rerun the same three commands against the newer release tarball for the target version:
+To update an existing install on this machine for \`v${input.packageVersion}\`, rerun the same three commands against this release tarball:
 
 \`\`\`bash
 npm install -g ${releaseTarballUrl}
@@ -351,7 +351,7 @@ ${codexPrompt}
 
 ## Update
 
-To update an existing install, copy the latest release README install block again and rerun it. The direct tarball install refreshes the package version, and \`codex-foreman setup\` refreshes MCP registration plus the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and custom agents.
+To update an existing install to \`v${input.packageVersion}\`, copy the install block above again and rerun it. The direct tarball install refreshes the package version, and \`codex-foreman setup\` refreshes MCP registration plus the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and custom agents.
 
 If a workspace has stale persisted run buildup outside the current session-bound \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` run, use \`codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked\` to cancel those legacy runs and print the refreshed hygiene summary.
 
@@ -438,7 +438,19 @@ function createReleasePackageJson(rootPackage) {
             'codex-foreman-mcp': 'dist/mcp-main.js',
             'codex-foreman-codex': 'dist/codex-launcher-main.js',
         },
-        files: ['dist', 'schemas', 'skills', 'agents', '.codex-plugin', '.mcp.json', 'scripts/bootstrap-foreman-config.cjs', 'README.md', 'docs/install.md', RELEASE_REPO_MANIFEST_FILE],
+        files: [
+            'dist',
+            'schemas',
+            'skills',
+            'agents',
+            '.codex-plugin',
+            '.mcp.json',
+            'scripts/bootstrap-foreman-config.cjs',
+            'README.md',
+            'docs/install.md',
+            'docs/release/notes',
+            RELEASE_REPO_MANIFEST_FILE,
+        ],
         engines: rootPackage.engines ?? {
             node: '>=20',
         },
