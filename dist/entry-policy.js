@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.recommendForemanEntry = recommendForemanEntry;
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
+const execution_plan_1 = require("./execution-plan");
 const request_shape_1 = require("./request-shape");
 const tool_routing_1 = require("./tool-routing");
 const workflow_variants_1 = require("./workflow-variants");
@@ -73,7 +74,7 @@ function createEntryBoundary(policy) {
     };
 }
 function createOrchestratorScopeSummary() {
-    return ('Orchestrator settings stay bounded to persisted synthesis, route selection, state supervision, and operator-facing visibility surfaces. ' +
+    return ('Orchestrator settings stay bounded to persisted synthesis, captain-driven phase composition, state supervision, and operator-facing visibility surfaces. ' +
         'Status/watch/latest_orchestrator_synthesis expose that bounded captain layer without turning host Codex into a generic execution worker or a separate read-only worker lane.');
 }
 function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, orchestratorConfig, toolRoutingConfig) {
@@ -155,15 +156,23 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
     });
     if (recommendedEntrypoint === 'start') {
         recommendedTaskKind = (0, workflow_variants_1.getWorkflowRouteEntryTaskKind)(workflowVariantSelection, recommendedTaskKind);
+    }
+    const executionPlan = (0, execution_plan_1.composeForemanExecutionPlan)({
+        request: options.request,
+        requestShape: requestClassification.requestShape,
+        mutationIntent: requestClassification.mutationIntent,
+        recommendedTaskKind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
+    });
+    if (recommendedEntrypoint === 'start') {
         if (recommendedTaskKind === 'explore') {
             summary =
                 requestClassification.requestShape === 'synthesis'
-                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that captain can route through scout evidence and captain synthesis first.'
-                    : 'Recommend `start` because the selected hidden route begins with bounded scout evidence before later synthesis, mutation, or review.';
+                    ? 'Recommend `start` because the request looks like bounded answer-shaping work that host captain can compose through scout evidence and captain synthesis first.'
+                    : `Recommend \`start\` because host captain can compose the phase plan ${executionPlan.phases.map((phase) => phase.phase).join(' -> ')} from Foreman agent skill metadata.`;
         }
         else if (recommendedTaskKind === 'review') {
             summary =
-                'Recommend `start` because the selected hidden route begins at a bounded arbiter verification or review step.';
+                'Recommend `start` because host captain can compose a bounded arbiter verification phase before final synthesis.';
         }
     }
     return {
@@ -204,6 +213,7 @@ function recommendForemanEntry(options, policy = { mode: 'guided_explicit' }, or
         companion_tool_model: companionRouting.model,
         companion_tool_variant: companionRouting.variant,
         companion_tool_fallback_mode: companionRouting.fallbackMode,
+        execution_plan: executionPlan,
         workflow_variant_selection: workflowVariantSelection,
         recommended_task_kind: recommendedEntrypoint === 'start' ? recommendedTaskKind : null,
         confidence,

@@ -1,13 +1,13 @@
 ---
 name: cap
-description: Route the current user request through the installed Codex-Foreman MCP as a captain-first Foreman task instead of answering purely through the host Codex session.
+description: Enter the current user request through the installed Codex-Foreman MCP so host Codex/captain can compose a phase plan from Foreman agent skill contracts instead of answering purely through the host session.
 metadata:
   short-description: Captain-first Foreman entry
 ---
 
 # $cap
 
-Use this skill when the operator invokes `$cap` and wants the request handled through Foreman's captain-first path.
+Use this skill when the operator invokes `$cap` and wants host Codex/captain to handle the request through Foreman-backed phase composition and bounded specialist workers.
 
 ## Intent
 
@@ -21,8 +21,8 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - treat the Codex session id as the request boundary for `$cap`; a persisted run is an internal Foreman artifact and evidence envelope, not the operator-facing identity anchor
 - prefer persisted Foreman state, status, orchestration, and delegation visibility over ad hoc host-session improvisation
 - treat Codex as the orchestrator that decides when to inspect Foreman state, when to call a specialist role, when to wait, and when to verify before replying
-- treat captain's main routing action as selecting a hidden route root, not manually micromanaging one specialist after another
-- keep host-local work narrow: state lookup, routing, waiting, synthesis, and explicit operator-facing decisions
+- treat captain's main planning action as analyzing request traits and composing a phase execution plan from Foreman agent skill contracts
+- keep host-local work narrow: state lookup, request-trait analysis, phase composition, waiting, synthesis, and explicit operator-facing decisions
 - treat mutation, file authoring, scoped investigation, planning, and review as specialist work that should prefer Foreman-owned execution over host-local work
 - treat Foreman as the bounded toolbox that exposes role, model, playbook, wrapper, result-contract, run, delegation, and evidence metadata
 - treat `foreman-config.json` plus surfaced role metadata as the model/role source of truth; do not invent role-model mappings in the skill itself
@@ -38,10 +38,10 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 - do not treat the first specialist response as completion unless the acceptance target has actually been satisfied; if the result is partial, ambiguous, or only advances the workflow, continue through Foreman instead of replying as though the request is done
 - do not treat companion MCP calls as free host-local work; if filesystem, git, docs, fetch, or OpenAI reference work is needed, prefer the configured Foreman-owned companion route first
 - if a configured companion route cannot be honored, surface the degraded host fallback honestly instead of silently doing the tool work in host Codex
-- prefer the compact workflow truth already exposed by `foreman_status` such as workflow skill, workflow progress, requester-session continuity, and worker-session alignment before paying for deeper activity inspection
+- prefer the compact workflow truth already exposed by `foreman_status` such as execution plan phases, workflow progress, requester-session continuity, and worker-session alignment before paying for deeper activity inspection
 - if `foreman_orchestrate` returns `timeout_acknowledged`, inspect status first and retry only when the next bounded move is still pending
 - when specialist routing is chosen, pass the narrowest task scope that still preserves title, scope, acceptance, and the result contract
-- once a route root is selected, prefer Foreman-owned progression through that route's linked specialist chain before bringing control back to captain
+- once a phase plan is composed, prefer Foreman-owned progression through that generated specialist chain before bringing control back to captain
 - if the request decomposes into independent bounded subtasks, prefer bounded parallel specialist fan-out within the configured worker cap, then wait and synthesize once all required subtasks finish
 - do not treat unrelated MCP servers, OpenAI documentation surfaces, SDK helpers, or generic Codex-native helper agents as substitutes for a selected Foreman specialist role when the packaged Foreman specialist roster is available
 - companion MCPs such as docs, fetch, filesystem, git, or OpenAI reference surfaces are subordinate tools that an assigned Foreman specialist may use under configured ownership; they are not the worker route themselves and should not bypass Foreman when a configured companion route exists
@@ -63,21 +63,21 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
    - `$cap continue current run`
    - `$cap resume current run`
    - `$cap 현재 run 계속 진행`
-10. Keep worker routing internal. Do not tell the operator to invoke separate public worker skills or slash commands. If internal route execution is needed and the packaged custom-agent roster is present, prefer these Codex-native custom agents as linked specialist steps inside the selected route:
+10. Keep worker routing internal. Do not tell the operator to invoke separate public worker skills or slash commands. If internal specialist execution is needed and the packaged custom-agent roster is present, prefer these Codex-native custom agents as linked specialist phases inside the generated plan:
    - `foreman_tactician` for planning
    - `foreman_scout` for exploration
    - `foreman_raider` for implementation
    - `foreman_arbiter` for review
    - `foreman_sentinel` for ownership classification
 10a. If a matching packaged Foreman specialist exists, do not satisfy that role by routing to generic Codex `explorer` / `worker` agents or to unrelated MCP servers instead. Those surfaces may support the specialist as tools, but they are not the selected specialist path for `$cap`.
-11. Route specialist work deliberately:
+11. Compose specialist work deliberately:
    - use `foreman_tactician` when the next bounded move, scope, or acceptance is still ambiguous
    - use `foreman_scout` for repository inspection, evidence gathering, read-only diagnosis, and documentation lookup
    - use `foreman_raider` for code changes, file edits, doc authoring, release-note authoring, and other explicit mutation work
    - use `foreman_arbiter` for acceptance review, regression judgment, and repair-or-pass decisions
    - use `foreman_sentinel` only for ownership classification or drift checks
-12. Treat the specialists inside one selected route as a linked chain. A normal successful specialist result should hand off to the next linked specialist inside Foreman rather than bouncing back to captain after every step.
-13. After a route finishes or reaches an explicit route boundary, decide the next step from that evidence. If the next step is mutation, verification, or another scoped investigation pass, send that next step back through Foreman by selecting the next matching route instead of doing the work directly in the host Codex session.
+12. Treat the specialists inside one generated phase plan as a linked chain. A normal successful specialist result should hand off to the next specialist phase inside Foreman rather than bouncing back to captain after every step.
+13. After a phase finishes or reaches an explicit boundary, decide the next step from that evidence. If the next step is mutation, verification, or another scoped investigation pass, continue by advancing or composing the next phase instead of doing the work directly in the host Codex session.
 14. Treat host Codex synthesis as the last step, not the default continuation step. Host-local synthesis is for operator updates, explicit hold decisions, and final answers after the required specialist passes have completed or a degraded boundary has been surfaced.
 15. One operator `$cap` request may require multiple internal Foreman hops. Do not require the operator to repeat `$cap` just because one route or one specialist pass finished. Keep routing inside Foreman until acceptance is met, a manual boundary is reached, or degraded truth must be surfaced.
 16. If another `$cap` request arrives after a previous result, treat it as a new request-run by default. If it depends on earlier conversation context, summarize that context into the new Foreman request instead of reusing the older run. Reuse the existing run only for explicit continue/resume wording or identical in-flight duplicate calls.
@@ -91,7 +91,7 @@ Use this skill when the operator invokes `$cap` and wants the request handled th
 
 - the common review path is `captain -> assigned agent -> arbiter -> captain`
 - the common repair path should read as `captain -> scout/tactician -> raider -> arbiter -> captain`
-- inside one selected route, the linked specialists should hand off directly to the next linked specialist until the route reaches a real captain boundary
+- inside one generated phase plan, the linked specialists should hand off directly to the next specialist phase until the plan reaches a real captain boundary
 - if `scout` or `tactician` returns evidence that implies a code change, do not let `captain` implement from that evidence directly; `captain` should route the bounded implementation task to `raider`
 - if `raider` returns implementation results that need acceptance judgment, do not let `captain` self-certify the change; `captain` should route the bounded review task to `arbiter`
 - one pass through `scout`, `tactician`, `raider`, or `arbiter` is not by itself a reason to end the `$cap` request; `captain` keeps the workstream open until the request is complete, explicitly blocked, or awaiting operator input

@@ -59,6 +59,7 @@ const node_readline_1 = __importDefault(require("node:readline"));
 const promises_2 = require("node:stream/promises");
 const promises_3 = require("node:timers/promises");
 const entry_policy_1 = require("./entry-policy");
+const execution_plan_1 = require("./execution-plan");
 const orchestration_loop_1 = require("./orchestration-loop");
 const request_shape_1 = require("./request-shape");
 const run_lifecycle_1 = require("./run-lifecycle");
@@ -5175,6 +5176,15 @@ function mapRoleToAutoEntrySelectedRole(role) {
             return 'captain';
     }
 }
+function getRecommendationExecutionPlan(recommendation) {
+    return (recommendation.execution_plan ??
+        (0, execution_plan_1.composeForemanExecutionPlan)({
+            request: recommendation.request,
+            requestShape: recommendation.request_shape,
+            mutationIntent: recommendation.mutation_intent,
+            recommendedTaskKind: recommendation.recommended_task_kind,
+        }));
+}
 function deriveAutoEntrySelectedRole(input) {
     if (input.runSelection === 'no_run_created') {
         return 'captain';
@@ -5184,8 +5194,8 @@ function deriveAutoEntrySelectedRole(input) {
         (input.selectedRun.snapshot.stage === 'planning' || !isReadOnlyAutoEntryCandidate(input.recommendation))) {
         return mapRoleToAutoEntrySelectedRole(input.selectedRun.snapshot.assignedRole);
     }
-    const firstRouteStep = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection)?.workflow_agent_route.find((step) => step !== 'captain');
-    switch (firstRouteStep) {
+    const firstPhaseAgent = (0, execution_plan_1.getFirstSpecialistAgentFromExecutionPlan)(getRecommendationExecutionPlan(input.recommendation));
+    switch (firstPhaseAgent) {
         case 'tactician':
             return 'tactician';
         case 'scout':
@@ -5213,13 +5223,12 @@ function deriveAutoEntrySelectedRole(input) {
     }
 }
 function deriveAutoEntryBudgetClass(input) {
-    const workflowRoute = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection);
-    const routeHasExecutionIntent = workflowRoute?.workflow_agent_route.includes('raider') ?? false;
+    const planHasExecutionIntent = getRecommendationExecutionPlan(input.recommendation).phases.some((phase) => phase.owner_agent === 'raider');
     switch (input.selectedRole) {
         case 'captain':
             return 'low_cost_read_only';
         case 'scout':
-            return routeHasExecutionIntent && input.recommendation.mutation_intent === 'explicit_or_strong'
+            return planHasExecutionIntent && input.recommendation.mutation_intent === 'explicit_or_strong'
                 ? 'implementation_budget'
                 : 'low_cost_investigation';
         case 'tactician':
@@ -5234,9 +5243,8 @@ function deriveAutoEntryBudgetClass(input) {
     }
 }
 function deriveAutoEntryReviewRequirement(input) {
-    const workflowRoute = (0, workflow_variants_1.getWorkflowRouteContract)(input.recommendation.workflow_variant_selection);
-    const routeHasReviewIntent = workflowRoute?.workflow_agent_route.includes('arbiter') ?? false;
-    if (routeHasReviewIntent) {
+    const planHasReviewIntent = getRecommendationExecutionPlan(input.recommendation).phases.some((phase) => phase.owner_agent === 'arbiter');
+    if (planHasReviewIntent) {
         return 'required';
     }
     switch (input.selectedRole) {
@@ -5336,19 +5344,19 @@ function createAutoEntryAnswerTrace(input) {
         whyNotLocal = 'this request needed persisted bounded state instead of a no-run captain-local answer.';
         switch (selectedRole) {
             case 'tactician':
-                whySelected = 'tactician won because the request is multi-step or unclear and needs bounded planning first.';
+                whySelected = 'tactician won because host captain composed a planning phase for a multi-step or unclear request.';
                 break;
             case 'scout':
                 whySelected =
                     input.recommendation.companion_tool_route_class !== 'none'
-                        ? `scout won because ${input.recommendation.companion_tool_route_class} should stay on a low-cost Foreman companion path.`
-                        : 'scout won because the request is read-heavy and is better served by cheap investigation than by mutation.';
+                        ? `scout won because host captain composed an evidence phase for ${input.recommendation.companion_tool_route_class} before final synthesis.`
+                        : 'scout won because host captain composed a read-only evidence phase before mutation or synthesis.';
                 break;
             case 'arbiter':
-                whySelected = 'arbiter won because the request is verification-shaped and fits the review path.';
+                whySelected = 'arbiter won because host captain composed a verification phase for this request.';
                 break;
             case 'raider':
-                whySelected = 'raider won because explicit mutation intent requires a bounded implementation path.';
+                whySelected = 'raider won because host captain composed a bounded mutation phase from explicit mutation intent.';
                 break;
             case 'captain':
             default:
@@ -5366,11 +5374,11 @@ function createAutoEntryAnswerTrace(input) {
         case 'tactician':
             whyNotHeavierRole =
                 input.recommendation.mutation_intent === 'explicit_or_strong'
-                    ? 'heavier implementation routing did not win because planning or bounded investigation was still the safer next step.'
+                    ? 'heavier implementation execution did not start first because planning or bounded evidence is still the safer next phase.'
                     : 'no explicit mutation intent required the heavier implementation route.';
             break;
         case 'arbiter':
-            whyNotHeavierRole = 'review already won, so a heavier implementation route was not the active answer path.';
+            whyNotHeavierRole = 'verification already won, so a heavier implementation phase was not the active answer path.';
             break;
         case 'raider':
             whyNotHeavierRole = 'a heavier reviewed path waits until implementation results exist and need verification.';
@@ -5389,6 +5397,7 @@ function createAutoEntryAnswerTrace(input) {
         tool_execution_owner: toolExecutionState === 'route_backed_specialist_owned'
             ? input.recommendation.companion_tool_owner_role
             : null,
+        execution_plan: getRecommendationExecutionPlan(input.recommendation),
         workflow_variant_selection: input.recommendation.workflow_variant_selection,
         selected_role: selectedRole,
         execution_path: executionPath,
@@ -5414,6 +5423,7 @@ function renderAutoEntryAnswerTrace(trace) {
         `tool_variant=${trace.tool_owner_variant ?? 'none'}`,
         `tool_execution=${trace.tool_execution_state}`,
         `tool_execution_owner=${trace.tool_execution_owner ?? 'none'}`,
+        `execution_plan=${trace.execution_plan?.phases.map((phase) => phase.phase).join('>') ?? 'legacy_missing'}`,
         `workflow_path=${(0, workflow_variants_1.getWorkflowPublicLabel)(trace.workflow_variant_selection)}`,
         `selected_role=${trace.selected_role}`,
         `execution_path=${trace.execution_path}`,

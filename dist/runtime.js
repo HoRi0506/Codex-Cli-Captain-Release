@@ -111,6 +111,7 @@ const node_os_1 = require("node:os");
 const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const orchestrator_1 = require("./orchestrator");
+const execution_plan_1 = require("./execution-plan");
 const workflow_variants_1 = require("./workflow-variants");
 const tool_routing_1 = require("./tool-routing");
 const role_roster_1 = require("./role-roster");
@@ -2851,6 +2852,39 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                 },
             });
         })();
+        const normalizedRequestShape = answerTrace.request_shape === 'existence_check' ||
+            answerTrace.request_shape === 'lookup' ||
+            answerTrace.request_shape === 'survey' ||
+            answerTrace.request_shape === 'diagnosis' ||
+            answerTrace.request_shape === 'planning' ||
+            answerTrace.request_shape === 'mutation' ||
+            answerTrace.request_shape === 'verification' ||
+            answerTrace.request_shape === 'synthesis'
+            ? answerTrace.request_shape
+            : 'synthesis';
+        const normalizedMutationIntent = answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
+            ? answerTrace.mutation_intent
+            : 'none';
+        const normalizedSelectedRole = answerTrace.selected_role === 'captain' ||
+            answerTrace.selected_role === 'tactician' ||
+            answerTrace.selected_role === 'scout' ||
+            answerTrace.selected_role === 'raider' ||
+            answerTrace.selected_role === 'arbiter'
+            ? answerTrace.selected_role
+            : 'captain';
+        const fallbackExecutionPlan = (0, execution_plan_1.composeForemanExecutionPlan)({
+            request: typeof value.request === 'string' ? value.request : '',
+            requestShape: normalizedRequestShape,
+            mutationIntent: normalizedMutationIntent,
+            recommendedTaskKind: normalizedSelectedRole === 'raider'
+                ? 'execution'
+                : normalizedSelectedRole === 'arbiter'
+                    ? 'review'
+                    : 'explore',
+        });
+        const executionPlan = (0, execution_plan_1.isForemanExecutionPlan)(answerTrace.execution_plan)
+            ? answerTrace.execution_plan
+            : fallbackExecutionPlan;
         return {
             request: typeof value.request === 'string' ? value.request : 'details recorded in persisted state.',
             run_selection: value.run_selection === 'new_run_created' ||
@@ -2876,19 +2910,8 @@ async function normalizeLoadedRunRecord(paths, candidate) {
             run_decision_reason: typeof value.run_decision_reason === 'string' ? value.run_decision_reason : 'details recorded in persisted state.',
             summary: typeof value.summary === 'string' ? value.summary : 'details recorded in persisted state.',
             answer_trace: {
-                request_shape: answerTrace.request_shape === 'existence_check' ||
-                    answerTrace.request_shape === 'lookup' ||
-                    answerTrace.request_shape === 'survey' ||
-                    answerTrace.request_shape === 'diagnosis' ||
-                    answerTrace.request_shape === 'planning' ||
-                    answerTrace.request_shape === 'mutation' ||
-                    answerTrace.request_shape === 'verification' ||
-                    answerTrace.request_shape === 'synthesis'
-                    ? answerTrace.request_shape
-                    : 'synthesis',
-                mutation_intent: answerTrace.mutation_intent === 'none' || answerTrace.mutation_intent === 'explicit_or_strong'
-                    ? answerTrace.mutation_intent
-                    : 'none',
+                request_shape: normalizedRequestShape,
+                mutation_intent: normalizedMutationIntent,
                 companion_tool_route_class: answerTrace.companion_tool_route_class === 'none' ||
                     answerTrace.companion_tool_route_class === 'workspace_inspection' ||
                     answerTrace.companion_tool_route_class === 'docs_lookup' ||
@@ -2927,14 +2950,9 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     ? answerTrace.tool_execution_state
                     : 'not_applicable',
                 tool_execution_owner: (0, role_roster_1.normalizePublicAgentName)(answerTrace.tool_execution_owner),
+                execution_plan: executionPlan,
                 workflow_variant_selection: workflowVariantSelection,
-                selected_role: answerTrace.selected_role === 'captain' ||
-                    answerTrace.selected_role === 'tactician' ||
-                    answerTrace.selected_role === 'scout' ||
-                    answerTrace.selected_role === 'raider' ||
-                    answerTrace.selected_role === 'arbiter'
-                    ? answerTrace.selected_role
-                    : 'captain',
+                selected_role: normalizedSelectedRole,
                 execution_path: answerTrace.execution_path === 'captain_local' ||
                     answerTrace.execution_path === 'run_reused' ||
                     answerTrace.execution_path === 'new_run'
