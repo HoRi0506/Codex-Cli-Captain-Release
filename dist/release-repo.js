@@ -388,6 +388,26 @@ Codex remains the orchestrator and authentication stays on supported Codex login
 
 Published release assets live under ${RELEASES_URL}.
 
+## Using ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} Well
+
+Foreman keeps one current workstream per Codex CLI session by default. When the next request is unrelated to the previous one, say that directly so \`captain\` does not treat it as a follow-up.
+
+Useful request shapes:
+
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} start a new run update the release README with usage tips, then commit and push\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run\`, then \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} investigate this new bug without changing files\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} continue the current run and review the README change before answering\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} inspect this repository and report findings only; do not edit files\`
+- \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} implement this scoped fix, run the relevant tests, then commit and push\`
+
+Practical tips:
+
+- include whether the work is read-only or allowed to mutate files
+- name the target file, directory, branch, issue, or release when you know it
+- ask for a new run when the topic changes, and ask to continue the current run when it is a follow-up
+- request review or tests explicitly when acceptance depends on them
+- after setup, update, or skill changes, restart Codex CLI before relying on the new packaged behavior
+
 ## Config
 
 The shared editable config stays here:
