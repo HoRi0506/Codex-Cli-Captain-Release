@@ -128,23 +128,32 @@ function createConfiguredRoleModelsSummary(config) {
     };
 }
 function createConfiguredToolRoutesSummary(config) {
-    const entries = Object.keys(config.tool_routing.tools).map((tool) => {
+    const entries = Object.keys(config.tool_routing.tools).flatMap((tool) => {
         const policy = config.tool_routing.tools[tool];
-        const ownerTarget = policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
-            ? policy.mutation_owner_companion_agent ?? policy.mutation_owner_role ?? policy.owner_companion_agent ?? policy.owner_role
-            : policy.owner_companion_agent ?? policy.owner_role;
-        const ownerRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(ownerTarget, config);
-        return {
+        const readOwnerTarget = policy.owner_companion_agent ?? policy.owner_role;
+        const readOwnerRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(readOwnerTarget, config);
+        const readEntry = {
             tool,
-            ownerRole: (0, role_roster_1.getOwnershipTargetName)(ownerTarget, config),
-            model: (policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
-                ? policy.mutation_model ?? ownerRoleConfig.model
-                : policy.model) ?? config.tool_routing.default_model,
-            variant: (policy.allowed_operations.includes('mutation') && (policy.mutation_owner_companion_agent || policy.mutation_owner_role)
-                ? policy.mutation_variant ?? ownerRoleConfig.variant
-                : policy.variant) ?? config.tool_routing.default_variant,
+            operation: 'read',
+            ownerRole: (0, role_roster_1.getOwnershipTargetName)(readOwnerTarget, config),
+            model: policy.model ?? readOwnerRoleConfig.model ?? config.tool_routing.default_model,
+            variant: policy.variant ?? readOwnerRoleConfig.variant ?? config.tool_routing.default_variant,
             fallbackMode: policy.fallback_mode ?? config.tool_routing.fallback_mode,
         };
+        if (!policy.allowed_operations.includes('mutation')) {
+            return [readEntry];
+        }
+        const mutationOwnerTarget = policy.mutation_owner_companion_agent ?? policy.mutation_owner_role ?? policy.owner_companion_agent ?? policy.owner_role;
+        const mutationOwnerRoleConfig = (0, role_roster_1.getOwnershipTargetConfig)(mutationOwnerTarget, config);
+        const mutationEntry = {
+            tool,
+            operation: 'mutation',
+            ownerRole: (0, role_roster_1.getOwnershipTargetName)(mutationOwnerTarget, config),
+            model: policy.mutation_model ?? mutationOwnerRoleConfig.model ?? policy.model ?? config.tool_routing.default_model,
+            variant: policy.mutation_variant ?? mutationOwnerRoleConfig.variant ?? policy.variant ?? config.tool_routing.default_variant,
+            fallbackMode: policy.fallback_mode ?? config.tool_routing.fallback_mode,
+        };
+        return [readEntry, mutationEntry];
     });
     const status = entries.every((entry) => entry.model && entry.variant) ? 'coherent' : 'warning';
     return {

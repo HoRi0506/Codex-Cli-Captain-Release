@@ -5,7 +5,25 @@ exports.normalizeForemanToolRoutingConfig = normalizeForemanToolRoutingConfig;
 exports.summarizeConfiguredToolRoutes = summarizeConfiguredToolRoutes;
 exports.deriveCompanionRoutingDecision = deriveCompanionRoutingDecision;
 const role_roster_1 = require("./role-roster");
-const GIT_MUTATION_KEYWORDS = ['commit', 'push', 'add', 'stage', '커밋', '푸시', '스테이지', '브랜치에 반영'];
+const GIT_MUTATION_KEYWORDS = [
+    'commit',
+    'push',
+    'add',
+    'stage',
+    'tag',
+    'release',
+    'upload',
+    'asset',
+    'publish',
+    '커밋',
+    '푸시',
+    '스테이지',
+    '태그',
+    '릴리즈',
+    '업로드',
+    '게시',
+    '브랜치에 반영',
+];
 const GIT_KEYWORDS = ['git', 'branch', 'status', 'diff', 'log', 'commit', 'push', 'pull', 'rebase', 'stash', '커밋', '푸시', '브랜치'];
 const DOCS_KEYWORDS = ['context7', 'docs', 'documentation', 'reference', 'api', 'sdk', '문서', '레퍼런스', 'reference'];
 const FETCH_KEYWORDS = ['fetch', 'url', 'http://', 'https://', 'remote', 'download', '웹', '원격'];
@@ -201,7 +219,7 @@ function deriveCompanionRoutingDecision(input) {
             fallbackMode: input.toolRouting.fallback_mode,
         };
     }
-    const operation = hasGit && (hasGitMutation || input.mutationIntent === 'explicit_or_strong') ? 'mutation' : 'read';
+    const operation = hasGit && hasGitMutation ? 'mutation' : 'read';
     const routeClass = toolNames.length > 1
         ? 'multi_source_evidence'
         : hasGit
@@ -212,11 +230,13 @@ function deriveCompanionRoutingDecision(input) {
                 ? 'docs_lookup'
                 : 'workspace_inspection';
     const primaryTool = routeClass === 'multi_source_evidence'
-        ? (toolNames.includes('filesystem')
-            ? 'filesystem'
-            : toolNames.includes('context7')
-                ? 'context7'
-                : toolNames[0]) ?? 'filesystem'
+        ? (operation === 'mutation' && toolNames.includes('git')
+            ? 'git'
+            : toolNames.includes('filesystem')
+                ? 'filesystem'
+                : toolNames.includes('context7')
+                    ? 'context7'
+                    : toolNames[0]) ?? 'filesystem'
         : toolNames[0] ?? 'filesystem';
     const policy = input.toolRouting.tools[primaryTool] ?? createDefaultForemanToolRoutingConfig().tools[primaryTool];
     const effectiveOwnerTarget = operation === 'mutation'
