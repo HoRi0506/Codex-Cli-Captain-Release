@@ -5129,17 +5129,29 @@ function getRunWorkflowVariantSelection(run) {
     return run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
 }
 function shouldKeepExploreInvestigationSingleSlice(run, taskCard) {
-    if (taskCard.task_kind !== 'explore' ||
-        (taskCard.workflow_skill_id !== 'captain_read_only' && taskCard.workflow_skill_id !== 'captain_investigate_only')) {
+    if (taskCard.task_kind !== 'explore') {
         return false;
     }
     const answerTrace = run.latest_entry_trace?.answer_trace;
-    if (!answerTrace || answerTrace.companion_tool_route_class === 'multi_source_evidence') {
+    if (!answerTrace) {
+        return false;
+    }
+    const lowCostExplore = answerTrace.budget_class === 'low_cost_read_only' || answerTrace.budget_class === 'low_cost_investigation';
+    if (!lowCostExplore || answerTrace.companion_tool_operation === 'mutation') {
+        return false;
+    }
+    if (taskCard.workflow_skill_id === 'captain_verification' || taskCard.workflow_skill_id === 'captain_ownership_drift_check') {
+        return true;
+    }
+    if (taskCard.workflow_skill_id !== 'captain_read_only' && taskCard.workflow_skill_id !== 'captain_investigate_only') {
         return false;
     }
     return (answerTrace.request_shape === 'existence_check' ||
-        answerTrace.budget_class === 'low_cost_read_only' ||
-        (answerTrace.request_shape === 'lookup' && answerTrace.companion_tool_route_class !== 'none'));
+        answerTrace.request_shape === 'lookup' ||
+        answerTrace.request_shape === 'survey' ||
+        answerTrace.request_shape === 'synthesis' ||
+        answerTrace.request_shape === 'diagnosis' ||
+        answerTrace.budget_class === 'low_cost_read_only');
 }
 function resolveExploreInvestigationWorkerCap(run, taskCard, maxActiveWorkers) {
     return shouldKeepExploreInvestigationSingleSlice(run, taskCard) ? 1 : maxActiveWorkers;

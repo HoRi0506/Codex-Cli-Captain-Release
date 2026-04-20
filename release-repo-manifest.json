@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-04-20T07:44:25.007Z",
+  "generated_at": "2026-04-20T07:58:57.953Z",
   "source_repo_path": "/Users/kwkim-hoir/dev/home/Codex-Foreman",
-  "source_git_commit": "656aa9e2adee11039a26597f34f2d89f9ccd3852",
+  "source_git_commit": "b98161bcec6585988d5e761dcbc16a4cf8a878b1",
   "package_name": "codex-foreman",
   "package_version": "1.6.4",
   "public_entry_skill_name": "cap",

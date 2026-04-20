@@ -16,7 +16,6 @@ const DRIFT_HINTS = [
     'model policy',
     'config drift',
     'fallback honesty',
-    'degraded',
     'sentinel',
     '소유',
     '드리프트',

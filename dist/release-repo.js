@@ -236,6 +236,7 @@ codex-foreman check-install
 Write the request with the intended boundary:
 
 - \`inspect ... and report findings only\`: read-only \`scout\` investigation, no mutation
+- \`inspect current status/progress ... next task ... do not change files\`: stays on one bounded read-only \`scout\` pass instead of escalating into mutation
 - \`check ... and fix if needed\`: evidence first, then conditional \`raider\` or \`scribe\` work only if a mismatch is found
 - \`implement ... run tests ...\`: bounded implementation on \`raider\`, then \`arbiter\` review
 - \`update README/docs ...\`: document work on \`scribe\`, not \`raider\`
@@ -260,6 +261,7 @@ Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a n
 - bounded scout, raider, scribe, arbiter, and companion-owner paths
 - five canonical route families: \`read_only\`, \`mutation\`, \`planning\`, \`verification\`, \`parallel\`
 - request-shape checks that keep read-only work off mutation routes
+- status/progress requests that mention a degraded gap stay on the read-only route unless the operator explicitly asks for verification truth
 - configured role model, reasoning, and per-agent fast-mode launch policy
 - local route journals under \`.foreman/sessions/<session-id>/\`
 

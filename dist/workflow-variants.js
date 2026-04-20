@@ -20,7 +20,6 @@ const DRIFT_HINTS = [
     'model policy',
     'config drift',
     'fallback honesty',
-    'degraded',
     'sentinel',
     '소유',
     '드리프트',
@@ -28,6 +27,26 @@ const DRIFT_HINTS = [
 ];
 const DIAGNOSIS_HINTS = ['why', 'cause', 'root cause', 'failure', 'error', 'bug', 'issue', 'problem', '왜', '원인', '오류', '문제'];
 const PARALLEL_HINTS = ['across', 'parallel', 'fan-out', 'fan out', '병렬', '여러', '다수'];
+const STATUS_PROGRESS_HINTS = [
+    'current state',
+    'current status',
+    'progress',
+    'where things stand',
+    'where are we',
+    'next task',
+    'next step',
+    'remaining work',
+    'what remains',
+    'what is left',
+    '현재 상태',
+    '진행 상태',
+    '어디까지',
+    '남은 작업',
+    '다음 작업',
+    '다음 단계',
+    '무엇이 남',
+    '현황',
+];
 const DOC_FIX_HINTS = [
     'fix',
     'repair',
@@ -72,6 +91,11 @@ function createLinkedStepSkillIds(workflowSkillId, workflowAgentRoute) {
 }
 function isDocShapedMutation(requestShape, normalizedRequest) {
     return requestShape === 'mutation' && includesAnyKeyword(normalizedRequest, DOC_HINTS);
+}
+function isReadOnlyProgressRequest(input) {
+    return (input.recommendation.mutation_intent === 'none' &&
+        input.recommendation.recommended_task_kind === 'explore' &&
+        ((0, request_shape_1.isExplicitlyReadOnlyRequest)(input.request) || includesAnyKeyword(input.normalizedRequest, STATUS_PROGRESS_HINTS)));
 }
 function mentionsCodeMutationTarget(filePathMentions) {
     return filePathMentions.some((filePath) => {
@@ -224,7 +248,12 @@ function deriveWorkflowVariantSelection(input) {
     const hasCodeMutationTarget = mentionsCodeMutationTarget(filePathMentions);
     const hasDocFixHints = includesAnyKeyword(normalizedRequest, DOC_FIX_HINTS);
     const hasConditionalMutationGate = (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
-    if (hasDriftHints) {
+    const readOnlyProgressRequest = isReadOnlyProgressRequest({
+        request: input.request,
+        normalizedRequest,
+        recommendation: input.recommendation,
+    });
+    if (hasDriftHints && !readOnlyProgressRequest) {
         return createSelection({
             workflowVariant: 'verification',
             workflowSkillId: 'captain_verification',

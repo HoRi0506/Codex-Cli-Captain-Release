@@ -35,6 +35,7 @@ codex-foreman check-install
 Write the request with the intended boundary:
 
 - `inspect ... and report findings only`: read-only `scout` investigation, no mutation
+- `inspect current status/progress ... next task ... do not change files`: stays on one bounded read-only `scout` pass instead of escalating into mutation
 - `check ... and fix if needed`: evidence first, then conditional `raider` or `scribe` work only if a mismatch is found
 - `implement ... run tests ...`: bounded implementation on `raider`, then `arbiter` review
 - `update README/docs ...`: document work on `scribe`, not `raider`
@@ -59,6 +60,7 @@ Each fresh `$cap` request starts a new request-run by default.
 - bounded scout, raider, scribe, arbiter, and companion-owner paths
 - five canonical route families: `read_only`, `mutation`, `planning`, `verification`, `parallel`
 - request-shape checks that keep read-only work off mutation routes
+- status/progress requests that mention a degraded gap stay on the read-only route unless the operator explicitly asks for verification truth
 - configured role model, reasoning, and per-agent fast-mode launch policy
 - local route journals under `.foreman/sessions/<session-id>/`
 
@@ -149,5 +151,5 @@ These commands ship in the release tarball and do not depend on npm registry pub
 - `docs/install.md`: full install/update guide
 - `docs/release/notes/v1.6.4.md`: release notes
 
-Source commit: 656aa9e2adee11039a26597f34f2d89f9ccd3852
+Source commit: b98161bcec6585988d5e761dcbc16a4cf8a878b1
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases
