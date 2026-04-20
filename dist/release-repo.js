@@ -231,6 +231,18 @@ codex-foreman setup
 codex-foreman check-install
 \`\`\`
 
+## Using \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`
+
+Write the request with the intended boundary:
+
+- \`inspect ... and report findings only\`: read-only \`scout\` investigation, no mutation
+- \`check ... and fix if needed\`: evidence first, then conditional \`raider\` or \`scribe\` work only if a mismatch is found
+- \`implement ... run tests ...\`: bounded implementation on \`raider\`, then \`arbiter\` review
+- \`update README/docs ...\`: document work on \`scribe\`, not \`raider\`
+- \`continue current run\`: reuse the active run instead of starting a fresh one
+
+Small, scoped requests are faster. Mention files, tests, and acceptance criteria when you know them.
+
 ## Use
 
 \`\`\`text
@@ -246,8 +258,9 @@ Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a n
 
 - captain-first routing
 - bounded scout, raider, scribe, arbiter, and companion-owner paths
+- five canonical route families: \`read_only\`, \`mutation\`, \`planning\`, \`verification\`, \`parallel\`
 - request-shape checks that keep read-only work off mutation routes
-- compact status and run-hygiene visibility
+- configured role model, reasoning, and per-agent fast-mode launch policy
 - local route journals under \`.foreman/sessions/<session-id>/\`
 
 Codex remains the orchestrator. Foreman does not proxy Codex auth.
@@ -266,7 +279,8 @@ Healthy install output should include:
 - \`registration=matching_registration\`
 - \`skill=matching_install\`
 - \`agents=matching_install\`
-- \`notebooklm_archive=disabled\` or a concrete readiness state
+- \`model_policy=coherent\`
+- \`tool_policy=coherent\`
 
 ## NotebookLM
 
@@ -290,19 +304,21 @@ Repo-scoped export:
 codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
 \`\`\`
 
-Current boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
+Foreman prepares and records the local archive bundle. Direct NotebookLM source upload remains host-driven through the NotebookLM MCP.
 
 ## Phase Chain
 
 \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input. Background \`codex exec\` launches use the configured role profile, model, reasoning effort, extra config entries, and per-agent fast-mode setting from \`foreman-config.json\`.
 
-## Tool Routing
+## Route Families
 
-Foreman cannot intercept arbitrary host Codex tools after those tools are exposed to the host session. Under \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`, host-local git/filesystem mutation is forbidden while Foreman owns the run unless the operator explicitly approves a bypass in that turn.
+- \`read_only\`: \`captain -> scout -> captain\`
+- \`mutation\`: \`captain -> scout? -> raider or scribe -> arbiter -> captain\`
+- \`planning\`: \`captain -> tactician -> worker -> arbiter -> captain\`
+- \`verification\`: \`captain -> scout? -> arbiter -> captain\`
+- \`parallel\`: bounded fan-out, fan-in, then optional review
 
-- git read: \`companion_reader\`
-- git mutation: \`companion_operator\`
-- filesystem/docs/fetch/reference reads: \`companion_reader\`
+Older route names are compatibility aliases for persisted runs.
 
 ## Run Hygiene
 
@@ -310,10 +326,9 @@ Foreman cannot intercept arbitrary host Codex tools after those tools are expose
 codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action prune
-codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --apply
 \`\`\`
 
-These commands are shipped in the release tarball.
+These commands ship in the release tarball and do not depend on npm registry publication.
 
 ## Roles
 
