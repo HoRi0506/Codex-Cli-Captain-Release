@@ -600,7 +600,7 @@ function createNotebookLmArchiveTargetSummary(input) {
     if (!target?.enabled) {
         return {
             notebookLmArchiveTargetStatus: 'disabled',
-            notebookLmArchiveTargetSummary: 'NotebookLM archive target is disabled. To enable it, register notebooklm MCP, complete browser auth, then set archive_targets.notebooklm.enabled=true with notebook_url or notebook_id.',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive target is disabled. To enable repo-scoped archive prep, register notebooklm MCP, complete browser auth, then set archive_targets.notebooklm.enabled=true with notebook_url or notebook_id.',
         };
     }
     const notebookLmServer = input.otherInstalledMcpServers.find((server) => server.name === 'notebooklm') ?? null;
@@ -621,7 +621,7 @@ function createNotebookLmArchiveTargetSummary(input) {
     if (!target.notebook_url && !target.notebook_id) {
         return {
             notebookLmArchiveTargetStatus: 'notebooklm_target_not_configured',
-            notebookLmArchiveTargetSummary: 'NotebookLM archive target is enabled, but notebook_url or notebook_id is not configured.',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive target is enabled, but notebook_url or notebook_id is not configured for the repo-scoped archive target.',
         };
     }
     if (notebookLmServer.authStatus && !['authenticated', 'unsupported'].includes(notebookLmServer.authStatus)) {
@@ -632,7 +632,7 @@ function createNotebookLmArchiveTargetSummary(input) {
     }
     return {
         notebookLmArchiveTargetStatus: 'ready',
-        notebookLmArchiveTargetSummary: 'NotebookLM archive target is configured and notebooklm MCP is registered; browser authentication is managed outside foreman-config.json.',
+        notebookLmArchiveTargetSummary: 'NotebookLM archive target is configured and notebooklm MCP is registered; browser authentication is managed outside foreman-config.json and repo-scoped local archive export is ready.',
     };
 }
 function createRegistrationSummary(status, serverName) {

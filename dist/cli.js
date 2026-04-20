@@ -7,6 +7,7 @@ const cli_mutation_lease_1 = require("./cli-mutation-lease");
 const entry_policy_1 = require("./entry-policy");
 const navigation_aids_1 = require("./navigation-aids");
 const run_lifecycle_1 = require("./run-lifecycle");
+const notebooklm_archive_1 = require("./notebooklm-archive");
 const runtime_1 = require("./runtime");
 const run_command_1 = require("./run-command");
 const mcp_server_1 = require("./mcp-server");
@@ -49,6 +50,10 @@ function usage() {
         '    Register the installed codex-foreman MCP server with Codex CLI, install or refresh the packaged $cap skill and custom-agent roster under the local Codex home, and add the MCP only when no conflicting registration exists.',
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
         '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
+        '  codex-foreman notebooklm-status [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
+        '    Report repo-scoped NotebookLM archive readiness, local archive root, current companion MCP auth status, and the honest 1.6.2 upload boundary.',
+        '  codex-foreman notebooklm-export-session --run-id <id> [--session-id <id>] [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
+        '    Prepare a repo/date/session local NotebookLM archive bundle for one persisted run and record the export boundary without claiming direct NotebookLM upload.',
         '  codex-foreman clear-runs [--cwd <path>] [--include-blocked]',
         '    Cancel persisted active runs in one workspace through a bounded maintenance path so stale legacy runs do not keep polluting reuse and hygiene surfaces.',
         '  codex-foreman maintain-runs --action <archive|prune> [--apply] [--cwd <path>]',
@@ -1627,6 +1632,71 @@ function parseCheckInstallOptions(rest) {
     }
     return options;
 }
+function parseNotebookLmStatusOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--codex-bin':
+                options.codexPath = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--server-name':
+                options.serverName = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    return options;
+}
+function parseNotebookLmExportSessionOptions(rest) {
+    const options = {
+        cwd: process.cwd(),
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    };
+    for (let index = 0; index < rest.length; index += 1) {
+        const token = rest[index];
+        switch (token) {
+            case '--run-id':
+                options.runId = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--session-id':
+                options.sessionId = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--codex-bin':
+                options.codexPath = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--server-name':
+                options.serverName = requireValue(token, rest, index);
+                index += 1;
+                break;
+            case '--cwd':
+                options.cwd = requireValue(token, rest, index);
+                index += 1;
+                break;
+            default:
+                throw new UsageError(`Unexpected argument: ${token}.\n${usage()}`);
+        }
+    }
+    if (!options.runId) {
+        throw new UsageError(`Missing required flag --run-id.\n${usage()}`);
+    }
+    return options;
+}
 function parseClearRunsOptions(rest) {
     const options = {
         cwd: process.cwd(),
@@ -1772,6 +1842,12 @@ function parseCliArgs(argv) {
     }
     if (command === 'check-install') {
         return { command, options: parseCheckInstallOptions(rest) };
+    }
+    if (command === 'notebooklm-status') {
+        return { command, options: parseNotebookLmStatusOptions(rest) };
+    }
+    if (command === 'notebooklm-export-session') {
+        return { command, options: parseNotebookLmExportSessionOptions(rest) };
     }
     if (command === 'clear-runs') {
         return { command, options: parseClearRunsOptions(rest) };
@@ -2012,6 +2088,27 @@ async function runCli(argv) {
                 process.stdout.write(`Companion MCP ${server.name}: enabled=${server.enabled} compatibility=${server.compatibility} approval=${server.approvalExpectation} scope=${server.recommendationScope} hint=${server.usageHint}\n`);
             }
             return result.status === 'ok' ? 0 : 1;
+        }
+        if (parsed.command === 'notebooklm-status') {
+            const result = await (0, notebooklm_archive_1.getNotebookLmStatus)(parsed.options);
+            process.stdout.write(`NotebookLM status: command=${result.commandStatus} readiness=${result.readinessStatus} repo=${result.repoLabel} repo_key=${result.repoKey} archive_root=${result.localArchiveRoot}\n`);
+            process.stdout.write(`Readiness: ${result.readinessSummary}\n`);
+            process.stdout.write(`Target: enabled=${result.targetEnabled} mode=${result.targetMode} auto_create_notebook=${result.targetAutoCreateNotebook} notebook_url=${result.targetNotebookUrl ?? 'none'} notebook_id=${result.targetNotebookId ?? 'none'} secret_ref=${result.secretRef ?? 'none'}\n`);
+            process.stdout.write(`Companion MCP: registered=${result.companionRegistered} enabled=${result.companionEnabled} auth_status=${result.companionAuthStatus ?? 'none'}\n`);
+            process.stdout.write(`Upload boundary: ${result.uploadCapabilitySummary}\n`);
+            process.stdout.write(`Config: ${result.configPath}\n`);
+            for (const step of result.suggestedNextSteps) {
+                process.stdout.write(`Next step: ${step}\n`);
+            }
+            return result.commandStatus === 'degraded' ? 1 : 0;
+        }
+        if (parsed.command === 'notebooklm-export-session') {
+            const result = await (0, notebooklm_archive_1.prepareNotebookLmSessionExport)(parsed.options);
+            process.stdout.write(`NotebookLM export: status=${result.status} run_id=${result.runId} session_id=${result.sessionId} repo=${result.repoLabel} archive_dir=${result.archiveDir}\n`);
+            process.stdout.write(`Summary: ${result.summary}\n`);
+            process.stdout.write(`Target: readiness=${result.readinessStatus} upload_capability=${result.uploadCapabilityStatus} notebook_url=${result.targetNotebookUrl ?? 'none'} notebook_id=${result.targetNotebookId ?? 'none'}\n`);
+            process.stdout.write(`Manifest: ${result.manifestPath}\n`);
+            return 0;
         }
         if (parsed.command === 'clear-runs') {
             const result = await (0, run_lifecycle_1.clearWorkspaceRuns)(parsed.options.cwd, {

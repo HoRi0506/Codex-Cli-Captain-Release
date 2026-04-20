@@ -89,9 +89,9 @@ function createReleaseInstallGuide(input) {
     ].join('\n');
     return `# Install Codex-Foreman
 
-Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
+Use this guide for the packaged beta install surface.
 
-This is the supported beta install path. Beta releases are distributed through GitHub Release tarballs from the install-only release repository, not through the public npm registry.
+Beta releases are installed from GitHub Release tarballs in the install-only repository, not from the public npm registry.
 
 ## Paste Into Codex CLI
 
@@ -101,84 +101,67 @@ Copy this text into Codex CLI:
 ${codexPrompt}
 \`\`\`
 
-If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
-
-## Shell Reference
-
-Codex should execute these steps for the preferred install path:
-
-Install from the exact release tarball:
+## Install
 
 \`\`\`bash
 npm install -g ${releaseTarballUrl}
-\`\`\`
-
-Then register or refresh the MCP entrypoint:
-
-\`\`\`bash
 codex-foreman setup
-\`\`\`
-
-That step also installs or refreshes the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill under your local Codex skills directory and the packaged Foreman custom-agent roster under your local Codex agents directory.
-
-Verify the install:
-
-\`\`\`bash
 codex-foreman check-install
 \`\`\`
+
+Then restart Codex CLI.
 
 ## Update
 
-To update an existing install on this machine for \`v${input.packageVersion}\`, rerun the same three commands against this release tarball:
+To update to \`v${input.packageVersion}\`, rerun the same three commands.
+
+There is no separate \`mcp update\` command today.
+
+\`codex-foreman setup\` refreshes the packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill and the packaged Foreman custom-agent roster.
+
+## NotebookLM MCP
+
+Register the optional companion MCP:
 
 \`\`\`bash
-npm install -g ${releaseTarballUrl}
-codex-foreman setup
-codex-foreman check-install
+codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
 \`\`\`
 
-The tarball command refreshes the installed package version, and \`setup\` refreshes the MCP registration, packaged skill, and packaged custom agents.
+Restart Codex CLI after registration.
 
-If a workspace already has stale persisted active runs outside the request-scoped \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` flow, clear them with:
+Foreman readiness check:
+
+\`\`\`bash
+codex-foreman notebooklm-status --cwd /absolute/repo/path
+\`\`\`
+
+Explicit NotebookLM auth check inside Codex:
+
+- call NotebookLM MCP \`get_health\`
+- confirm \`authenticated=true\`
+
+Repo-scoped export:
+
+\`\`\`bash
+codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
+\`\`\`
+
+1.6.2 boundary:
+
+- Foreman prepares and records the local archive bundle.
+- Foreman reports NotebookLM readiness honestly.
+- Direct NotebookLM source upload is still host-driven.
+
+## Run Hygiene
 
 \`\`\`bash
 codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
-\`\`\`
-
-That bounded maintenance path cancels legacy persisted runs for the target workspace and prints the post-clear hygiene summary right away.
-
-For retention candidates, inspect first and apply only when the candidate list is expected:
-
-\`\`\`bash
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action prune
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --apply
 \`\`\`
 
-## Local tarball fallback
-
-If you already downloaded the release asset locally, use:
-
-\`\`\`bash
-npm install -g /absolute/path/to/${input.packageName}-<version>.tgz
-codex-foreman setup
-codex-foreman check-install
-\`\`\`
-
-This path still does not require keeping a cloned release repository after the install succeeds.
-
-## Verification checklist
-
-The install is in the expected state when:
-
-- \`codex-foreman check-install\` reports \`status=ok\`
-- the registration summary says the installed MCP entrypoint matches
-- the skill summary says \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` matches the packaged Foreman skill content
-- the custom-agent summary says the packaged Foreman agent roster matches
-- the model-policy summary shows the configured role-model map you expect
-- the run-hygiene summary does not report unexpected active-run buildup
-- \`foreman_server_identity\` reports the expected MCP build after the next Codex session starts
-- after restarting Codex CLI, you can invoke \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` to enter the captain-first Foreman path
+These commands are part of the packaged release tarball.
 
 ## Healthy output example
 
@@ -188,11 +171,11 @@ ${createHealthyCheckInstallExample(input.packageVersion)}
 
 ## Notes
 
-- There is no separate \`mcp update\` command today.
-- \`codex-foreman setup\` handles MCP registration, packaged \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
-- Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
-- install from the GitHub release tarball when you want a no-clone setup
-- published release assets live under ${RELEASES_URL}
+- \`codex-foreman setup\` handles MCP registration plus packaged skill and agent refresh.
+- Codex authentication stays on normal Codex login paths.
+- NotebookLM authentication stays on NotebookLM browser auth.
+- Foreman does not proxy or scrape OAuth credentials.
+- Published release assets live under ${RELEASES_URL}
 
 Please restart Codex CLI.
 `;
@@ -214,11 +197,9 @@ function createReleaseReadme(input) {
 
 Captain-first Foreman toolbox for Codex CLI.
 
-Use it when a request needs visible routing, worker proof, review boundaries, and install/runtime hygiene instead of one opaque Codex turn.
-
 Install. Run setup. Restart Codex CLI. Use \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`.
 
-Beta releases are installed from GitHub Release tarballs in this install-only repository. The public npm registry is not the supported beta install surface.
+Beta releases are installed from GitHub Release tarballs in this install-only repository, not from the public npm registry.
 
 ## Install
 
@@ -236,29 +217,26 @@ codex-foreman setup
 codex-foreman check-install
 \`\`\`
 
-Restart Codex CLI after setup or update.
-
 ## Use
 
 \`\`\`text
-${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} inspect this repository and report findings only; do not edit files
-${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} update the release README with usage tips, run tests, then commit and push
+${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} inspect this repository and report findings only
+${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} implement the scoped fix, run tests, then commit and push
 ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} continue current run
 ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} close current run
 \`\`\`
 
-Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a new request-run by default. Ask to continue or resume only when you intentionally want the current run reused.
+Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a new request-run by default.
 
 ## What You Get
 
-- captain-first route selection before specialist work
-- bounded scout, raider, arbiter, and companion-owner execution paths
+- captain-first routing
+- bounded scout, raider, arbiter, and companion-owner paths
 - request-shape checks that keep read-only work off mutation routes
-- mutation proof and review boundaries before final synthesis
-- compact status surfaces for route, role/model, fallback, and run hygiene truth
-- local session route journals under \`.foreman/sessions/<session-id>/\`
+- compact status and run-hygiene visibility
+- local route journals under \`.foreman/sessions/<session-id>/\`
 
-Codex remains the orchestrator. Foreman does not proxy Codex auth and does not replace the Codex CLI binary.
+Codex remains the orchestrator. Foreman does not proxy Codex auth.
 
 ## Status
 
@@ -274,21 +252,31 @@ Healthy install output should include:
 - \`registration=matching_registration\`
 - \`skill=matching_install\`
 - \`agents=matching_install\`
-- coherent model and companion-tool policy
-- \`notebooklm_archive=disabled\` or an explicit NotebookLM readiness state
-- clean or explainable run hygiene
+- \`notebooklm_archive=disabled\` or a concrete readiness state
 
-## Optional NotebookLM Archive
+## NotebookLM
 
-NotebookLM is optional. Foreman does not register it automatically because it is a third-party MCP with a browser login step.
+Register the optional companion MCP:
 
 \`\`\`bash
 codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
 \`\`\`
 
-Restart Codex CLI, then complete NotebookLM browser login when Codex calls the NotebookLM MCP auth tool.
+Restart Codex CLI after registration.
 
-For archive targets, prefer \`notebook_url\`: open the target notebook in NotebookLM and copy the browser URL or shared notebook link. Leave \`notebook_id\` as \`null\` unless a specific NotebookLM MCP workflow gives you a stable id. Never put Google usernames or passwords in \`foreman-config.json\`.
+Readiness check:
+
+\`\`\`bash
+codex-foreman notebooklm-status --cwd /absolute/repo/path
+\`\`\`
+
+Repo-scoped export:
+
+\`\`\`bash
+codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
+\`\`\`
+
+1.6.2 boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
 
 ## Run Hygiene
 
@@ -299,7 +287,7 @@ codex-foreman maintain-runs --cwd /absolute/workspace/path --action prune
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --apply
 \`\`\`
 
-\`maintain-runs\` is dry-run-first. Add \`--apply\` only after the candidate list is expected.
+These commands are shipped in the release tarball.
 
 ## Roles
 

@@ -1579,7 +1579,11 @@ function createDefaultForemanArchiveTargetsConfig() {
     return {
         notebooklm: {
             enabled: false,
+            mode: 'repo_workspace',
             auth_mode: 'browser',
+            repo_key: null,
+            auto_create_notebook: false,
+            local_archive_root: '.foreman/archive/notebooklm',
             notebook_url: null,
             notebook_id: null,
             secret_ref: null,
@@ -1851,9 +1855,22 @@ function normalizeForemanConfigCandidate(candidate) {
                 enabled: typeof candidateNotebookLmArchiveTarget.enabled === 'boolean'
                     ? candidateNotebookLmArchiveTarget.enabled
                     : defaultArchiveTargets.notebooklm.enabled,
+                mode: candidateNotebookLmArchiveTarget.mode === 'repo_workspace'
+                    ? 'repo_workspace'
+                    : defaultArchiveTargets.notebooklm.mode,
                 auth_mode: candidateNotebookLmArchiveTarget.auth_mode === 'browser'
                     ? 'browser'
                     : defaultArchiveTargets.notebooklm.auth_mode,
+                repo_key: typeof candidateNotebookLmArchiveTarget.repo_key === 'string' || candidateNotebookLmArchiveTarget.repo_key === null
+                    ? candidateNotebookLmArchiveTarget.repo_key
+                    : defaultArchiveTargets.notebooklm.repo_key,
+                auto_create_notebook: typeof candidateNotebookLmArchiveTarget.auto_create_notebook === 'boolean'
+                    ? candidateNotebookLmArchiveTarget.auto_create_notebook
+                    : defaultArchiveTargets.notebooklm.auto_create_notebook,
+                local_archive_root: typeof candidateNotebookLmArchiveTarget.local_archive_root === 'string' &&
+                    candidateNotebookLmArchiveTarget.local_archive_root.trim().length > 0
+                    ? candidateNotebookLmArchiveTarget.local_archive_root
+                    : defaultArchiveTargets.notebooklm.local_archive_root,
                 notebook_url: typeof candidateNotebookLmArchiveTarget.notebook_url === 'string' ||
                     candidateNotebookLmArchiveTarget.notebook_url === null
                     ? candidateNotebookLmArchiveTarget.notebook_url

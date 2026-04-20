@@ -86,6 +86,7 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 19. When specialist metadata is available, treat `agent-skills` as the role playbook layer and the Foreman wrapper docs as the thin adapter layer. Do not describe this as hidden Codex CLI interception.
 20. Once the accepted request is complete, answer and stop. Do not add unrequested git, filesystem, docs, or cleanup work after a sufficient Foreman result.
 21. Make `$cap` follow proof visible whenever the runtime exposes it: prefer compact truth such as follow state, completion rule, tool route, tool owner, and degraded-vs-Foreman completion instead of opaque local-only narration.
+22. When the operator asks to archive or upload the current session to NotebookLM, prefer `mcp__codex_foreman__foreman_notebooklm_status` first, then `mcp__codex_foreman__foreman_notebooklm_prepare_session_export` for the local bundle. If the current Codex session exposes a NotebookLM upload surface, use it next and finish by calling `mcp__codex_foreman__foreman_notebooklm_record_export_result`. If upload is not available, answer with the prepared archive path and the explicit boundary instead of pretending the upload succeeded.
 
 ## Captain-directed loop
 

@@ -1,8 +1,8 @@
 # Install Codex-Foreman
 
-Use this guide when you want to install or update Codex-Foreman without keeping a cloned release repository on disk after installation.
+Use this guide for the packaged beta install surface.
 
-This is the supported beta install path. Beta releases are distributed through GitHub Release tarballs from the install-only release repository, not through the public npm registry.
+Beta releases are installed from GitHub Release tarballs in the install-only repository, not from the public npm registry.
 
 ## Paste Into Codex CLI
 
@@ -11,7 +11,7 @@ Copy this text into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -20,90 +20,73 @@ Do not ask me to type the shell commands manually.
 Finish with exactly: Please restart Codex CLI.
 ```
 
-If Codex has access to this repository, tell it to read this file before it starts so it follows the documented install and verification flow exactly.
-
-## Shell Reference
-
-Codex should execute these steps for the preferred install path:
-
-Install from the exact release tarball:
+## Install
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
-```
-
-Then register or refresh the MCP entrypoint:
-
-```bash
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
 codex-foreman setup
-```
-
-That step also installs or refreshes the packaged `$cap` skill under your local Codex skills directory and the packaged Foreman custom-agent roster under your local Codex agents directory.
-
-Verify the install:
-
-```bash
 codex-foreman check-install
 ```
+
+Then restart Codex CLI.
 
 ## Update
 
-To update an existing install on this machine for `v1.6.1`, rerun the same three commands against this release tarball:
+To update to `v1.6.2`, rerun the same three commands.
+
+There is no separate `mcp update` command today.
+
+`codex-foreman setup` refreshes the packaged `$cap` skill and the packaged Foreman custom-agent roster.
+
+## NotebookLM MCP
+
+Register the optional companion MCP:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
-codex-foreman setup
-codex-foreman check-install
+codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
 ```
 
-The tarball command refreshes the installed package version, and `setup` refreshes the MCP registration, packaged skill, and packaged custom agents.
+Restart Codex CLI after registration.
 
-If a workspace already has stale persisted active runs outside the request-scoped `$cap` flow, clear them with:
+Foreman readiness check:
+
+```bash
+codex-foreman notebooklm-status --cwd /absolute/repo/path
+```
+
+Explicit NotebookLM auth check inside Codex:
+
+- call NotebookLM MCP `get_health`
+- confirm `authenticated=true`
+
+Repo-scoped export:
+
+```bash
+codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
+```
+
+1.6.2 boundary:
+
+- Foreman prepares and records the local archive bundle.
+- Foreman reports NotebookLM readiness honestly.
+- Direct NotebookLM source upload is still host-driven.
+
+## Run Hygiene
 
 ```bash
 codex-foreman clear-runs --cwd /absolute/workspace/path --include-blocked
-```
-
-That bounded maintenance path cancels legacy persisted runs for the target workspace and prints the post-clear hygiene summary right away.
-
-For retention candidates, inspect first and apply only when the candidate list is expected:
-
-```bash
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action prune
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --apply
 ```
 
-## Local tarball fallback
-
-If you already downloaded the release asset locally, use:
-
-```bash
-npm install -g /absolute/path/to/codex-foreman-<version>.tgz
-codex-foreman setup
-codex-foreman check-install
-```
-
-This path still does not require keeping a cloned release repository after the install succeeds.
-
-## Verification checklist
-
-The install is in the expected state when:
-
-- `codex-foreman check-install` reports `status=ok`
-- the registration summary says the installed MCP entrypoint matches
-- the skill summary says `$cap` matches the packaged Foreman skill content
-- the custom-agent summary says the packaged Foreman agent roster matches
-- the model-policy summary shows the configured role-model map you expect
-- the run-hygiene summary does not report unexpected active-run buildup
-- `foreman_server_identity` reports the expected MCP build after the next Codex session starts
-- after restarting Codex CLI, you can invoke `$cap` to enter the captain-first Foreman path
+These commands are part of the packaged release tarball.
 
 ## Healthy output example
 
 ```text
-Foreman install check: status=ok version=1.6.1 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 notebooklm_archive=disabled model_policy=coherent tool_policy=coherent run_hygiene=clean
-Current package: codex-foreman@1.6.1
+Foreman install check: status=ok version=1.6.2 entry=$cap registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 notebooklm_archive=disabled model_policy=coherent tool_policy=coherent run_hygiene=clean
+Current package: codex-foreman@1.6.2
 Public entry: $cap (skill=cap)
 Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium
 Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.
@@ -113,10 +96,10 @@ Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable
 
 ## Notes
 
-- There is no separate `mcp update` command today.
-- `codex-foreman setup` handles MCP registration, packaged `$cap` skill installation, packaged custom-agent installation, and conflict checks; it is not the package installer
-- Codex authentication stays on supported Codex login paths; Foreman does not proxy or scrape OAuth credentials
-- install from the GitHub release tarball when you want a no-clone setup
-- published release assets live under https://github.com/HoRi0506/Codex-Foreman-release/releases
+- `codex-foreman setup` handles MCP registration plus packaged skill and agent refresh.
+- Codex authentication stays on normal Codex login paths.
+- NotebookLM authentication stays on NotebookLM browser auth.
+- Foreman does not proxy or scrape OAuth credentials.
+- Published release assets live under https://github.com/HoRi0506/Codex-Foreman-release/releases
 
 Please restart Codex CLI.

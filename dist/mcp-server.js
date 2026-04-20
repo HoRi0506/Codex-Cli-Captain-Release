@@ -5,6 +5,9 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getForemanStatus = getForemanStatus;
 exports.getForemanActivity = getForemanActivity;
+exports.getForemanNotebookLmStatus = getForemanNotebookLmStatus;
+exports.prepareForemanNotebookLmSessionExport = prepareForemanNotebookLmSessionExport;
+exports.recordForemanNotebookLmExportResult = recordForemanNotebookLmExportResult;
 exports.recommendForemanEntryForMcp = recommendForemanEntryForMcp;
 exports.autoEnterForemanForMcp = autoEnterForemanForMcp;
 exports.getForemanDelegations = getForemanDelegations;
@@ -27,6 +30,7 @@ const constants_1 = require("./constants");
 const entry_policy_1 = require("./entry-policy");
 const helper_agents_1 = require("./helper-agents");
 const navigation_aids_1 = require("./navigation-aids");
+const notebooklm_archive_1 = require("./notebooklm-archive");
 const package_metadata_1 = require("./package-metadata");
 const orchestration_loop_1 = require("./orchestration-loop");
 const run_lifecycle_1 = require("./run-lifecycle");
@@ -46,7 +50,7 @@ const MCP_SERVER_INFO = {
     version: package_metadata_1.FOREMAN_PACKAGE_VERSION,
 };
 const DEFAULT_FOREMAN_TOOL_TIMEOUT_BUDGET_MS = 10_000;
-const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
+const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_notebooklm_status for repo-scoped NotebookLM archive readiness, foreman_notebooklm_prepare_session_export to prepare a local NotebookLM archive bundle for one run, foreman_notebooklm_record_export_result after the host session finishes or blocks the actual NotebookLM upload, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
     switch (policyMode) {
         case 'codex_cli_foreman_first':
@@ -392,6 +396,81 @@ const FOREMAN_AUTO_ENTRY_TOOL = {
         additionalProperties: false,
     },
 };
+const FOREMAN_NOTEBOOKLM_STATUS_TOOL = {
+    name: 'foreman_notebooklm_status',
+    description: 'Read-only NotebookLM archive readiness for one workspace. Reports repo-scoped local archive settings, companion MCP auth status, and the honest 1.6.2 upload boundary without mutating run state.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            cwd: {
+                type: 'string',
+                minLength: 1,
+                description: 'Optional working directory whose repo-scoped NotebookLM archive readiness should be inspected. Defaults to the MCP server process cwd.',
+            },
+        },
+        additionalProperties: false,
+    },
+};
+const FOREMAN_NOTEBOOKLM_PREPARE_SESSION_EXPORT_TOOL = {
+    name: 'foreman_notebooklm_prepare_session_export',
+    description: 'Prepare a repo/date/session local NotebookLM archive bundle for one persisted run. Writes a local manifest and archive files, then records the current upload boundary honestly.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            ...FOREMAN_RUN_LOCATOR_SCHEMA_PROPERTIES,
+            session_id: {
+                type: 'string',
+                minLength: 1,
+                description: 'Optional explicit session identifier for the archive leaf directory. Defaults to active thread id, requester session id, or run id.',
+            },
+        },
+        additionalProperties: false,
+    },
+};
+const FOREMAN_NOTEBOOKLM_RECORD_EXPORT_RESULT_TOOL = {
+    name: 'foreman_notebooklm_record_export_result',
+    description: 'Record the final NotebookLM upload result for a previously prepared local archive bundle after the host session completes or blocks the actual NotebookLM-side upload.',
+    inputSchema: {
+        type: 'object',
+        properties: {
+            archive_dir: {
+                type: 'string',
+                minLength: 1,
+                description: 'Absolute archive directory created by foreman_notebooklm_prepare_session_export.',
+            },
+            status: {
+                type: 'string',
+                enum: ['completed', 'blocked', 'failed'],
+                description: 'Final host-observed NotebookLM upload result for this local archive bundle.',
+            },
+            summary: {
+                type: 'string',
+                minLength: 1,
+                description: 'Compact operator summary of what happened during upload or why it stayed blocked.',
+            },
+            notebook_url: {
+                type: 'string',
+                minLength: 1,
+                description: 'Optional NotebookLM notebook URL observed during upload.',
+            },
+            notebook_id: {
+                type: 'string',
+                minLength: 1,
+                description: 'Optional NotebookLM notebook id observed during upload.',
+            },
+            source_ids: {
+                type: 'array',
+                items: {
+                    type: 'string',
+                    minLength: 1,
+                },
+                description: 'Optional NotebookLM source identifiers created during upload.',
+            },
+        },
+        required: ['archive_dir', 'status', 'summary'],
+        additionalProperties: false,
+    },
+};
 const FOREMAN_START_TOOL = {
     name: 'foreman_start',
     description: 'Mutating local Foreman bootstrap for a new run using operator-supplied scoped task inputs only. Persists Foreman state locally and does not invoke Codex.',
@@ -676,6 +755,9 @@ const FOREMAN_TOOLS = [
     FOREMAN_ACTIVITY_TOOL,
     FOREMAN_RECOMMEND_ENTRY_TOOL,
     FOREMAN_AUTO_ENTRY_TOOL,
+    FOREMAN_NOTEBOOKLM_STATUS_TOOL,
+    FOREMAN_NOTEBOOKLM_PREPARE_SESSION_EXPORT_TOOL,
+    FOREMAN_NOTEBOOKLM_RECORD_EXPORT_RESULT_TOOL,
     FOREMAN_START_TOOL,
     FOREMAN_RUN_TOOL,
     FOREMAN_DELEGATIONS_TOOL,
@@ -1069,6 +1151,73 @@ function parseForemanAutoEntryArguments(value) {
         request,
         codex_bin: codexBin,
         cwd,
+    };
+}
+function parseForemanNotebookLmStatusArguments(value) {
+    if (!isRecord(value)) {
+        throw new Error('foreman_notebooklm_status arguments must be an object.');
+    }
+    const cwd = readOptionalString(value, 'cwd');
+    for (const key of Object.keys(value)) {
+        if (key !== 'cwd') {
+            throw new Error(`Unexpected foreman_notebooklm_status argument: ${key}.`);
+        }
+    }
+    return {
+        cwd,
+    };
+}
+function parseForemanNotebookLmPrepareSessionExportArguments(value) {
+    if (!isRecord(value)) {
+        throw new Error('foreman_notebooklm_prepare_session_export arguments must be an object.');
+    }
+    for (const key of Object.keys(value)) {
+        if (!['run_id', 'run_ref', 'run_dir', 'session_id', 'cwd'].includes(key)) {
+            throw new Error(`Unexpected foreman_notebooklm_prepare_session_export argument: ${key}.`);
+        }
+    }
+    return {
+        ...parseRunLocatorArguments(value, 'foreman_notebooklm_prepare_session_export'),
+        session_id: readOptionalString(value, 'session_id'),
+    };
+}
+function parseForemanNotebookLmRecordExportArguments(value) {
+    if (!isRecord(value)) {
+        throw new Error('foreman_notebooklm_record_export_result arguments must be an object.');
+    }
+    const archiveDir = readRequiredString(value, 'archive_dir');
+    const status = readRequiredString(value, 'status');
+    const summary = readRequiredString(value, 'summary');
+    const notebookUrl = readOptionalString(value, 'notebook_url');
+    const notebookId = readOptionalString(value, 'notebook_id');
+    const sourceIdsCandidate = value.source_ids;
+    const sourceIds = sourceIdsCandidate === undefined
+        ? undefined
+        : Array.isArray(sourceIdsCandidate)
+            ? sourceIdsCandidate.map((entry, index) => {
+                if (typeof entry !== 'string' || entry.length === 0) {
+                    throw new Error(`foreman_notebooklm_record_export_result source_ids[${index}] must be a non-empty string.`);
+                }
+                return entry;
+            })
+            : (() => {
+                throw new Error('foreman_notebooklm_record_export_result source_ids must be an array when provided.');
+            })();
+    if (!['completed', 'blocked', 'failed'].includes(status)) {
+        throw new Error('foreman_notebooklm_record_export_result status must be completed, blocked, or failed.');
+    }
+    for (const key of Object.keys(value)) {
+        if (!['archive_dir', 'status', 'summary', 'notebook_url', 'notebook_id', 'source_ids'].includes(key)) {
+            throw new Error(`Unexpected foreman_notebooklm_record_export_result argument: ${key}.`);
+        }
+    }
+    return {
+        archiveDir,
+        status: status,
+        summary,
+        notebookUrl,
+        notebookId,
+        sourceIds,
     };
 }
 function parseForemanStartArguments(value) {
@@ -4518,6 +4667,26 @@ async function getForemanActivity(input, sessionContext = DEFAULT_MCP_SESSION_CO
         foremanConfig,
     });
 }
+async function getForemanNotebookLmStatus(input) {
+    return await (0, notebooklm_archive_1.getNotebookLmStatus)({
+        cwd: resolveCwd(input.cwd),
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    });
+}
+async function prepareForemanNotebookLmSessionExport(input) {
+    const locator = resolveForemanRunLocator(input);
+    return await (0, notebooklm_archive_1.prepareNotebookLmSessionExport)({
+        cwd: locator.cwd,
+        runId: locator.run_id,
+        sessionId: input.session_id,
+        codexPath: 'codex',
+        serverName: 'codex-foreman',
+    });
+}
+async function recordForemanNotebookLmExportResult(input) {
+    return await (0, notebooklm_archive_1.recordNotebookLmExportResult)(input);
+}
 async function recommendForemanEntryForMcp(input) {
     return await withBoundedToolBudget({
         toolName: 'foreman_recommend_entry',
@@ -5298,6 +5467,46 @@ async function handleMcpRequest(value, sessionContext = DEFAULT_MCP_SESSION_CONT
                                             ? `Foreman auto-entry did not create a run because policy=${result.policy_mode} still requires an explicit entry call. entry_boundary=${result.entry_boundary} upstream_intercept_supported=${result.upstream_codex_binary_intercept_supported}. Use ${result.recommendation.suggested_cli_command}.` +
                                                 `${result.timeout_diagnosis ? ` Timeout diagnosis: ${result.timeout_diagnosis.summary}` : ''}`
                                             : `Foreman auto-entry suppressed new run creation with ${visibilitySummary} because ${result.run_decision_reason}. Route: ${answerTraceSummary}. ${result.summary}`,
+                            },
+                        ],
+                        structuredContent: result,
+                    });
+                }
+                if (toolName === FOREMAN_NOTEBOOKLM_STATUS_TOOL.name) {
+                    const result = await getForemanNotebookLmStatus(parseForemanNotebookLmStatusArguments(value.params.arguments));
+                    return createSuccessResponse(value.id, {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `NotebookLM archive for ${result.repoLabel} is ${result.commandStatus} with readiness=${result.readinessStatus}. ` +
+                                    `archive_root=${result.localArchiveRoot} auth_status=${result.companionAuthStatus ?? 'none'}. ` +
+                                    `Upload boundary: ${result.uploadCapabilitySummary}`,
+                            },
+                        ],
+                        structuredContent: result,
+                    });
+                }
+                if (toolName === FOREMAN_NOTEBOOKLM_PREPARE_SESSION_EXPORT_TOOL.name) {
+                    const result = await prepareForemanNotebookLmSessionExport(parseForemanNotebookLmPrepareSessionExportArguments(value.params.arguments));
+                    return createSuccessResponse(value.id, {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `Prepared NotebookLM local archive bundle for run ${result.runId} at ${result.archiveDir}. ` +
+                                    `readiness=${result.readinessStatus} upload_capability=${result.uploadCapabilityStatus}. ${result.summary}`,
+                            },
+                        ],
+                        structuredContent: result,
+                    });
+                }
+                if (toolName === FOREMAN_NOTEBOOKLM_RECORD_EXPORT_RESULT_TOOL.name) {
+                    const result = await recordForemanNotebookLmExportResult(parseForemanNotebookLmRecordExportArguments(value.params.arguments));
+                    return createSuccessResponse(value.id, {
+                        content: [
+                            {
+                                type: 'text',
+                                text: `Recorded NotebookLM export result for run ${result.runId} session ${result.sessionId}: ` +
+                                    `status=${result.status} summary=${result.summary}`,
                             },
                         ],
                         structuredContent: result,

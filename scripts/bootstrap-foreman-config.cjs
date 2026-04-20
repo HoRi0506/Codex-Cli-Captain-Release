@@ -33,7 +33,11 @@ function fallbackCreateDefaultForemanConfig() {
     archive_targets: {
       notebooklm: {
         enabled: false,
+        mode: 'repo_workspace',
         auth_mode: 'browser',
+        repo_key: null,
+        auto_create_notebook: false,
+        local_archive_root: '.foreman/archive/notebooklm',
         notebook_url: null,
         notebook_id: null,
         secret_ref: null,

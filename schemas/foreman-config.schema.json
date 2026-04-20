@@ -49,14 +49,39 @@
         "notebooklm": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["enabled", "auth_mode", "notebook_url", "notebook_id", "secret_ref"],
+          "required": [
+            "enabled",
+            "mode",
+            "auth_mode",
+            "repo_key",
+            "auto_create_notebook",
+            "local_archive_root",
+            "notebook_url",
+            "notebook_id",
+            "secret_ref"
+          ],
           "properties": {
             "enabled": {
               "type": "boolean"
             },
+            "mode": {
+              "type": "string",
+              "enum": ["repo_workspace"]
+            },
             "auth_mode": {
               "type": "string",
               "enum": ["browser"]
+            },
+            "repo_key": {
+              "type": ["string", "null"],
+              "minLength": 1
+            },
+            "auto_create_notebook": {
+              "type": "boolean"
+            },
+            "local_archive_root": {
+              "type": "string",
+              "minLength": 1
             },
             "notebook_url": {
               "type": ["string", "null"],

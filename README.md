@@ -2,11 +2,9 @@
 
 Captain-first Foreman toolbox for Codex CLI.
 
-Use it when a request needs visible routing, worker proof, review boundaries, and install/runtime hygiene instead of one opaque Codex turn.
-
 Install. Run setup. Restart Codex CLI. Use `$cap`.
 
-Beta releases are installed from GitHub Release tarballs in this install-only repository. The public npm registry is not the supported beta install surface.
+Beta releases are installed from GitHub Release tarballs in this install-only repository, not from the public npm registry.
 
 ## Install
 
@@ -15,7 +13,7 @@ Copy this into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -27,34 +25,31 @@ Finish with exactly: Please restart Codex CLI.
 Direct shell reference:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
 
-Restart Codex CLI after setup or update.
-
 ## Use
 
 ```text
-$cap inspect this repository and report findings only; do not edit files
-$cap update the release README with usage tips, run tests, then commit and push
+$cap inspect this repository and report findings only
+$cap implement the scoped fix, run tests, then commit and push
 $cap continue current run
 $cap close current run
 ```
 
-Each fresh `$cap` request starts a new request-run by default. Ask to continue or resume only when you intentionally want the current run reused.
+Each fresh `$cap` request starts a new request-run by default.
 
 ## What You Get
 
-- captain-first route selection before specialist work
-- bounded scout, raider, arbiter, and companion-owner execution paths
+- captain-first routing
+- bounded scout, raider, arbiter, and companion-owner paths
 - request-shape checks that keep read-only work off mutation routes
-- mutation proof and review boundaries before final synthesis
-- compact status surfaces for route, role/model, fallback, and run hygiene truth
-- local session route journals under `.foreman/sessions/<session-id>/`
+- compact status and run-hygiene visibility
+- local route journals under `.foreman/sessions/<session-id>/`
 
-Codex remains the orchestrator. Foreman does not proxy Codex auth and does not replace the Codex CLI binary.
+Codex remains the orchestrator. Foreman does not proxy Codex auth.
 
 ## Status
 
@@ -70,21 +65,31 @@ Healthy install output should include:
 - `registration=matching_registration`
 - `skill=matching_install`
 - `agents=matching_install`
-- coherent model and companion-tool policy
-- `notebooklm_archive=disabled` or an explicit NotebookLM readiness state
-- clean or explainable run hygiene
+- `notebooklm_archive=disabled` or a concrete readiness state
 
-## Optional NotebookLM Archive
+## NotebookLM
 
-NotebookLM is optional. Foreman does not register it automatically because it is a third-party MCP with a browser login step.
+Register the optional companion MCP:
 
 ```bash
 codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
 ```
 
-Restart Codex CLI, then complete NotebookLM browser login when Codex calls the NotebookLM MCP auth tool.
+Restart Codex CLI after registration.
 
-For archive targets, prefer `notebook_url`: open the target notebook in NotebookLM and copy the browser URL or shared notebook link. Leave `notebook_id` as `null` unless a specific NotebookLM MCP workflow gives you a stable id. Never put Google usernames or passwords in `foreman-config.json`.
+Readiness check:
+
+```bash
+codex-foreman notebooklm-status --cwd /absolute/repo/path
+```
+
+Repo-scoped export:
+
+```bash
+codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
+```
+
+1.6.2 boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
 
 ## Run Hygiene
 
@@ -95,7 +100,7 @@ codex-foreman maintain-runs --cwd /absolute/workspace/path --action prune
 codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --apply
 ```
 
-`maintain-runs` is dry-run-first. Add `--apply` only after the candidate list is expected.
+These commands are shipped in the release tarball.
 
 ## Roles
 
@@ -114,7 +119,7 @@ codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --ap
 - `agents/`: packaged Foreman custom-agent roster
 - `schemas/`: packaged config and specialist-contract schemas
 - `docs/install.md`: full install/update guide
-- `docs/release/notes/v1.6.1.md`: release notes
+- `docs/release/notes/v1.6.2.md`: release notes
 
-Source commit: 16302b92dc48c24bb8699e24255d9393f8cb1e69
+Source commit: e09c0ac437b4178e80efcc8f039213c88812a965
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases
