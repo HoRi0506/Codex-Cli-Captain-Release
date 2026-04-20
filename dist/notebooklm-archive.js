@@ -152,7 +152,7 @@ async function getNotebookLmStatus(options) {
     const commandStatus = readinessStatus === 'disabled' ? 'disabled' : readinessStatus === 'ready' ? 'ready_local_archive_only' : 'degraded';
     const uploadCapabilityStatus = readinessStatus === 'ready' ? 'missing' : 'unknown';
     const uploadCapabilitySummary = readinessStatus === 'ready'
-        ? 'Foreman 1.6.2 prepares a repo-scoped local archive bundle, but direct NotebookLM source upload is not wired through the Foreman MCP surface.'
+        ? 'Foreman prepares a repo-scoped local archive bundle, but direct NotebookLM source upload is not wired through the Foreman MCP surface.'
         : 'Upload capability is only meaningful after NotebookLM archive readiness is satisfied.';
     return {
         cwd,

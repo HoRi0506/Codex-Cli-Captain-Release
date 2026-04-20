@@ -51,7 +51,7 @@ function usage() {
         '  codex-foreman check-install [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
         '    Inspect Foreman MCP registration health, shared config presence, $cap skill state, packaged custom-agent roster state, and other installed Codex MCP servers without mutating Codex config.',
         '  codex-foreman notebooklm-status [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
-        '    Report repo-scoped NotebookLM archive readiness, local archive root, current companion MCP auth status, and the honest 1.6.2 upload boundary.',
+        '    Report repo-scoped NotebookLM archive readiness, local archive root, current companion MCP auth status, and the honest upload boundary.',
         '  codex-foreman notebooklm-export-session --run-id <id> [--session-id <id>] [--codex-bin <path>] [--server-name <name>] [--cwd <path>]',
         '    Prepare a repo/date/session local NotebookLM archive bundle for one persisted run and record the export boundary without claiming direct NotebookLM upload.',
         '  codex-foreman clear-runs [--cwd <path>] [--include-blocked]',

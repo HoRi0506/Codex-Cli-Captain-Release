@@ -13,7 +13,7 @@ Copy this into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.3/codex-foreman-1.6.3.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -25,7 +25,7 @@ Finish with exactly: Please restart Codex CLI.
 Direct shell reference:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.2/codex-foreman-1.6.2.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.3/codex-foreman-1.6.3.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
@@ -89,7 +89,11 @@ Repo-scoped export:
 codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
 ```
 
-1.6.2 boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
+Current boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
+
+## Phase Chain
+
+`$cap` uses `foreman_orchestrate` with `progression_mode=drain_until_boundary` when a Foreman phase chain should continue without operator input. Background `codex exec` launches use the configured role profile, model, reasoning effort, and extra config entries from `foreman-config.json`.
 
 ## Run Hygiene
 
@@ -119,7 +123,7 @@ These commands are shipped in the release tarball.
 - `agents/`: packaged Foreman custom-agent roster
 - `schemas/`: packaged config and specialist-contract schemas
 - `docs/install.md`: full install/update guide
-- `docs/release/notes/v1.6.2.md`: release notes
+- `docs/release/notes/v1.6.3.md`: release notes
 
-Source commit: e09c0ac437b4178e80efcc8f039213c88812a965
+Source commit: 69a75bfb34285ded7d4c3c788269fb5d7ed1bf42
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases

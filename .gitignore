@@ -3,6 +3,6 @@ node_modules/
 .foreman/
 .sisyphus/
 codex-foreman-*.tgz
-!codex-foreman-1.6.2.tgz
+!codex-foreman-1.6.3.tgz
 foreman-smoke-*/
 foreman-sweep-*/

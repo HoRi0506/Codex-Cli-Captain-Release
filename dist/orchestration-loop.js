@@ -20,7 +20,7 @@ function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
 }
 const DEFAULT_ORCHESTRATION_LOOP_MAX_STEPS = 2;
 const MIN_ORCHESTRATION_LOOP_MAX_STEPS = 1;
-const MAX_ORCHESTRATION_LOOP_MAX_STEPS = 4;
+const MAX_ORCHESTRATION_LOOP_MAX_STEPS = 12;
 const DEFAULT_DISPATCHERS = {
     advance: run_command_1.advanceForemanRun,
     verify: run_command_1.verifyForemanRun,

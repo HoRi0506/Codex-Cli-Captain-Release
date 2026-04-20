@@ -146,11 +146,17 @@ Repo-scoped export:
 codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
 \`\`\`
 
-1.6.2 boundary:
+Current boundary:
 
 - Foreman prepares and records the local archive bundle.
 - Foreman reports NotebookLM readiness honestly.
 - Direct NotebookLM source upload is still host-driven.
+
+## Phase Chain
+
+\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when Foreman can keep a phase chain moving without operator input. Foreman drains across task boundaries until a terminal, manual, fan-in, timeout, or max-step boundary.
+
+Background \`codex exec\` launches use \`foreman-config.json\` role settings: \`profile\`, \`model\`, \`model_reasoning_effort\`, and extra \`config_entries\`.
 
 ## Run Hygiene
 
@@ -276,7 +282,11 @@ Repo-scoped export:
 codex-foreman notebooklm-export-session --run-id <id> --cwd /absolute/repo/path
 \`\`\`
 
-1.6.2 boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
+Current boundary: Foreman prepares and records the local archive bundle, but direct NotebookLM source upload is still host-driven.
+
+## Phase Chain
+
+\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input. Background \`codex exec\` launches use the configured role profile, model, reasoning effort, and extra config entries from \`foreman-config.json\`.
 
 ## Run Hygiene
 

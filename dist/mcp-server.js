@@ -50,7 +50,7 @@ const MCP_SERVER_INFO = {
     version: package_metadata_1.FOREMAN_PACKAGE_VERSION,
 };
 const DEFAULT_FOREMAN_TOOL_TIMEOUT_BUDGET_MS = 10_000;
-const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_notebooklm_status for repo-scoped NotebookLM archive readiness, foreman_notebooklm_prepare_session_export to prepare a local NotebookLM archive bundle for one run, foreman_notebooklm_record_export_result after the host session finishes or blocks the actual NotebookLM upload, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch one matching explicit Foreman workflow command and optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, and terminal boundaries, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
+const MCP_INSTRUCTIONS_BASE = 'Use foreman_status for compact persisted run visibility, foreman_activity for one consolidated read-only activity view over persisted status, orchestration attempts, and active-task delegations, foreman_server_identity for attached build/session confirmation plus install and companion-MCP diagnostics, foreman_recommend_entry for read-only guidance on whether a new request should enter Foreman through start or plan, foreman_auto_entry for the explicit opt-in bounded Foreman-first entry surface, foreman_notebooklm_status for repo-scoped NotebookLM archive readiness, foreman_notebooklm_prepare_session_export to prepare a local NotebookLM archive bundle for one run, foreman_notebooklm_record_export_result after the host session finishes or blocks the actual NotebookLM upload, foreman_delegations to inspect persisted delegation summaries for one run without mutating state, foreman_delegate to declare one queued delegation for the active run context without starting child execution, foreman_update_delegation to advance one existing delegation through the bounded child lifecycle without execution, foreman_start to create a new local Foreman bootstrap run without invoking Codex, foreman_run to create a new local Foreman run and immediately advance it through the existing bounded start+advance flow with codex_bin, foreman_orchestrate to dispatch explicit Foreman workflow commands with single_step, two_step, or drain_until_boundary progression, foreman_always_on_tick to run one bounded companion executor tick only when the persisted always-on mode has already been enabled explicitly, or foreman_always_on_loop to run an explicit bounded external companion loop over that same tick surface.';
 function createMcpEntryPolicyInstructions(policyMode) {
     switch (policyMode) {
         case 'codex_cli_foreman_first':
@@ -58,7 +58,7 @@ function createMcpEntryPolicyInstructions(policyMode) {
                 'For a fresh operator request that is not already about an existing run_id or an explicit Foreman command, call foreman_auto_entry first before answering directly. ' +
                 'Treat ordinary fresh MCP-session requests as fresh-run-first: use the Codex conversation to summarize follow-up context into the new request, and reuse a session-bound run only when the operator explicitly asks to continue/resume the current run or when the identical request is already in flight. ' +
                 'Do not fall back to generic workspace run search for requester-session continuity unless the operator explicitly asks for run recovery. ' +
-                'If auto-entry creates or reuses a run, prefer foreman_status and then foreman_orchestrate over direct host-local completion whenever the next bounded move still belongs to a Foreman specialist path. ' +
+                'If auto-entry creates or reuses a run, prefer foreman_status and then foreman_orchestrate with progression_mode=drain_until_boundary over direct host-local completion whenever the next bounded move still belongs to a Foreman specialist path. ' +
                 'This is bounded MCP session guidance plus the explicit launcher wrapper surface, not upstream Codex CLI binary interception. ' +
                 'If auto-entry does not create a run, continue from its recommendation or the normal explicit workflow surface.');
         case 'foreman_first_bounded':
@@ -398,7 +398,7 @@ const FOREMAN_AUTO_ENTRY_TOOL = {
 };
 const FOREMAN_NOTEBOOKLM_STATUS_TOOL = {
     name: 'foreman_notebooklm_status',
-    description: 'Read-only NotebookLM archive readiness for one workspace. Reports repo-scoped local archive settings, companion MCP auth status, and the honest 1.6.2 upload boundary without mutating run state.',
+    description: 'Read-only NotebookLM archive readiness for one workspace. Reports repo-scoped local archive settings, companion MCP auth status, and the honest upload boundary without mutating run state.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -643,7 +643,7 @@ const FOREMAN_UPDATE_DELEGATION_TOOL = {
 };
 const FOREMAN_ORCHESTRATE_TOOL = {
     name: 'foreman_orchestrate',
-    description: 'Thin MCP front door for an existing Foreman run locator. Reads the persisted orchestrator decision, dispatches the matching existing workflow command, and can optionally continue one additional bounded step only for the straight-line execute_task -> verify_task slice while still stopping at manual, task, or terminal boundaries.',
+    description: 'Thin MCP front door for an existing Foreman run locator. Reads the persisted orchestrator decision, dispatches matching Foreman workflow commands, and can either run one step, run the legacy two-step slice, or drain a phase chain until a manual, fan-in, max-step, or terminal boundary.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -652,6 +652,11 @@ const FOREMAN_ORCHESTRATE_TOOL = {
                 type: 'string',
                 minLength: 1,
                 description: 'Explicit Codex executable path for routed Codex-backed commands only: execute_task, verify_task, or replan.',
+            },
+            progression_mode: {
+                type: 'string',
+                enum: ['single_step', 'two_step', 'drain_until_boundary'],
+                description: 'Optional progression mode. single_step preserves legacy one-command behavior, two_step preserves the execute_task -> verify_task slice, and drain_until_boundary keeps executing the Foreman phase chain across task boundaries until a real captain/manual/terminal boundary or max_steps is reached.',
             },
             progression_step_count: {
                 type: 'integer',
@@ -662,6 +667,12 @@ const FOREMAN_ORCHESTRATE_TOOL = {
             fast_mode: {
                 type: 'boolean',
                 description: 'Optional request-time alias for the existing bounded progression slice only. Set fast_mode=true to request the same effective two-step execute_task -> verify_task progression as progression_step_count=2, or fast_mode=false to keep the single-step behavior.',
+            },
+            max_steps: {
+                type: 'integer',
+                minimum: 1,
+                maximum: 12,
+                description: 'Optional bounded step cap for progression_mode=drain_until_boundary. Defaults to 8 and never exceeds 12.',
             },
             repair_action: {
                 type: 'string',
@@ -1335,8 +1346,14 @@ function parseForemanOrchestrateArguments(value) {
         throw new Error('foreman_orchestrate arguments must be an object.');
     }
     const codexBin = readOptionalString(value, 'codex_bin');
+    const progressionMode = readOptionalEnum(value, 'progression_mode', [
+        'single_step',
+        'two_step',
+        'drain_until_boundary',
+    ]);
     const progressionStepCount = readOptionalIntegerInRange(value, 'progression_step_count', 1, 2);
     const fastMode = readOptionalBoolean(value, 'fast_mode');
+    const maxSteps = readOptionalIntegerInRange(value, 'max_steps', 1, 12);
     const repairAction = readOptionalEnum(value, 'repair_action', ['retry', 'replan']);
     const replanPrompt = readOptionalString(value, 'replan_prompt');
     const resolveOutcome = readOptionalEnum(value, 'resolve_outcome', ['passed', 'needs_work', 'blocked']);
@@ -1348,8 +1365,10 @@ function parseForemanOrchestrateArguments(value) {
             'run_dir',
             'cwd',
             'codex_bin',
+            'progression_mode',
             'progression_step_count',
             'fast_mode',
+            'max_steps',
             'repair_action',
             'replan_prompt',
             'resolve_outcome',
@@ -1361,8 +1380,10 @@ function parseForemanOrchestrateArguments(value) {
     return {
         ...parseRunLocatorArguments(value, 'foreman_orchestrate'),
         codex_bin: codexBin,
+        progression_mode: progressionMode,
         progression_step_count: progressionStepCount,
         fast_mode: fastMode,
+        max_steps: maxSteps,
         repair_action: repairAction,
         replan_prompt: replanPrompt,
         resolve_outcome: resolveOutcome,
@@ -4421,9 +4442,13 @@ function createForemanOrchestrateResult(status, detail) {
         allowed_next_commands: status.allowed_next_commands,
         decision_summary: status.decision_summary,
         orchestration_status: detail.orchestration_status,
+        progression_mode: detail.progression_mode,
         dispatched_command: detail.dispatched_command,
         dispatched_via: detail.dispatched_via,
         stop_reason: detail.stop_reason,
+        orchestration_loop_stop_reason: detail.orchestration_loop_stop_reason,
+        captain_boundary_reached: detail.captain_boundary_reached,
+        host_local_work_allowed: detail.host_local_work_allowed,
         orchestration_summary: detail.orchestration_summary,
         timeout_diagnosis: detail.timeout_diagnosis ?? null,
     };
@@ -4465,6 +4490,27 @@ async function loadForemanStatusAfterTimeout(cwd, runId, before, sessionContext)
     latestStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
     return latestStatus;
 }
+const DEFAULT_FOREMAN_ORCHESTRATE_DRAIN_MAX_STEPS = 8;
+function resolveForemanOrchestrateProgressionMode(input) {
+    if (input.progression_mode) {
+        if (input.progression_mode === 'drain_until_boundary' &&
+            (input.fast_mode !== undefined || input.progression_step_count !== undefined)) {
+            throw new Error('foreman_orchestrate argument contract error: progression_mode=drain_until_boundary cannot be combined with fast_mode or progression_step_count. Use max_steps for the drain cap.');
+        }
+        if (input.progression_mode === 'single_step' &&
+            ((input.fast_mode !== undefined && input.fast_mode !== false) ||
+                (input.progression_step_count !== undefined && input.progression_step_count !== 1))) {
+            throw new Error('foreman_orchestrate argument contract error: progression_mode=single_step must not conflict with fast_mode/progression_step_count.');
+        }
+        if (input.progression_mode === 'two_step' &&
+            ((input.fast_mode !== undefined && input.fast_mode !== true) ||
+                (input.progression_step_count !== undefined && input.progression_step_count !== 2))) {
+            throw new Error('foreman_orchestrate argument contract error: progression_mode=two_step must not conflict with fast_mode/progression_step_count.');
+        }
+        return input.progression_mode;
+    }
+    return resolveForemanOrchestrateProgressionStepCount(input) === 2 ? 'two_step' : 'single_step';
+}
 function resolveForemanOrchestrateProgressionStepCount(input) {
     if (input.fast_mode === undefined) {
         return input.progression_step_count === 2 ? 2 : 1;
@@ -4477,11 +4523,17 @@ function resolveForemanOrchestrateProgressionStepCount(input) {
     }
     return fastModeProgressionStepCount;
 }
+function resolveForemanOrchestrateMaxSteps(input, progressionMode) {
+    if (progressionMode === 'drain_until_boundary') {
+        return input.max_steps ?? DEFAULT_FOREMAN_ORCHESTRATE_DRAIN_MAX_STEPS;
+    }
+    return progressionMode === 'two_step' ? 2 : 1;
+}
 function describeForemanOrchestrateTwoStepProgression(input) {
     if (input.progression_step_count === 2) {
         return 'progression_step_count=2';
     }
-    return 'effective two-step progression';
+    return input.progression_mode === 'two_step' ? 'progression_mode=two_step' : 'effective two-step progression';
 }
 function validateForemanOrchestrateProgressionContract(input, progressionStepCount, currentStatus) {
     if (progressionStepCount === 2 && currentStatus.next_step !== 'execute_task') {
@@ -4519,7 +4571,7 @@ function buildForemanOrchestrateDispatchedSummary(input) {
         }
     }
     const commandSequence = input.commands.map((command) => getForemanOrchestrateDispatchedHandler(command)).join(' -> ');
-    return `Dispatched bounded foreman_orchestrate progression from ${input.startingNextStep} via ${commandSequence} and stopped at ${input.stopReason}.`;
+    return `Dispatched ${input.progressionMode} foreman_orchestrate progression from ${input.startingNextStep} via ${commandSequence} and stopped at ${input.stopReason}.`;
 }
 function renderCompactAutoEntryAnswerTrace(trace) {
     const toolRoute = trace.companion_tool_route_class ?? 'none';
@@ -4546,8 +4598,22 @@ function renderCompactAutoEntryAnswerTrace(trace) {
 function isResultStopReason(value) {
     return value !== 'max_steps_reached' && value !== 'task_boundary_reached';
 }
-function validateForemanOrchestrateLoopInputs(input, progressionStepCount, currentStatus) {
-    validateForemanOrchestrateProgressionContract(input, progressionStepCount, currentStatus);
+function isCaptainBoundaryStopReason(value) {
+    return (value === 'await_verification' ||
+        value === 'await_repair_decision' ||
+        value === 'await_operator' ||
+        value === 'halt_completed' ||
+        value === 'halt_failed' ||
+        value === 'halt_cancelled');
+}
+function validateForemanOrchestrateLoopInputs(input, progressionMode, currentStatus) {
+    if (progressionMode !== 'drain_until_boundary') {
+        validateForemanOrchestrateProgressionContract(input, progressionMode === 'two_step' ? 2 : 1, currentStatus);
+    }
+    else if (['execute_task', 'verify_task', 'await_fan_in', 'await_repair_decision'].includes(currentStatus.next_step) &&
+        !input.codex_bin) {
+        throw new Error(`foreman_orchestrate requires codex_bin for progression_mode=drain_until_boundary from ${currentStatus.next_step} so Foreman can keep the phase chain on configured codex exec workers instead of falling back to host-local work.`);
+    }
     switch (currentStatus.next_step) {
         case 'execute_task':
             requireCodexBin(input.codex_bin, currentStatus.next_step, 'advanceForemanRun');
@@ -5085,8 +5151,9 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
     const locator = resolveForemanRunLocator(input);
     const { cwd, run_id: runId } = locator;
     const currentStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
-    const progressionStepCount = resolveForemanOrchestrateProgressionStepCount(input);
-    validateForemanOrchestrateLoopInputs(input, progressionStepCount, currentStatus);
+    const progressionMode = resolveForemanOrchestrateProgressionMode(input);
+    const maxSteps = resolveForemanOrchestrateMaxSteps(input, progressionMode);
+    validateForemanOrchestrateLoopInputs(input, progressionMode, currentStatus);
     await acquireForemanMcpMutationLease({
         cwd,
         runId,
@@ -5106,31 +5173,34 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                 replanPrompt: input.replan_prompt,
                 resolveOutcome: input.resolve_outcome,
                 resolveSummary: input.resolve_summary,
-                maxSteps: progressionStepCount,
-                stopAtTaskBoundary: true,
+                maxSteps,
+                stopAtTaskBoundary: progressionMode !== 'drain_until_boundary',
             });
             const nextStatus = await loadForemanStatusForOrchestration(cwd, runId, sessionContext);
             const dispatchedStep = loopResult.attempt.steps.at(-1);
+            const captainBoundaryReached = isCaptainBoundaryStopReason(loopResult.stopReason);
             if (dispatchedStep) {
-                const dispatchedStopReason = progressionStepCount === 2 &&
+                const dispatchedStopReason = progressionMode === 'two_step' &&
                     (loopResult.stopReason === 'await_verification' || loopResult.stopReason === 'await_repair_decision')
                     ? loopResult.stopReason
                     : null;
-                await recordSessionRouteJournalFromStatus(nextStatus, 'orchestration_updated', buildForemanOrchestrateDispatchedSummary({
+                const orchestrationSummary = buildForemanOrchestrateDispatchedSummary({
                     startingNextStep: currentStatus.next_step,
                     commands: loopResult.attempt.steps.map((step) => step.command),
                     stopReason: loopResult.stopReason,
-                }));
+                    progressionMode,
+                });
+                await recordSessionRouteJournalFromStatus(nextStatus, 'orchestration_updated', orchestrationSummary);
                 return createForemanOrchestrateResult(nextStatus, {
                     orchestration_status: 'dispatched',
+                    progression_mode: progressionMode,
                     dispatched_command: dispatchedStep.command,
                     dispatched_via: getForemanOrchestrateDispatchedHandler(dispatchedStep.command),
                     stop_reason: dispatchedStopReason,
-                    orchestration_summary: buildForemanOrchestrateDispatchedSummary({
-                        startingNextStep: currentStatus.next_step,
-                        commands: loopResult.attempt.steps.map((step) => step.command),
-                        stopReason: loopResult.stopReason,
-                    }),
+                    orchestration_loop_stop_reason: loopResult.stopReason,
+                    captain_boundary_reached: captainBoundaryReached,
+                    host_local_work_allowed: captainBoundaryReached,
+                    orchestration_summary: orchestrationSummary,
                 });
             }
             if (!isResultStopReason(loopResult.stopReason)) {
@@ -5139,9 +5209,13 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
             await recordSessionRouteJournalFromStatus(nextStatus, 'status_snapshot', `No automatic orchestration action is available when next_step=${currentStatus.next_step}.`);
             return createForemanOrchestrateResult(nextStatus, {
                 orchestration_status: 'stopped',
+                progression_mode: progressionMode,
                 dispatched_command: null,
                 dispatched_via: null,
                 stop_reason: loopResult.stopReason,
+                orchestration_loop_stop_reason: loopResult.stopReason,
+                captain_boundary_reached: captainBoundaryReached,
+                host_local_work_allowed: captainBoundaryReached,
                 orchestration_summary: `No automatic orchestration action is available when next_step=${currentStatus.next_step}. ` +
                     (currentStatus.decision_summary ?? 'No task-backed orchestrator summary is available for this run state.'),
             });
@@ -5153,9 +5227,13 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
             await recordSessionRouteJournalFromStatus(latestStatus, 'worker_heartbeat', `foreman_orchestrate timed out after ${diagnosis.budget_ms}ms; statusAdvanced=${String(statusAdvanced)}; ${diagnosis.execution_continuity.summary}`);
             return createForemanOrchestrateResult(latestStatus, {
                 orchestration_status: 'timeout_acknowledged',
+                progression_mode: progressionMode,
                 dispatched_command: null,
                 dispatched_via: null,
                 stop_reason: null,
+                orchestration_loop_stop_reason: null,
+                captain_boundary_reached: false,
+                host_local_work_allowed: false,
                 orchestration_summary: `foreman_orchestrate exceeded the bounded ${diagnosis.budget_ms}ms budget and returned a visible timeout acknowledgement. ` +
                     `${diagnosis.execution_continuity.summary} ` +
                     (statusAdvanced
