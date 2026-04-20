@@ -17,11 +17,12 @@ const RELEASE_REPO_URL = public_surface_1.FOREMAN_RELEASE_REPO_URL;
 const RELEASES_URL = `${RELEASE_REPO_URL}/releases`;
 function createHealthyCheckInstallExample(packageVersion) {
     return [
-        `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 model_policy=coherent tool_policy=coherent run_hygiene=clean`,
+        `Foreman install check: status=ok version=${packageVersion} entry=${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} registration=matching_registration config=present skill=matching_install agents=matching_install package_surface=coherent_surface companion_mcps=0 notebooklm_archive=disabled model_policy=coherent tool_policy=coherent run_hygiene=clean`,
         `Current package: codex-foreman@${packageVersion}`,
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium',
         'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.',
+        'NotebookLM archive: NotebookLM archive target is disabled.',
         'Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.',
     ].join('\n');
 }

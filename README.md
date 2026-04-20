@@ -15,7 +15,7 @@ Copy this into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.42/codex-foreman-1.5.42.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -27,7 +27,7 @@ Finish with exactly: Please restart Codex CLI.
 Direct shell reference:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.5.42/codex-foreman-1.5.42.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.1/codex-foreman-1.6.1.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
@@ -101,7 +101,7 @@ codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --ap
 - `agents/`: packaged Foreman custom-agent roster
 - `schemas/`: packaged config and specialist-contract schemas
 - `docs/install.md`: full install/update guide
-- `docs/release/notes/v1.5.42.md`: release notes
+- `docs/release/notes/v1.6.1.md`: release notes
 
-Source commit: 799843a311ee8fb70075f1e2c70c3a781826201e
+Source commit: a26e0631be6653227bbf17f293a0be13386c145f
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases

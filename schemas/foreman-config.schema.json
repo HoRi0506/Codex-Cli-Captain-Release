@@ -41,6 +41,39 @@
         }
       }
     },
+    "archive_targets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["notebooklm"],
+      "properties": {
+        "notebooklm": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["enabled", "auth_mode", "notebook_url", "notebook_id", "secret_ref"],
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "auth_mode": {
+              "type": "string",
+              "enum": ["browser"]
+            },
+            "notebook_url": {
+              "type": ["string", "null"],
+              "minLength": 1
+            },
+            "notebook_id": {
+              "type": ["string", "null"],
+              "minLength": 1
+            },
+            "secret_ref": {
+              "type": ["string", "null"],
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
     "tool_routing": {
       "type": "object",
       "additionalProperties": false,

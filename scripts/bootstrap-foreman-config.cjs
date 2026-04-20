@@ -30,6 +30,15 @@ function fallbackCreateDefaultForemanConfig() {
     runtime: {
       worker_poll_interval_ms: 90000,
     },
+    archive_targets: {
+      notebooklm: {
+        enabled: false,
+        auth_mode: 'browser',
+        notebook_url: null,
+        notebook_id: null,
+        secret_ref: null,
+      },
+    },
     agents: {
       orchestrator: {
         name: 'captain',

@@ -568,6 +568,13 @@ function classifyCompanionMcpServer(name) {
                 recommendationScope: 'release_provenance',
                 usageHint: 'Use for release provenance, branch state, diffs, and regression-oriented history checks.',
             };
+        case 'notebooklm':
+            return {
+                compatibility: 'recommended_companion',
+                approvalExpectation: 'operator_confirmation_recommended',
+                recommendationScope: 'archive_export',
+                usageHint: 'Use for settled-run archive export after browser authentication is completed outside Foreman config.',
+            };
         default:
             return {
                 compatibility: 'generic_companion',
@@ -587,6 +594,46 @@ function summarizeCompanionMcpServers(servers) {
         return `Other installed MCP servers: ${allNames.join(', ')}. These remain subordinate tool surfaces under Foreman specialist ownership when policy selects them.`;
     }
     return `Other installed MCP servers: ${allNames.join(', ')}. Recommended Foreman companions: ${recommendedServers.join(', ')}. Companions remain subordinate tool surfaces under configured specialist ownership and do not replace packaged Foreman specialist routes.`;
+}
+function createNotebookLmArchiveTargetSummary(input) {
+    const target = input.foremanConfig?.archive_targets?.notebooklm ?? null;
+    if (!target?.enabled) {
+        return {
+            notebookLmArchiveTargetStatus: 'disabled',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive target is disabled.',
+        };
+    }
+    const notebookLmServer = input.otherInstalledMcpServers.find((server) => server.name === 'notebooklm') ?? null;
+    if (!notebookLmServer) {
+        return {
+            notebookLmArchiveTargetStatus: input.registryInspectionStatus === 'listed' ? 'notebooklm_not_registered' : 'notebooklm_session_unavailable',
+            notebookLmArchiveTargetSummary: input.registryInspectionStatus === 'listed'
+                ? 'NotebookLM archive target is enabled, but Codex MCP registry does not list notebooklm.'
+                : 'NotebookLM archive target is enabled, but Codex MCP registry readiness could not be inspected.',
+        };
+    }
+    if (!notebookLmServer.enabled) {
+        return {
+            notebookLmArchiveTargetStatus: 'notebooklm_session_unavailable',
+            notebookLmArchiveTargetSummary: `NotebookLM archive target is enabled, but notebooklm MCP is disabled${notebookLmServer.disabledReason ? `: ${notebookLmServer.disabledReason}` : '.'}`,
+        };
+    }
+    if (!target.notebook_url && !target.notebook_id) {
+        return {
+            notebookLmArchiveTargetStatus: 'notebooklm_target_not_configured',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive target is enabled, but notebook_url or notebook_id is not configured.',
+        };
+    }
+    if (notebookLmServer.authStatus && !['authenticated', 'unsupported'].includes(notebookLmServer.authStatus)) {
+        return {
+            notebookLmArchiveTargetStatus: 'notebooklm_auth_required',
+            notebookLmArchiveTargetSummary: `NotebookLM archive target is configured, but MCP auth status is ${notebookLmServer.authStatus}.`,
+        };
+    }
+    return {
+        notebookLmArchiveTargetStatus: 'ready',
+        notebookLmArchiveTargetSummary: 'NotebookLM archive target is configured and notebooklm MCP is registered; browser authentication is managed outside foreman-config.json.',
+    };
 }
 function createRegistrationSummary(status, serverName) {
     switch (status) {
@@ -717,8 +764,9 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const configExists = await pathExists(configPath);
     let modelPolicyAudit = null;
     let toolRoutingAudit = null;
+    let foremanConfig = null;
     try {
-        const foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
+        foremanConfig = await (0, runtime_1.loadForemanConfig)(options.cwd);
         modelPolicyAudit = createConfiguredRoleModelsSummary(foremanConfig);
         toolRoutingAudit = createConfiguredToolRoutesSummary(foremanConfig);
     }
@@ -825,6 +873,11 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const capSkill = await inspectPackagedForemanCapSkill(dependencies.packageRoot);
     const customAgents = await inspectPackagedForemanCustomAgents(dependencies.packageRoot);
     const packagedHarnessSurface = await inspectPackagedHarnessSurface(dependencies.packageRoot);
+    const notebookLmArchiveTarget = createNotebookLmArchiveTargetSummary({
+        foremanConfig,
+        registryInspectionStatus,
+        otherInstalledMcpServers,
+    });
     const timeoutDiagnosis = existingRegistrationResult.timedOut || listResult.timedOut
         ? {
             tool_name: 'foreman_server_identity',
@@ -838,6 +891,8 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
     const status = registrationStatus === 'matching_registration' &&
         configExists &&
         registryInspectionStatus === 'listed' &&
+        (notebookLmArchiveTarget.notebookLmArchiveTargetStatus === 'disabled' ||
+            notebookLmArchiveTarget.notebookLmArchiveTargetStatus === 'ready') &&
         packagedHarnessSurface.status === 'coherent_surface' &&
         capSkill.status === 'matching_install' &&
         customAgents.status === 'matching_install'
@@ -864,6 +919,8 @@ async function checkCodexMcpInstall(options, dependencies = {}) {
         registryInspectionSummary,
         otherInstalledMcpServers,
         companionMcpUsageSummary: summarizeCompanionMcpServers(otherInstalledMcpServers),
+        notebookLmArchiveTargetStatus: notebookLmArchiveTarget.notebookLmArchiveTargetStatus,
+        notebookLmArchiveTargetSummary: notebookLmArchiveTarget.notebookLmArchiveTargetSummary,
         packagedHarnessSurfaceStatus: packagedHarnessSurface.status,
         packagedHarnessSurfaceSummary: packagedHarnessSurface.summary,
         packagedHarnessSurface: packagedHarnessSurface.components,

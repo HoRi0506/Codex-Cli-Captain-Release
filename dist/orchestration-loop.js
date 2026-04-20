@@ -79,6 +79,7 @@ async function loadOrchestrationLoopSnapshot(options) {
     });
     const routingMetadata = (0, orchestrator_1.derivePolicyAwareRoutingMetadata)(run, taskCard, orchestratorState.orchestration_policy, decision);
     const reviewMetadata = (0, orchestrator_1.derivePolicyAwareReviewMetadata)(run, taskCard, orchestratorState.orchestration_policy, decision, taskDelegationSummary.delegations);
+    const runStateProjection = await (0, runtime_1.loadRunStateProjectionIfPresent)(runPaths);
     return {
         runId: run.run_id,
         runDirectory: runPaths.runDir,
@@ -92,6 +93,7 @@ async function loadOrchestrationLoopSnapshot(options) {
             thread_id: run.active_thread_id,
             ...routingMetadata,
             ...reviewMetadata,
+            reducer_next_action: runStateProjection?.next_action ?? null,
         },
     };
 }

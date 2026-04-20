@@ -2176,6 +2176,8 @@ async function getForemanServerIdentity(sessionContext = DEFAULT_MCP_SESSION_CON
             registryInspectionSummary: diagnosis.summary,
             otherInstalledMcpServers: [],
             companionMcpUsageSummary: 'Companion MCP registry inspection was skipped because the bounded install-check budget was exhausted.',
+            notebookLmArchiveTargetStatus: 'notebooklm_session_unavailable',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive readiness was not inspected because the bounded install-check budget was exhausted.',
             packagedHarnessSurfaceStatus: 'incomplete_surface',
             packagedHarnessSurfaceSummary: 'Packaged harness surface inspection was skipped because the bounded install-check budget was exhausted.',
             packagedHarnessSurface: [],
@@ -2567,7 +2569,47 @@ function sanitizeLatestEntryTraceRecord(record) {
         summary: SAFE_PERSISTED_DETAIL_SUMMARY,
     };
 }
-async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDelegations, progress, hydration, latestVerifiedCheckpoint, alwaysOnMode, mcpMutationLease, serverIdentity, taskGraphSummary, orchestratorState, foremanConfig) {
+function createPlanningChecklistView(cwd, runPaths, checklist) {
+    if (checklist === null) {
+        return null;
+    }
+    const activePhase = checklist.phases.find((phase) => phase.phase_id === checklist.active_phase_id) ??
+        checklist.phases.find((phase) => phase.status === 'in_progress' || phase.status === 'await_fan_in') ??
+        null;
+    return {
+        file: node_path_1.default.relative(cwd, runPaths.planningChecklistFile),
+        checkpoint_id: checklist.checkpoint_id,
+        lifecycle_state: checklist.lifecycle_state,
+        phase_count: checklist.phases.length,
+        active_phase_id: activePhase?.phase_id ?? checklist.active_phase_id ?? null,
+        active_phase_name: activePhase?.phase_name ?? checklist.active_phase_name ?? null,
+        active_phase_status: activePhase?.status ?? null,
+        active_phase_owner_agent: activePhase?.owner_agent ?? null,
+        active_phase_execution_adapter: activePhase?.execution_adapter ?? null,
+        active_phase_launch_proof: activePhase?.launch_proof ?? null,
+        active_phase_execution_owner: activePhase?.execution_owner ?? null,
+        active_phase_codex_ui_trace_owner: activePhase?.codex_ui_trace_owner ?? null,
+        active_phase_event_count: activePhase?.phase_events.length ?? 0,
+        updated_at: checklist.updated_at,
+        settled_at: checklist.settled_at,
+    };
+}
+function createRunStateView(cwd, runPaths, runState) {
+    if (runState === null) {
+        return null;
+    }
+    return {
+        file: node_path_1.default.relative(cwd, runPaths.runStateFile),
+        event_log_file: node_path_1.default.relative(cwd, runPaths.runEventsFile),
+        event_count: runState.event_count,
+        last_event_id: runState.last_event_id,
+        current_phase_id: runState.current_phase_id,
+        current_phase_name: runState.current_phase_name,
+        next_action: runState.next_action,
+        updated_at: runState.updated_at,
+    };
+}
+async function createForemanStatusResult(cwd, runPaths, run, taskCard, visibility, taskDelegations, progress, hydration, latestVerifiedCheckpoint, alwaysOnMode, mcpMutationLease, serverIdentity, taskGraphSummary, orchestratorState, foremanConfig, planningChecklist) {
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
         (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
@@ -2652,6 +2694,8 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         canAdvance: visibility.orchestrator.can_advance,
         planningClarificationRequest,
     });
+    const planningChecklistView = createPlanningChecklistView(cwd, runPaths, planningChecklist);
+    const runStateView = createRunStateView(cwd, runPaths, await (0, runtime_1.loadRunStateProjectionIfPresent)(runPaths));
     return {
         cwd,
         run_id: visibility.run_id,
@@ -2686,6 +2730,8 @@ async function createForemanStatusResult(cwd, run, taskCard, visibility, taskDel
         current_task_card: currentTaskCard,
         loop_state: loopState,
         run_truth_surface: runTruthSurface,
+        planning_checklist: planningChecklistView,
+        run_state: runStateView,
         specialist_role_roster: specialistRoleRoster,
         operator_summary: operatorSummary,
         orchestrator_agent_config_summary: createTaskCardAgentConfigSummary('orchestrator', foremanConfig),
@@ -2809,7 +2855,7 @@ async function recordSessionRouteJournalFromAutoEntry(input) {
         summary: input.result.summary,
     });
 }
-async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+async function createClarificationHoldStatusResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist) {
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
         (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
@@ -2850,6 +2896,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         canAdvance: false,
         planningClarificationRequest,
     });
+    const planningChecklistView = createPlanningChecklistView(cwd, runPaths, planningChecklist);
     return {
         cwd,
         run_id: run.run_id,
@@ -2877,6 +2924,7 @@ async function createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMu
         current_task_card: null,
         loop_state: loopState,
         run_truth_surface: runTruthSurface,
+        planning_checklist: planningChecklistView,
         specialist_role_roster: [],
         operator_summary: null,
         orchestrator_agent_config_summary: null,
@@ -2939,7 +2987,7 @@ function createPlanningTerminalContinuityProjection(run) {
         ],
     };
 }
-async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+async function createPlanningTerminalStatusResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist) {
     const workspaceLifecycleViews = await (0, run_lifecycle_1.inspectWorkspaceRunLifecycleViews)(cwd);
     const runLifecycle = workspaceLifecycleViews.find((candidate) => candidate.run_id === run.run_id) ??
         (0, run_lifecycle_1.deriveRunLifecycleView)(run, [run]);
@@ -2996,6 +3044,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         canAdvance: false,
         planningClarificationRequest: null,
     });
+    const planningChecklistView = createPlanningChecklistView(cwd, runPaths, planningChecklist);
     return {
         cwd,
         run_id: run.run_id,
@@ -3023,6 +3072,7 @@ async function createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMut
         current_task_card: null,
         loop_state: loopState,
         run_truth_surface: runTruthSurface,
+        planning_checklist: planningChecklistView,
         specialist_role_roster: [],
         operator_summary: null,
         orchestrator_agent_config_summary: null,
@@ -3175,6 +3225,8 @@ function createForemanActivityResult(input) {
         current_task_card: input.status.current_task_card,
         loop_state: input.status.loop_state,
         run_truth_surface: input.status.run_truth_surface,
+        planning_checklist: input.status.planning_checklist,
+        run_state: input.status.run_state,
         specialist_role_roster: input.status.specialist_role_roster,
         operator_summary: input.status.operator_summary ?? null,
         orchestrator_agent_config_summary: input.status.orchestrator_agent_config_summary,
@@ -3255,8 +3307,9 @@ function createForemanActivityResult(input) {
         task_delegations: input.taskDelegationSummary.delegations.map((delegation) => createVisibleDelegation(delegation, input.taskCard.title, input.foremanConfig)),
     };
 }
-async function createClarificationHoldActivityResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
-    const status = await createClarificationHoldStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity);
+async function createClarificationHoldActivityResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+    const planningChecklist = await (0, runtime_1.loadPlanningChecklistRecordIfPresent)(runPaths);
+    const status = await createClarificationHoldStatusResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist);
     return {
         ...status,
         latest_orchestration_attempt: null,
@@ -3264,8 +3317,9 @@ async function createClarificationHoldActivityResult(cwd, run, alwaysOnMode, mcp
         task_delegations: [],
     };
 }
-async function createPlanningTerminalActivityResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
-    const status = await createPlanningTerminalStatusResult(cwd, run, alwaysOnMode, mcpMutationLease, serverIdentity);
+async function createPlanningTerminalActivityResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity) {
+    const planningChecklist = await (0, runtime_1.loadPlanningChecklistRecordIfPresent)(runPaths);
+    const status = await createPlanningTerminalStatusResult(cwd, runPaths, run, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist);
     return {
         ...status,
         latest_orchestration_attempt: null,
@@ -4405,19 +4459,20 @@ async function reportStderr(errorOutput, message) {
 async function getForemanStatus(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
     const locator = resolveForemanRunLocator(input);
     const { cwd, run_id: runId, run_paths: runPaths } = locator;
-    const [runRecord, alwaysOnMode, foremanConfig, mcpMutationLeaseRecord] = await Promise.all([
+    const [runRecord, alwaysOnMode, foremanConfig, mcpMutationLeaseRecord, planningChecklist] = await Promise.all([
         (0, runtime_1.loadRunRecord)(runPaths),
         (0, runtime_1.loadAlwaysOnModeRecord)(runPaths),
         (0, runtime_1.loadForemanConfig)(cwd),
         loadForemanMcpMutationLeaseRecord(cwd, runId),
+        (0, runtime_1.loadPlanningChecklistRecordIfPresent)(runPaths),
     ]);
     const mcpMutationLease = createForemanMcpMutationLeaseView(sessionContext, mcpMutationLeaseRecord);
     const serverIdentity = createForemanServerIdentityView(sessionContext);
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
-        return createClarificationHoldStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+        return createClarificationHoldStatusResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist);
     }
     if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
-        return createPlanningTerminalStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+        return createPlanningTerminalStatusResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist);
     }
     const { run, taskCard, latestHandoff, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const taskDelegationSummary = await (0, runtime_1.loadTaskDelegationSummary)(runPaths, taskCard.task_card_id);
@@ -4430,7 +4485,7 @@ async function getForemanStatus(input, sessionContext = DEFAULT_MCP_SESSION_CONT
     const visibility = (0, runtime_1.createVisibilityProjection)(run, taskCard, latestHandoff, decision);
     const { progress, hydration } = await (0, runtime_1.loadSelectiveProgressProjection)(runPaths, run, taskCard, decision);
     const taskGraphSummary = createTaskGraphSummary(await (0, runtime_1.loadSelectiveTaskCardIndex)(runPaths, run, taskCard));
-    return createForemanStatusResult(cwd, run, taskCard, visibility, taskDelegationSummary.delegations, progress, hydration, run.latest_verified_checkpoint, alwaysOnMode, mcpMutationLease, serverIdentity, taskGraphSummary, orchestratorState, foremanConfig);
+    return createForemanStatusResult(cwd, runPaths, run, taskCard, visibility, taskDelegationSummary.delegations, progress, hydration, run.latest_verified_checkpoint, alwaysOnMode, mcpMutationLease, serverIdentity, taskGraphSummary, orchestratorState, foremanConfig, planningChecklist);
 }
 async function getForemanActivity(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
     const locator = resolveForemanRunLocator(input);
@@ -4444,10 +4499,10 @@ async function getForemanActivity(input, sessionContext = DEFAULT_MCP_SESSION_CO
     const mcpMutationLease = createForemanMcpMutationLeaseView(sessionContext, mcpMutationLeaseRecord);
     const serverIdentity = createForemanServerIdentityView(sessionContext);
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
-        return createClarificationHoldActivityResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+        return createClarificationHoldActivityResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
     }
     if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
-        return createPlanningTerminalActivityResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
+        return createPlanningTerminalActivityResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity);
     }
     const status = await getForemanStatus({
         run_dir: locator.run_directory,
@@ -4685,19 +4740,20 @@ async function autoEnterForemanForMcp(input, sessionContext = DEFAULT_MCP_SESSIO
 async function getForemanDelegations(input, sessionContext = DEFAULT_MCP_SESSION_CONTEXT) {
     const locator = resolveForemanRunLocator(input);
     const { cwd, run_id: runId, run_paths: runPaths } = locator;
-    const [runRecord, alwaysOnMode, foremanConfig, mcpMutationLeaseRecord] = await Promise.all([
+    const [runRecord, alwaysOnMode, foremanConfig, mcpMutationLeaseRecord, planningChecklist] = await Promise.all([
         (0, runtime_1.loadRunRecord)(runPaths),
         (0, runtime_1.loadAlwaysOnModeRecord)(runPaths),
         (0, runtime_1.loadForemanConfig)(cwd),
         loadForemanMcpMutationLeaseRecord(cwd, runId),
+        (0, runtime_1.loadPlanningChecklistRecordIfPresent)(runPaths),
     ]);
     const mcpMutationLease = createForemanMcpMutationLeaseView(sessionContext, mcpMutationLeaseRecord);
     const serverIdentity = createForemanServerIdentityView(sessionContext);
     if ((0, runtime_1.isPlanningClarificationHold)(runRecord)) {
-        return createForemanDelegationsResult(await createClarificationHoldStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity), createDelegationCounts([]), []);
+        return createForemanDelegationsResult(await createClarificationHoldStatusResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist), createDelegationCounts([]), []);
     }
     if (isTerminalPlanningRunWithoutTaskCard(runRecord)) {
-        return createForemanDelegationsResult(await createPlanningTerminalStatusResult(cwd, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity), createDelegationCounts([]), []);
+        return createForemanDelegationsResult(await createPlanningTerminalStatusResult(cwd, runPaths, runRecord, alwaysOnMode, mcpMutationLease, serverIdentity, planningChecklist), createDelegationCounts([]), []);
     }
     const { run, taskCard, latestHandoff, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
     const taskDelegationSummary = await (0, runtime_1.loadTaskDelegationSummary)(runPaths, taskCard.task_card_id);
@@ -4710,7 +4766,7 @@ async function getForemanDelegations(input, sessionContext = DEFAULT_MCP_SESSION
     const visibility = (0, runtime_1.createVisibilityProjection)(run, taskCard, latestHandoff, decision);
     const { progress, hydration } = await (0, runtime_1.loadSelectiveProgressProjection)(runPaths, run, taskCard, decision);
     const delegationRecords = await (0, runtime_1.loadDelegationArtifacts)(runPaths);
-    const status = await createForemanStatusResult(cwd, run, taskCard, visibility, taskDelegationSummary.delegations, progress, hydration, run.latest_verified_checkpoint, alwaysOnMode, mcpMutationLease, serverIdentity, createTaskGraphSummary(await (0, runtime_1.loadSelectiveTaskCardIndex)(runPaths, run, taskCard)), orchestratorState, foremanConfig);
+    const status = await createForemanStatusResult(cwd, runPaths, run, taskCard, visibility, taskDelegationSummary.delegations, progress, hydration, run.latest_verified_checkpoint, alwaysOnMode, mcpMutationLease, serverIdentity, createTaskGraphSummary(await (0, runtime_1.loadSelectiveTaskCardIndex)(runPaths, run, taskCard)), orchestratorState, foremanConfig, planningChecklist);
     const referencedTaskCardIds = Array.from(new Set(delegationRecords.map((delegation) => delegation.task_card_id)));
     const taskTitleById = referencedTaskCardIds.length === 0 || referencedTaskCardIds.every((taskCardId) => taskCardId === taskCard.task_card_id)
         ? new Map([[taskCard.task_card_id, taskCard.title]])

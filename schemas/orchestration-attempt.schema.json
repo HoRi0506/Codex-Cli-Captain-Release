@@ -118,6 +118,36 @@
         },
         "review_trace": {
           "$ref": "#/$defs/reviewTrace"
+        },
+        "reducer_next_action": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/reducerNextAction"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "reducerNextAction": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "launch_worker",
+            "wait_for_fan_in",
+            "aggregate_fan_in",
+            "advance_phase",
+            "request_captain_judgment",
+            "settle_run",
+            "export_archive",
+            "manual_hold"
+          ]
         }
       }
     },

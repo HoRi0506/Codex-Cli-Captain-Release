@@ -9,6 +9,11 @@ exports.nowTimestamp = nowTimestamp;
 exports.resolveForemanConfigDirectory = resolveForemanConfigDirectory;
 exports.resolveForemanConfigFilePath = resolveForemanConfigFilePath;
 exports.createRunPaths = createRunPaths;
+exports.loadRunEventRecordsIfPresent = loadRunEventRecordsIfPresent;
+exports.decideNextActionFromRunState = decideNextActionFromRunState;
+exports.foldRunEventsToState = foldRunEventsToState;
+exports.loadRunStateProjectionIfPresent = loadRunStateProjectionIfPresent;
+exports.loadPlanningChecklistRecordIfPresent = loadPlanningChecklistRecordIfPresent;
 exports.createForemanRunRef = createForemanRunRef;
 exports.resolveForemanRunDirectory = resolveForemanRunDirectory;
 exports.resolveForemanRunRef = resolveForemanRunRef;
@@ -16,6 +21,7 @@ exports.createEmptyRoleDefaults = createEmptyRoleDefaults;
 exports.createDefaultForemanEntryPolicy = createDefaultForemanEntryPolicy;
 exports.createDefaultForemanOutputConfig = createDefaultForemanOutputConfig;
 exports.createDefaultForemanRuntimeConfig = createDefaultForemanRuntimeConfig;
+exports.createDefaultForemanArchiveTargetsConfig = createDefaultForemanArchiveTargetsConfig;
 exports.createDefaultForemanConfig = createDefaultForemanConfig;
 exports.createRequestSettingsFromForemanAgentConfig = createRequestSettingsFromForemanAgentConfig;
 exports.getDefaultForemanAgentConfigForRole = getDefaultForemanAgentConfigForRole;
@@ -689,6 +695,9 @@ function createRunPaths(baseDirectory, runId) {
         runsDir,
         runDir,
         runFile: node_path_1.default.join(runDir, 'run.json'),
+        planningChecklistFile: node_path_1.default.join(runDir, 'planning-checklist.json'),
+        runEventsFile: node_path_1.default.join(runDir, 'events.jsonl'),
+        runStateFile: node_path_1.default.join(runDir, 'run-state.json'),
         progressFile: node_path_1.default.join(sisyphusRunsDir, `${runId}.md`),
         resumeCheckpointFile: node_path_1.default.join(sisyphusRunsDir, `${runId}.resume.json`),
         alwaysOnModeFile: node_path_1.default.join(sisyphusRunsDir, `${runId}.always-on.json`),
@@ -704,6 +713,743 @@ function createRunPaths(baseDirectory, runId) {
         handoffsDir: node_path_1.default.join(runDir, 'handoffs'),
         rawEventsDir: node_path_1.default.join(runDir, 'raw-events'),
     };
+}
+function isChecklistTerminalStatus(status) {
+    return status === 'completed' || status === 'blocked' || status === 'cancelled';
+}
+function mapChecklistPhaseName(run, taskCard) {
+    if (taskCard.task_kind === 'plan') {
+        return 'plan';
+    }
+    if (taskCard.task_kind === 'explore') {
+        return 'inspect';
+    }
+    if (taskCard.task_kind === 'review' || taskCard.owner_role === 'verifier' || run.stage === 'verification') {
+        return 'verify';
+    }
+    if (taskCard.node_kind === 'fan_in') {
+        return 'fan_in';
+    }
+    return 'mutate';
+}
+function mapChecklistOwnerAgent(role, fallbackAgentId) {
+    if (fallbackAgentId) {
+        return fallbackAgentId;
+    }
+    switch (role) {
+        case 'orchestrator':
+            return 'captain';
+        case 'planner':
+            return 'tactician';
+        case 'explorer':
+            return 'scout';
+        case 'code specialist':
+            return 'raider';
+        case 'verifier':
+            return 'arbiter';
+        default:
+            return 'captain';
+    }
+}
+function isCaptainOwnedReadOnlyFallbackAllowedForChecklist(taskCard) {
+    if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
+        return false;
+    }
+    if (taskCard.task_kind === 'execution') {
+        return taskCard.assigned_role === 'code specialist' && taskCard.model_tier_intent === 'low_cost';
+    }
+    return taskCard.owner_role === 'orchestrator' && taskCard.model_tier_intent === 'low_cost';
+}
+function dedupeLinks(links) {
+    return Array.from(new Set(links.filter((value) => value.trim().length > 0)));
+}
+function createChecklistCheckpointId(run, taskCardId) {
+    const compactTimestamp = run.updated_at.replace(/[^0-9]/g, '');
+    const phaseToken = taskCardId ?? 'none';
+    return `checkpoint-${run.run_id}-${phaseToken}-${compactTimestamp}`;
+}
+function createChecklistEventId(phase) {
+    return `event-${String(phase.phase_events.length + 1).padStart(4, '0')}`;
+}
+function appendChecklistPhaseEvent(phase, event) {
+    const duplicate = phase.phase_events.some((candidate) => candidate.kind === event.kind &&
+        candidate.summary === event.summary &&
+        candidate.proof_ref === event.proof_ref);
+    if (duplicate) {
+        return;
+    }
+    phase.phase_events.push({
+        event_id: createChecklistEventId(phase),
+        ...event,
+    });
+}
+function createRunEventId(eventIndex) {
+    return `run-event-${String(eventIndex + 1).padStart(6, '0')}`;
+}
+function mapChecklistEventToRunEventKind(phase, event) {
+    switch (event.kind) {
+        case 'phase_selected':
+            return phase.phase_name === 'plan' ? 'plan_created' : 'phase_started';
+        case 'launch_confirmed':
+            return 'worker_launched';
+        case 'await_fan_in':
+            return 'fan_in_completed';
+        case 'completed':
+            return phase.phase_name === 'verify' ? 'verification_passed' : 'phase_completed';
+        case 'blocked':
+            return phase.phase_name === 'verify' ? 'verification_failed' : 'captain_judgment_requested';
+        case 'degraded':
+            return 'captain_judgment_requested';
+        case 'launch_requested':
+        case 'waiting':
+        default:
+            return 'projection_updated';
+    }
+}
+function buildRunEventFromChecklistEvent(input) {
+    return {
+        version: 1,
+        event_id: createRunEventId(input.eventIndex),
+        run_id: input.run.run_id,
+        kind: mapChecklistEventToRunEventKind(input.phase, input.event),
+        recorded_at: input.event.recorded_at,
+        actor: input.event.actor,
+        phase_id: input.phase.phase_id,
+        task_card_id: input.phase.task_card_id,
+        source_ref: `checklist:${input.phase.phase_id}:${input.event.event_id}`,
+        summary: input.event.summary,
+        payload: {
+            checklist_event_kind: input.event.kind,
+            phase_name: input.phase.phase_name,
+            phase_status: input.phase.status,
+            proof_ref: input.event.proof_ref,
+            execution_adapter: input.phase.execution_adapter,
+            launch_proof: input.phase.launch_proof,
+            execution_owner: input.phase.execution_owner,
+            codex_ui_trace_owner: input.phase.codex_ui_trace_owner,
+        },
+    };
+}
+async function loadRunEventRecordsIfPresent(paths) {
+    let content;
+    try {
+        content = await (0, promises_1.readFile)(paths.runEventsFile, 'utf8');
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            return [];
+        }
+        throw error;
+    }
+    return content
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line))
+        .filter((event) => event.version === 1);
+}
+async function appendRunEventRecords(paths, events) {
+    if (events.length === 0) {
+        return;
+    }
+    await (0, promises_1.appendFile)(paths.runEventsFile, `${events.map((event) => JSON.stringify(event)).join('\n')}\n`, 'utf8');
+}
+function decideNextActionFromRunState(input) {
+    if (input.run.status === 'completed') {
+        const notebookLmTarget = input.archiveTargets?.notebooklm ?? null;
+        return notebookLmTarget?.enabled ? { type: 'export_archive', target: 'notebooklm' } : { type: 'settle_run' };
+    }
+    const activePhase = input.checklist.phases.find((phase) => phase.phase_id === input.checklist.active_phase_id) ??
+        input.checklist.phases.find((phase) => phase.status === 'await_fan_in' || phase.status === 'in_progress') ??
+        input.checklist.phases.find((phase) => phase.status === 'pending') ??
+        null;
+    if (!activePhase) {
+        return null;
+    }
+    if (activePhase.status === 'await_fan_in') {
+        return { type: 'wait_for_fan_in', phase_id: activePhase.phase_id };
+    }
+    if (activePhase.status === 'blocked') {
+        return { type: 'request_captain_judgment', reason: `${activePhase.phase_name} phase is blocked.` };
+    }
+    if (input.orchestratorDecision?.next_step === 'await_verification') {
+        return { type: 'manual_hold', reason: 'Verification outcome is waiting for explicit operator resolution.' };
+    }
+    if (input.orchestratorDecision?.next_step === 'await_repair_decision') {
+        return { type: 'request_captain_judgment', reason: 'Repair decision is required before continuing.' };
+    }
+    if (activePhase.status === 'completed') {
+        const nextPhase = input.checklist.phases.find((phase) => !isChecklistTerminalStatus(phase.status));
+        return nextPhase ? { type: 'advance_phase', from_phase_id: activePhase.phase_id, to_phase_id: nextPhase.phase_id } : { type: 'settle_run' };
+    }
+    if (input.orchestratorDecision?.can_advance === false) {
+        return { type: 'manual_hold', reason: input.orchestratorDecision.next_step };
+    }
+    const role = activePhase.owner_agent === 'arbiter'
+        ? 'arbiter'
+        : activePhase.owner_agent === 'raider'
+            ? 'raider'
+            : 'scout';
+    return { type: 'launch_worker', phase_id: activePhase.phase_id, role };
+}
+function foldRunEventsToState(input) {
+    const nextAction = decideNextActionFromRunState({
+        run: input.run,
+        checklist: input.checklist,
+        orchestratorDecision: input.orchestratorDecision,
+        archiveTargets: input.archiveTargets,
+    });
+    return {
+        version: 1,
+        run_id: input.run.run_id,
+        updated_at: input.run.updated_at,
+        event_count: input.events.length,
+        last_event_id: input.events.at(-1)?.event_id ?? null,
+        current_phase_id: input.checklist.active_phase_id,
+        current_phase_name: input.checklist.active_phase_name,
+        phases: input.checklist.phases.map((phase) => ({
+            phase_id: phase.phase_id,
+            phase_name: phase.phase_name,
+            task_card_id: phase.task_card_id,
+            status: phase.status,
+            owner_agent: phase.owner_agent,
+            updated_at: phase.updated_at,
+        })),
+        next_action: nextAction,
+    };
+}
+async function loadRunStateProjectionIfPresent(paths) {
+    let candidate;
+    try {
+        candidate = await readJsonDocument(paths.runStateFile);
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+    if (!isRecord(candidate) || candidate.version !== 1 || typeof candidate.run_id !== 'string') {
+        return null;
+    }
+    return candidate;
+}
+function normalizePlanningChecklistStatusForTask(input) {
+    switch (input.taskCard.status) {
+        case 'queued':
+            return 'pending';
+        case 'completed':
+            return 'completed';
+        case 'failed':
+        case 'blocked':
+            return 'blocked';
+        case 'cancelled':
+            return 'cancelled';
+        case 'in_handoff':
+        case 'active': {
+            if (input.launchProof === null) {
+                return input.run.status === 'blocked' ? 'blocked' : 'pending';
+            }
+            if (input.isActiveTask && input.orchestratorDecision?.next_step === 'await_fan_in') {
+                return 'await_fan_in';
+            }
+            return input.run.status === 'blocked' ? 'blocked' : 'in_progress';
+        }
+        default:
+            return 'pending';
+    }
+}
+function deriveTaskChecklistExecutionState(input) {
+    const taskLinkedDelegations = input.taskDelegations.filter((delegation) => delegation.task_card_id === input.taskCard.task_card_id);
+    const hasWorkerLaunchEvidence = taskLinkedDelegations.some((delegation) => delegation.worker_launch_evidence !== null);
+    const hasWorkerLifecycleLaunch = taskLinkedDelegations.some((delegation) => {
+        const lifecycleState = delegation.worker_lifecycle?.state;
+        return (lifecycleState === 'launching' ||
+            lifecycleState === 'running' ||
+            lifecycleState === 'returned' ||
+            lifecycleState === 'failed' ||
+            lifecycleState === 'cancelled' ||
+            lifecycleState === 'stale' ||
+            lifecycleState === 'timed_out');
+    });
+    const hasHostExecutionEvidence = input.taskCard.thread_ids.length > 0 ||
+        input.taskCard.latest_model_launch !== null ||
+        (input.run.active_task_card_id === input.taskCard.task_card_id && input.run.active_thread_id !== null);
+    const ownershipState = input.taskCard.ownership_chain?.state ?? null;
+    const readOnlyFallbackAllowed = isCaptainOwnedReadOnlyFallbackAllowedForChecklist(input.taskCard);
+    const proofState = hasWorkerLaunchEvidence || hasWorkerLifecycleLaunch
+        ? 'foreman_worker_visible'
+        : hasHostExecutionEvidence
+            ? ownershipState === 'captain_read_only_fallback' || readOnlyFallbackAllowed
+                ? 'captain_read_only_fallback'
+                : 'host_session_fallback'
+            : 'planned_assignment_only';
+    const launchProof = proofState === 'foreman_worker_visible'
+        ? 'foreman_worker_visible'
+        : proofState === 'planned_assignment_only'
+            ? null
+            : 'degraded_with_reason';
+    const executionAdapter = proofState === 'foreman_worker_visible'
+        ? 'foreman_mcp_worker'
+        : proofState === 'planned_assignment_only'
+            ? taskLinkedDelegations.length > 0
+                ? 'foreman_mcp_worker'
+                : 'codex_native_agent'
+            : 'degraded_host_fallback';
+    const executionOwner = proofState === 'foreman_worker_visible' ? 'foreman_worker' : hasHostExecutionEvidence ? 'host_session' : null;
+    return {
+        proofState,
+        executionAdapter,
+        launchProof,
+        executionOwner,
+        codexUiTraceOwner: executionOwner === null ? null : 'host_session',
+        degradedSummary: proofState === 'captain_read_only_fallback'
+            ? 'captain_read_only_fallback'
+            : proofState === 'host_session_fallback'
+                ? 'host_session_fallback'
+                : null,
+    };
+}
+function derivePhaseEvidenceLinks(taskCard, taskDelegations) {
+    const threadLinks = taskCard.thread_ids.map((threadId) => `thread:${threadId}`);
+    const delegationLinks = taskDelegations.flatMap((delegation) => delegation.worker_result?.evidence_paths ?? []);
+    return dedupeLinks([...threadLinks, ...delegationLinks]);
+}
+function derivePhaseResultLinks(taskDelegations) {
+    const resultLinks = taskDelegations.flatMap((delegation) => {
+        const links = [];
+        if (delegation.worker_result?.raw_events_file) {
+            links.push(delegation.worker_result.raw_events_file);
+        }
+        if (delegation.worker_result?.thread_id) {
+            links.push(`thread:${delegation.worker_result.thread_id}`);
+        }
+        return links;
+    });
+    return dedupeLinks(resultLinks);
+}
+function createInitialPlanningChecklist(run) {
+    return {
+        version: 1,
+        run_id: run.run_id,
+        requester_session_id: run.latest_entry_trace?.requester_session_id ?? null,
+        lifecycle_state: run.status,
+        created_at: run.created_at,
+        updated_at: run.updated_at,
+        settled_at: run.completed_at,
+        checkpoint_id: createChecklistCheckpointId(run, run.active_task_card_id),
+        active_phase_id: null,
+        active_phase_name: null,
+        phases: [],
+    };
+}
+function normalizeLoadedPlanningChecklist(candidate, run) {
+    if (!isRecord(candidate) || candidate.version !== 1) {
+        return null;
+    }
+    if (typeof candidate.run_id !== 'string' ||
+        !Array.isArray(candidate.phases) ||
+        typeof candidate.created_at !== 'string' ||
+        typeof candidate.updated_at !== 'string') {
+        return null;
+    }
+    if (candidate.run_id !== run.run_id) {
+        return null;
+    }
+    return candidate;
+}
+function createPlanningPlaceholderPhase(input) {
+    const previous = input.previousPhase;
+    const launchProof = previous?.launch_proof ?? null;
+    const status = input.run.status === 'cancelled'
+        ? 'cancelled'
+        : input.run.status === 'failed' || input.run.status === 'blocked'
+            ? 'blocked'
+            : input.run.status === 'completed'
+                ? 'completed'
+                : launchProof === null
+                    ? 'pending'
+                    : 'in_progress';
+    const phase = {
+        phase_id: 'phase:planning',
+        phase_name: 'plan',
+        task_card_id: null,
+        status,
+        owner_agent: 'tactician',
+        task_items: [
+            {
+                task_item_id: 'task-item:planning',
+                task_card_id: null,
+                title: 'Bounded planning checklist activation',
+                status,
+                owner_agent: 'tactician',
+                execution_adapter: launchProof === null ? null : 'codex_native_agent',
+                launch_proof: launchProof,
+                execution_owner: launchProof === null ? null : 'host_session',
+                codex_ui_trace_owner: launchProof === null ? null : 'host_session',
+                evidence_links: [],
+                result_links: [],
+                updated_at: input.run.updated_at,
+                started_at: previous?.started_at ?? (launchProof === null ? null : input.run.updated_at),
+                finished_at: previous?.finished_at ??
+                    (isChecklistTerminalStatus(status) ? input.run.updated_at : null),
+            },
+        ],
+        evidence_links: [],
+        result_links: [],
+        checkpoint_id: input.checkpointId,
+        updated_at: input.run.updated_at,
+        started_at: previous?.started_at ?? (launchProof === null ? null : input.run.updated_at),
+        finished_at: previous?.finished_at ?? (isChecklistTerminalStatus(status) ? input.run.updated_at : null),
+        next_phase_candidates: [],
+        execution_adapter: launchProof === null ? null : 'codex_native_agent',
+        launch_proof: launchProof,
+        execution_owner: launchProof === null ? null : 'host_session',
+        codex_ui_trace_owner: launchProof === null ? null : 'host_session',
+        phase_events: [...(previous?.phase_events ?? [])],
+    };
+    if (!phase.phase_events.some((event) => event.kind === 'phase_selected')) {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'phase_selected',
+            recorded_at: input.run.updated_at,
+            actor: 'captain',
+            summary: 'planning phase selected before task-card execution',
+            proof_ref: null,
+        });
+    }
+    if (launchProof === null && (status === 'pending' || status === 'in_progress')) {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'launch_requested',
+            recorded_at: input.run.updated_at,
+            actor: 'captain',
+            summary: 'planning assignment declared and waiting for durable launch proof',
+            proof_ref: null,
+        });
+    }
+    if (status === 'blocked') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'blocked',
+            recorded_at: input.run.updated_at,
+            actor: 'captain',
+            summary: 'planning phase is blocked',
+            proof_ref: null,
+        });
+    }
+    if (status === 'completed') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'completed',
+            recorded_at: input.run.updated_at,
+            actor: 'captain',
+            summary: 'planning phase completed',
+            proof_ref: phase.launch_proof,
+        });
+    }
+    if (status === 'cancelled') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'blocked',
+            recorded_at: input.run.updated_at,
+            actor: 'captain',
+            summary: 'planning phase cancelled',
+            proof_ref: null,
+        });
+    }
+    return phase;
+}
+function createTaskChecklistPhase(input) {
+    const executionState = deriveTaskChecklistExecutionState({
+        run: input.run,
+        taskCard: input.taskCard,
+        taskDelegations: input.taskDelegations,
+    });
+    const status = normalizePlanningChecklistStatusForTask({
+        run: input.run,
+        taskCard: input.taskCard,
+        launchProof: executionState.launchProof,
+        orchestratorDecision: input.orchestratorDecision,
+        isActiveTask: input.isActiveTask,
+    });
+    const evidenceLinks = derivePhaseEvidenceLinks(input.taskCard, input.taskDelegations);
+    const resultLinks = derivePhaseResultLinks(input.taskDelegations);
+    const ownerAgent = mapChecklistOwnerAgent(input.taskCard.owner_role, input.taskCard.assigned_agent_id);
+    const updatedAt = input.taskCard.updated_at;
+    const phase = {
+        phase_id: `phase:${input.taskCard.task_card_id}`,
+        phase_name: mapChecklistPhaseName(input.run, input.taskCard),
+        task_card_id: input.taskCard.task_card_id,
+        status,
+        owner_agent: ownerAgent,
+        task_items: [],
+        evidence_links: evidenceLinks,
+        result_links: resultLinks,
+        checkpoint_id: input.checkpointId,
+        updated_at: updatedAt,
+        started_at: input.previousPhase?.started_at ?? (executionState.launchProof === null ? null : updatedAt),
+        finished_at: input.previousPhase?.finished_at ??
+            (isChecklistTerminalStatus(status) ? updatedAt : null),
+        next_phase_candidates: input.nextPhaseCandidates,
+        execution_adapter: executionState.launchProof === null ? null : executionState.executionAdapter,
+        launch_proof: executionState.launchProof,
+        execution_owner: executionState.executionOwner,
+        codex_ui_trace_owner: executionState.codexUiTraceOwner,
+        phase_events: [...(input.previousPhase?.phase_events ?? [])],
+    };
+    const taskItem = {
+        task_item_id: `task-item:${input.taskCard.task_card_id}`,
+        task_card_id: input.taskCard.task_card_id,
+        title: input.taskCard.title,
+        status,
+        owner_agent: ownerAgent,
+        execution_adapter: phase.execution_adapter,
+        launch_proof: phase.launch_proof,
+        execution_owner: phase.execution_owner,
+        codex_ui_trace_owner: phase.codex_ui_trace_owner,
+        evidence_links: evidenceLinks,
+        result_links: resultLinks,
+        updated_at: updatedAt,
+        started_at: phase.started_at,
+        finished_at: phase.finished_at,
+    };
+    phase.task_items = [taskItem];
+    if (!phase.phase_events.some((event) => event.kind === 'phase_selected')) {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'phase_selected',
+            recorded_at: updatedAt,
+            actor: 'captain',
+            summary: `${phase.phase_name} phase selected for task_card_id=${input.taskCard.task_card_id}`,
+            proof_ref: null,
+        });
+    }
+    if (executionState.launchProof === null && (status === 'pending' || status === 'blocked')) {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'launch_requested',
+            recorded_at: updatedAt,
+            actor: ownerAgent,
+            summary: `launch requested for ${ownerAgent} but durable launch proof is not recorded yet`,
+            proof_ref: null,
+        });
+    }
+    if (executionState.launchProof === 'foreman_worker_visible') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'launch_confirmed',
+            recorded_at: updatedAt,
+            actor: ownerAgent,
+            summary: 'launch proof confirmed via foreman_worker_visible',
+            proof_ref: executionState.launchProof,
+        });
+    }
+    if (executionState.launchProof === 'degraded_with_reason') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'degraded',
+            recorded_at: updatedAt,
+            actor: 'captain',
+            summary: executionState.degradedSummary ?? 'degraded host fallback recorded',
+            proof_ref: executionState.launchProof,
+        });
+    }
+    if (status === 'in_progress') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'waiting',
+            recorded_at: updatedAt,
+            actor: ownerAgent,
+            summary: `${ownerAgent} phase work remains in progress`,
+            proof_ref: phase.launch_proof,
+        });
+    }
+    if (status === 'await_fan_in') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'await_fan_in',
+            recorded_at: updatedAt,
+            actor: 'captain',
+            summary: 'phase is waiting for delegated fan-in before continuation',
+            proof_ref: phase.launch_proof,
+        });
+    }
+    if (status === 'completed') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'completed',
+            recorded_at: updatedAt,
+            actor: ownerAgent,
+            summary: `${ownerAgent} phase completed`,
+            proof_ref: phase.launch_proof,
+        });
+    }
+    if (status === 'blocked') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'blocked',
+            recorded_at: updatedAt,
+            actor: 'captain',
+            summary: `${ownerAgent} phase blocked`,
+            proof_ref: phase.launch_proof,
+        });
+    }
+    if (status === 'cancelled') {
+        appendChecklistPhaseEvent(phase, {
+            kind: 'blocked',
+            recorded_at: updatedAt,
+            actor: 'captain',
+            summary: `${ownerAgent} phase cancelled`,
+            proof_ref: phase.launch_proof,
+        });
+    }
+    return phase;
+}
+async function loadPlanningChecklistRecordIfPresent(paths) {
+    let candidate;
+    try {
+        candidate = await readJsonDocument(paths.planningChecklistFile);
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            return null;
+        }
+        throw error;
+    }
+    let run = null;
+    try {
+        run = await loadRunRecord(paths);
+    }
+    catch {
+        run = null;
+    }
+    if (run === null) {
+        return null;
+    }
+    return normalizeLoadedPlanningChecklist(candidate, run);
+}
+async function persistPlanningChecklistFromContext(paths, input) {
+    const existingChecklist = await loadPlanningChecklistRecordIfPresent(paths);
+    const checklist = existingChecklist ?? createInitialPlanningChecklist(input.run);
+    const checkpointId = createChecklistCheckpointId(input.run, input.run.active_task_card_id);
+    checklist.requester_session_id = input.run.latest_entry_trace?.requester_session_id ?? checklist.requester_session_id;
+    checklist.lifecycle_state = input.run.status;
+    checklist.updated_at = input.run.updated_at;
+    checklist.settled_at = input.run.completed_at;
+    checklist.checkpoint_id = checkpointId;
+    const taskCards = input.taskCards ?? [];
+    const taskCardLookup = new Map(taskCards.map((taskCard) => [taskCard.task_card_id, taskCard]));
+    const existingPhaseByTaskCardId = new Map(checklist.phases
+        .filter((phase) => phase.task_card_id !== null)
+        .map((phase) => [phase.task_card_id, phase]));
+    const existingPlanningPlaceholder = checklist.phases.find((phase) => phase.phase_id === 'phase:planning' && phase.task_card_id === null) ?? null;
+    const taskDelegations = input.taskDelegations ?? [];
+    const rebuiltPhases = [];
+    if (taskCards.length === 0) {
+        if (input.run.stage === 'planning' || existingPlanningPlaceholder !== null) {
+            rebuiltPhases.push(createPlanningPlaceholderPhase({
+                run: input.run,
+                checkpointId,
+                previousPhase: existingPlanningPlaceholder,
+            }));
+        }
+        else {
+            rebuiltPhases.push(...checklist.phases);
+        }
+    }
+    else {
+        if (existingPlanningPlaceholder !== null) {
+            const finalizedPlanningPhase = createPlanningPlaceholderPhase({
+                run: {
+                    ...input.run,
+                    status: input.run.status === 'active' ? 'completed' : input.run.status,
+                    updated_at: input.run.updated_at,
+                },
+                checkpointId,
+                previousPhase: {
+                    ...existingPlanningPlaceholder,
+                    launch_proof: existingPlanningPlaceholder.launch_proof ?? 'codex_native_spawned',
+                },
+            });
+            rebuiltPhases.push(finalizedPlanningPhase);
+        }
+        for (let index = 0; index < input.run.task_card_ids.length; index += 1) {
+            const taskCardId = input.run.task_card_ids[index];
+            const taskCard = taskCardLookup.get(taskCardId);
+            if (!taskCard) {
+                continue;
+            }
+            const nextTaskCardId = input.run.task_card_ids[index + 1] ?? null;
+            const nextTaskCard = nextTaskCardId ? taskCardLookup.get(nextTaskCardId) ?? null : null;
+            const phase = createTaskChecklistPhase({
+                run: input.run,
+                taskCard,
+                isActiveTask: input.run.active_task_card_id === taskCard.task_card_id,
+                checkpointId,
+                previousPhase: existingPhaseByTaskCardId.get(taskCard.task_card_id) ?? null,
+                nextPhaseCandidates: nextTaskCard ? [mapChecklistPhaseName(input.run, nextTaskCard)] : [],
+                orchestratorDecision: input.run.active_task_card_id === taskCard.task_card_id ? input.orchestratorDecision ?? null : null,
+                taskDelegations,
+            });
+            rebuiltPhases.push(phase);
+        }
+    }
+    checklist.phases = rebuiltPhases;
+    const activePhase = checklist.phases.find((phase) => phase.task_card_id === input.run.active_task_card_id) ??
+        checklist.phases.find((phase) => phase.status === 'in_progress' || phase.status === 'await_fan_in') ??
+        checklist.phases.find((phase) => phase.status === 'pending') ??
+        null;
+    checklist.active_phase_id = activePhase?.phase_id ?? null;
+    checklist.active_phase_name = activePhase?.phase_name ?? null;
+    (0, validation_1.assertValidPlanningChecklistRecord)(checklist);
+    await writeJsonDocument(paths.planningChecklistFile, checklist);
+    const existingEvents = await loadRunEventRecordsIfPresent(paths);
+    const existingSourceRefs = new Set(existingEvents.map((event) => event.source_ref).filter((ref) => ref !== null));
+    const nextEvents = [];
+    let eventIndex = existingEvents.length;
+    for (const phase of checklist.phases) {
+        for (const phaseEvent of phase.phase_events) {
+            const sourceRef = `checklist:${phase.phase_id}:${phaseEvent.event_id}`;
+            if (existingSourceRefs.has(sourceRef)) {
+                continue;
+            }
+            nextEvents.push(buildRunEventFromChecklistEvent({
+                run: input.run,
+                phase,
+                event: phaseEvent,
+                eventIndex,
+            }));
+            eventIndex += 1;
+        }
+    }
+    if (input.run.status === 'completed' &&
+        !existingEvents.some((event) => event.kind === 'run_settled') &&
+        !nextEvents.some((event) => event.kind === 'run_settled')) {
+        nextEvents.push({
+            version: 1,
+            event_id: createRunEventId(eventIndex),
+            run_id: input.run.run_id,
+            kind: 'run_settled',
+            recorded_at: input.run.completed_at ?? input.run.updated_at,
+            actor: 'captain',
+            phase_id: checklist.active_phase_id,
+            task_card_id: input.run.active_task_card_id,
+            source_ref: 'run:settled',
+            summary: 'Run settled after all active work reached a terminal state.',
+            payload: {
+                status: input.run.status,
+                stage: input.run.stage,
+            },
+        });
+    }
+    await appendRunEventRecords(paths, nextEvents);
+    const allEvents = [...existingEvents, ...nextEvents];
+    const foremanConfig = await loadForemanConfig(paths.workspaceDir).catch(() => null);
+    const runState = foldRunEventsToState({
+        run: input.run,
+        checklist,
+        events: allEvents,
+        orchestratorDecision: input.orchestratorDecision ?? null,
+        archiveTargets: foremanConfig?.archive_targets ?? null,
+    });
+    await writeJsonDocument(paths.runStateFile, runState);
 }
 function createForemanRunRef(runDirectory) {
     return `${FOREMAN_RUN_REF_PREFIX}${node_path_1.default.resolve(runDirectory)}`;
@@ -829,12 +1575,24 @@ function createDefaultForemanRuntimeConfig() {
         worker_poll_interval_ms: 90_000,
     };
 }
+function createDefaultForemanArchiveTargetsConfig() {
+    return {
+        notebooklm: {
+            enabled: false,
+            auth_mode: 'browser',
+            notebook_url: null,
+            notebook_id: null,
+            secret_ref: null,
+        },
+    };
+}
 function createDefaultForemanConfig() {
     return {
         version: 1,
         entry_policy: createDefaultForemanEntryPolicy(),
         output: createDefaultForemanOutputConfig(),
         runtime: createDefaultForemanRuntimeConfig(),
+        archive_targets: createDefaultForemanArchiveTargetsConfig(),
         tool_routing: (0, tool_routing_1.createDefaultForemanToolRoutingConfig)(),
         agents: {
             orchestrator: createDefaultForemanAgentConfig('orchestrator'),
@@ -1084,11 +1842,39 @@ function normalizeForemanConfigCandidate(candidate) {
             worker_poll_interval_ms: Math.trunc(candidate.runtime.worker_poll_interval_ms),
         }
         : createDefaultForemanRuntimeConfig();
+    const candidateArchiveTargets = isRecord(candidate.archive_targets) ? candidate.archive_targets : null;
+    const candidateNotebookLmArchiveTarget = candidateArchiveTargets && isRecord(candidateArchiveTargets.notebooklm) ? candidateArchiveTargets.notebooklm : null;
+    const defaultArchiveTargets = createDefaultForemanArchiveTargetsConfig();
+    const archiveTargets = {
+        notebooklm: candidateNotebookLmArchiveTarget
+            ? {
+                enabled: typeof candidateNotebookLmArchiveTarget.enabled === 'boolean'
+                    ? candidateNotebookLmArchiveTarget.enabled
+                    : defaultArchiveTargets.notebooklm.enabled,
+                auth_mode: candidateNotebookLmArchiveTarget.auth_mode === 'browser'
+                    ? 'browser'
+                    : defaultArchiveTargets.notebooklm.auth_mode,
+                notebook_url: typeof candidateNotebookLmArchiveTarget.notebook_url === 'string' ||
+                    candidateNotebookLmArchiveTarget.notebook_url === null
+                    ? candidateNotebookLmArchiveTarget.notebook_url
+                    : defaultArchiveTargets.notebooklm.notebook_url,
+                notebook_id: typeof candidateNotebookLmArchiveTarget.notebook_id === 'string' ||
+                    candidateNotebookLmArchiveTarget.notebook_id === null
+                    ? candidateNotebookLmArchiveTarget.notebook_id
+                    : defaultArchiveTargets.notebooklm.notebook_id,
+                secret_ref: typeof candidateNotebookLmArchiveTarget.secret_ref === 'string' ||
+                    candidateNotebookLmArchiveTarget.secret_ref === null
+                    ? candidateNotebookLmArchiveTarget.secret_ref
+                    : defaultArchiveTargets.notebooklm.secret_ref,
+            }
+            : defaultArchiveTargets.notebooklm,
+    };
     return {
         ...candidate,
         entry_policy: isRecord(candidate.entry_policy) ? candidate.entry_policy : createDefaultForemanEntryPolicy(),
         output,
         runtime,
+        archive_targets: archiveTargets,
         tool_routing: (0, tool_routing_1.normalizeForemanToolRoutingConfig)(candidate.tool_routing),
         agents: candidateAgents
             ? {
@@ -1511,6 +2297,13 @@ async function persistDelegationWithVisibilitySync(paths, delegation) {
         persistOrchestratorState(paths, orchestratorState),
         writeJsonDocument(paths.visibilityFile, createVisibilityProjection(run, taskCard, latestHandoff, nextDecision)),
     ]);
+    await persistPlanningChecklistFromContext(paths, {
+        run,
+        taskCards: [taskCard],
+        activeTaskCard: taskCard,
+        orchestratorDecision: nextDecision,
+        taskDelegations: delegationArtifacts,
+    });
     await writeDerivedProgressDoc(paths);
 }
 async function updateDelegationWithVisibilitySync(paths, input) {
@@ -1687,6 +2480,13 @@ async function persistRunRecord(paths, run) {
     const normalizedRun = await normalizeLoadedRunRecord(paths, run);
     (0, validation_1.assertValidRunRecord)(normalizedRun);
     await writeJsonDocument(paths.runFile, normalizedRun);
+    await persistPlanningChecklistFromContext(paths, {
+        run: normalizedRun,
+        taskCards: null,
+        activeTaskCard: null,
+        orchestratorDecision: null,
+        taskDelegations: null,
+    });
 }
 function createInitialRunRecord(input) {
     const timestamp = input.createdAt ?? nowTimestamp();
@@ -3420,6 +4220,14 @@ async function persistRunArtifacts(paths, run, taskCards, taskCard, latestHandof
         ...taskCards.map((persistedTaskCard) => writeJsonDocument(node_path_1.default.join(paths.taskCardsDir, `${persistedTaskCard.task_card_id}.json`), persistedTaskCard)),
         writeJsonDocument(paths.visibilityFile, createVisibilityProjection(run, taskCard, latestHandoff, orchestratorDecision)),
     ]);
+    const taskDelegations = await loadDelegationArtifacts(paths);
+    await persistPlanningChecklistFromContext(paths, {
+        run,
+        taskCards,
+        activeTaskCard: taskCard,
+        orchestratorDecision,
+        taskDelegations,
+    });
 }
 function formatTaskCardReference(taskCard) {
     return `${taskCard.title} (${taskCard.task_card_id})`;

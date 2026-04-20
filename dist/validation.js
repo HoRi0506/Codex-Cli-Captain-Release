@@ -14,6 +14,7 @@ exports.assertValidOrchestratorDecision = assertValidOrchestratorDecision;
 exports.assertValidOrchestratorState = assertValidOrchestratorState;
 exports.assertValidPlanUpdateArtifact = assertValidPlanUpdateArtifact;
 exports.assertValidPlanningOutput = assertValidPlanningOutput;
+exports.assertValidPlanningChecklistRecord = assertValidPlanningChecklistRecord;
 exports.assertValidResumeCheckpointRecord = assertValidResumeCheckpointRecord;
 exports.assertValidRoleDefaultsFile = assertValidRoleDefaultsFile;
 exports.assertValidTaskCardRecord = assertValidTaskCardRecord;
@@ -30,6 +31,7 @@ const orchestration_attempt_schema_json_1 = __importDefault(require("../schemas/
 const orchestrator_state_schema_json_1 = __importDefault(require("../schemas/orchestrator-state.schema.json"));
 const plan_update_schema_json_1 = __importDefault(require("../schemas/plan-update.schema.json"));
 const planning_schema_json_1 = __importDefault(require("../schemas/planning.schema.json"));
+const planning_checklist_schema_json_1 = __importDefault(require("../schemas/planning-checklist.schema.json"));
 const resume_checkpoint_schema_json_1 = __importDefault(require("../schemas/resume-checkpoint.schema.json"));
 const role_defaults_schema_json_1 = __importDefault(require("../schemas/role-defaults.schema.json"));
 const run_schema_json_1 = __importDefault(require("../schemas/run.schema.json"));
@@ -47,6 +49,7 @@ const validateOrchestrationAttemptRecord = ajv.compile(orchestration_attempt_sch
 const validateOrchestratorState = ajv.compile(orchestrator_state_schema_json_1.default);
 const validatePlanUpdateArtifact = ajv.compile(plan_update_schema_json_1.default);
 const validatePlanningOutput = ajv.compile(planning_schema_json_1.default);
+const validatePlanningChecklistRecord = ajv.compile(planning_checklist_schema_json_1.default);
 const validateResumeCheckpointRecord = ajv.compile(resume_checkpoint_schema_json_1.default);
 const validateRoleDefaultsFile = ajv.compile(role_defaults_schema_json_1.default);
 const validateRunRecord = ajv.compile(run_schema_json_1.default);
@@ -117,6 +120,11 @@ function assertValidPlanUpdateArtifact(value) {
 function assertValidPlanningOutput(value) {
     if (!validatePlanningOutput(value)) {
         throw new Error(`Planning output failed schema validation: ${formatValidationErrors(validatePlanningOutput.errors)}`);
+    }
+}
+function assertValidPlanningChecklistRecord(value) {
+    if (!validatePlanningChecklistRecord(value)) {
+        throw new Error(`Planning checklist failed schema validation: ${formatValidationErrors(validatePlanningChecklistRecord.errors)}`);
     }
 }
 function assertValidResumeCheckpointRecord(value) {
