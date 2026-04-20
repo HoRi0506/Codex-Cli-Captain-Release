@@ -930,7 +930,9 @@ function createWorkflowRouteTaskMetadata(contract, step) {
     };
 }
 function isConditionalDiagnoseThenFixRoute(input) {
-    return input.contract.workflow_skill_id === 'captain_diagnose_then_fix' && (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
+    return ((input.contract.workflow_skill_id === 'captain_mutation' ||
+        input.contract.workflow_skill_id === 'captain_diagnose_then_fix') &&
+        (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request));
 }
 function createConditionalWorkflowStepMetadata(input) {
     return {
@@ -3227,7 +3229,7 @@ function completeWorkflowRouteAtCaptain(run, taskCard, handoff, summary) {
     run.completed_at = handoff.created_at;
 }
 function isConditionalMutationCompareGateTask(taskCard) {
-    return taskCard.workflow_step_skill_id === 'captain_diagnose_then_fix__compare_gate';
+    return taskCard.workflow_step_skill_id?.endsWith('__compare_gate') ?? false;
 }
 async function completeConditionalMutationGateWithoutRepair(input) {
     cancelQueuedTailAfterTask(input.run, input.taskCards, input.taskCard);
@@ -5120,13 +5122,15 @@ function shouldSuppressNewRunCreationForAutoEntry(recommendation) {
     return (isReadOnlyAutoEntryCandidate(recommendation) &&
         (recommendation.request_shape === 'synthesis' ||
             ((recommendation.request_shape === 'lookup' || recommendation.request_shape === 'existence_check') &&
-                recommendation.workflow_variant_selection.workflow_skill_id === 'captain_investigate_only')));
+                (recommendation.workflow_variant_selection.workflow_skill_id === 'captain_read_only' ||
+                    recommendation.workflow_variant_selection.workflow_skill_id === 'captain_investigate_only'))));
 }
 function getRunWorkflowVariantSelection(run) {
     return run.latest_entry_trace?.answer_trace.workflow_variant_selection ?? null;
 }
 function shouldKeepExploreInvestigationSingleSlice(run, taskCard) {
-    if (taskCard.task_kind !== 'explore' || taskCard.workflow_skill_id !== 'captain_investigate_only') {
+    if (taskCard.task_kind !== 'explore' ||
+        (taskCard.workflow_skill_id !== 'captain_read_only' && taskCard.workflow_skill_id !== 'captain_investigate_only')) {
         return false;
     }
     const answerTrace = run.latest_entry_trace?.answer_trace;

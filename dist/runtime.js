@@ -3781,10 +3781,16 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                         step === 'tactician' ||
                         step === 'scout' ||
                         step === 'raider' ||
+                        step === 'scribe' ||
                         step === 'arbiter' ||
                         step === 'sentinel')
                     : [];
-                if ((candidate.workflow_variant === 'investigate_only' ||
+                if ((candidate.workflow_variant === 'read_only' ||
+                    candidate.workflow_variant === 'mutation' ||
+                    candidate.workflow_variant === 'planning' ||
+                    candidate.workflow_variant === 'verification' ||
+                    candidate.workflow_variant === 'parallel' ||
+                    candidate.workflow_variant === 'investigate_only' ||
                     candidate.workflow_variant === 'investigate_then_document' ||
                     candidate.workflow_variant === 'diagnose_then_fix' ||
                     candidate.workflow_variant === 'fix_only' ||
@@ -3793,7 +3799,12 @@ async function normalizeLoadedRunRecord(paths, candidate) {
                     candidate.workflow_variant === 'verify_only' ||
                     candidate.workflow_variant === 'ownership_drift_check' ||
                     candidate.workflow_variant === 'parallel_fanout') &&
-                    (candidate.workflow_skill_id === 'captain_investigate_only' ||
+                    (candidate.workflow_skill_id === 'captain_read_only' ||
+                        candidate.workflow_skill_id === 'captain_mutation' ||
+                        candidate.workflow_skill_id === 'captain_planning' ||
+                        candidate.workflow_skill_id === 'captain_verification' ||
+                        candidate.workflow_skill_id === 'captain_parallel' ||
+                        candidate.workflow_skill_id === 'captain_investigate_only' ||
                         candidate.workflow_skill_id === 'captain_investigate_then_document' ||
                         candidate.workflow_skill_id === 'captain_diagnose_then_fix' ||
                         candidate.workflow_skill_id === 'captain_fix_only' ||

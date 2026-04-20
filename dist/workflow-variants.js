@@ -97,11 +97,28 @@ function mapRoleToInternalRouteStep(role) {
             return null;
     }
 }
+function getTaskKindForFirstSpecialistStep(step) {
+    switch (step) {
+        case 'tactician':
+            return 'plan';
+        case 'scout':
+            return 'explore';
+        case 'raider':
+        case 'scribe':
+            return 'execution';
+        case 'arbiter':
+            return 'review';
+        default:
+            return null;
+    }
+}
 function getWorkflowRouteContract(selection) {
     if (!selection) {
         return null;
     }
-    const baseContract = workflow_route_catalog_1.WORKFLOW_ROUTE_CONTRACTS.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ?? null;
+    const baseContract = workflow_route_catalog_1.WORKFLOW_ROUTE_CONTRACTS.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ??
+        workflow_route_catalog_1.WORKFLOW_ROUTE_COMPATIBILITY_ALIASES.find((contract) => contract.workflow_variant === selection.workflow_variant && contract.workflow_skill_id === selection.workflow_skill_id) ??
+        null;
     if (!baseContract) {
         return null;
     }
@@ -119,8 +136,12 @@ function getWorkflowRouteEntryTaskKind(selection, fallbackTaskKind) {
     if (!contract) {
         return fallbackTaskKind;
     }
-    if (contract.workflow_skill_id === 'captain_parallel_fanout') {
+    if (contract.workflow_skill_id === 'captain_parallel' || contract.workflow_skill_id === 'captain_parallel_fanout') {
         return fallbackTaskKind;
+    }
+    const selectedEntryTaskKind = getTaskKindForFirstSpecialistStep(getWorkflowRouteFirstSpecialistStep(selection));
+    if (selectedEntryTaskKind) {
+        return selectedEntryTaskKind;
     }
     if (contract.entry_task_kind === 'plan' && fallbackTaskKind !== 'plan') {
         return fallbackTaskKind;
@@ -150,6 +171,16 @@ function getWorkflowPublicLabel(selection) {
         return 'none';
     }
     switch (selection.workflow_variant) {
+        case 'read_only':
+            return 'bounded_investigation';
+        case 'mutation':
+            return 'mutation_with_review';
+        case 'planning':
+            return 'plan_then_implement';
+        case 'verification':
+            return 'verification_only';
+        case 'parallel':
+            return 'bounded_parallel_work';
         case 'investigate_only':
             return 'bounded_investigation';
         case 'investigate_then_document':
@@ -195,97 +226,97 @@ function deriveWorkflowVariantSelection(input) {
     const hasConditionalMutationGate = (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
     if (hasDriftHints) {
         return createSelection({
-            workflowVariant: 'ownership_drift_check',
-            workflowSkillId: 'captain_ownership_drift_check',
+            workflowVariant: 'verification',
+            workflowSkillId: 'captain_verification',
             workflowAgentRoute: ['captain', 'scout', 'arbiter', 'captain'],
-            workflowSummary: 'Captain should keep this request on the hidden ownership/drift-check route so bounded evidence and review truth come back before any operator-facing conclusion.',
+            workflowSummary: 'Captain should keep this request on the canonical verification route with a scout evidence step before arbiter review truth comes back.',
         });
     }
     if (input.recommendation.request_shape === 'verification') {
         return createSelection({
-            workflowVariant: 'verify_only',
-            workflowSkillId: 'captain_verify_only',
+            workflowVariant: 'verification',
+            workflowSkillId: 'captain_verification',
             workflowAgentRoute: ['captain', 'arbiter', 'captain'],
-            workflowSummary: 'Captain should keep this request on the hidden verify-only route because the next bounded move is acceptance or regression judgment rather than mutation.',
+            workflowSummary: 'Captain should keep this request on the canonical verification route because the next bounded move is acceptance or regression judgment rather than mutation.',
         });
     }
     if (input.recommendation.request_shape === 'planning') {
         return createSelection({
-            workflowVariant: hasParallelHints ? 'parallel_fanout' : 'plan_then_implement',
-            workflowSkillId: hasParallelHints ? 'captain_parallel_fanout' : 'captain_plan_then_implement',
+            workflowVariant: hasParallelHints ? 'parallel' : 'planning',
+            workflowSkillId: hasParallelHints ? 'captain_parallel' : 'captain_planning',
             workflowAgentRoute: hasParallelHints
                 ? ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'captain']
                 : ['captain', 'tactician', 'raider', 'arbiter', 'captain'],
             workflowSummary: hasParallelHints
-                ? 'Captain should use the hidden bounded parallel fan-out route so planning can shape multiple bounded slices before implementation and review.'
-                : 'Captain should use the hidden plan-then-implement route so tactician scopes the next bounded move before implementation and review.',
+                ? 'Captain should use the canonical parallel route so planning can shape multiple bounded slices before implementation and review.'
+                : 'Captain should use the canonical planning route so tactician scopes the next bounded move before implementation and review.',
         });
     }
     if (input.recommendation.mutation_intent === 'explicit_or_strong') {
         if (docShapedMutation && hasCodeMutationTarget) {
             return createSelection({
-                workflowVariant: 'diagnose_then_fix',
-                workflowSkillId: 'captain_diagnose_then_fix',
+                workflowVariant: 'mutation',
+                workflowSkillId: 'captain_mutation',
                 workflowAgentRoute: ['captain', 'scout', 'raider', 'scribe', 'arbiter', 'captain'],
-                workflowSummary: 'Captain should use the hidden diagnose-then-fix route so scout gathers evidence, raider owns code mutation, scribe follows with documentation, and arbiter reviews.',
+                workflowSummary: 'Captain should use the canonical mutation route so scout gathers evidence, raider owns code mutation, scribe follows with documentation, and arbiter reviews.',
             });
         }
         if (docShapedMutation && (hasDiagnosisHints || hasDocFixHints)) {
             return createSelection({
-                workflowVariant: 'diagnose_then_fix',
-                workflowSkillId: 'captain_diagnose_then_fix',
+                workflowVariant: 'mutation',
+                workflowSkillId: 'captain_mutation',
                 workflowAgentRoute: ['captain', 'scout', 'scribe', 'arbiter', 'captain'],
                 workflowSummary: hasConditionalMutationGate
-                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, scribe writes docs only if the evidence proves a mismatch, and arbiter reviews the final result.'
-                    : 'Captain should use the hidden diagnose-then-fix route so bounded evidence, documentation, and review intent remain preserved for this document request.',
+                    ? 'Captain should use the canonical mutation route as a compound skeleton: scout gathers evidence first, scribe writes docs only if the evidence proves a mismatch, and arbiter reviews the final result.'
+                    : 'Captain should use the canonical mutation route so bounded evidence, documentation, and review intent remain preserved for this document request.',
             });
         }
         if (hasDiagnosisHints) {
             return createSelection({
-                workflowVariant: 'diagnose_then_fix',
-                workflowSkillId: 'captain_diagnose_then_fix',
+                workflowVariant: 'mutation',
+                workflowSkillId: 'captain_mutation',
                 workflowAgentRoute: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
                 workflowSummary: hasConditionalMutationGate
-                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, raider mutates only if the evidence proves a concrete repair is needed, and arbiter reviews.'
-                    : 'Captain should use the hidden diagnose-then-fix route so scout gathers bounded evidence before raider mutates and arbiter reviews.',
+                    ? 'Captain should use the canonical mutation route as a compound skeleton: scout gathers evidence first, raider mutates only if the evidence proves a concrete repair is needed, and arbiter reviews.'
+                    : 'Captain should use the canonical mutation route so scout gathers bounded evidence before raider mutates and arbiter reviews.',
             });
         }
         if (docShapedMutation) {
             return createSelection({
-                workflowVariant: 'investigate_then_document',
-                workflowSkillId: 'captain_investigate_then_document',
+                workflowVariant: 'mutation',
+                workflowSkillId: 'captain_mutation',
                 workflowAgentRoute: ['captain', 'scout', 'scribe', 'arbiter', 'captain'],
-                workflowSummary: 'Captain should use the hidden investigate-then-document route because the request needs bounded repository evidence followed by document authoring.',
+                workflowSummary: 'Captain should use the canonical mutation route because the request needs bounded repository evidence followed by document authoring.',
             });
         }
         if (filePathMentions.length <= 1) {
             return createSelection({
-                workflowVariant: 'fix_only',
-                workflowSkillId: 'captain_fix_only',
+                workflowVariant: 'mutation',
+                workflowSkillId: 'captain_mutation',
                 workflowAgentRoute: ['captain', 'raider', 'arbiter', 'captain'],
-                workflowSummary: 'Captain should use the hidden fix-only route because the request already looks scoped enough for direct implementation followed by review.',
+                workflowSummary: 'Captain should use the canonical mutation route without a scout step because the request already looks scoped enough for direct implementation followed by review.',
             });
         }
         return createSelection({
-            workflowVariant: 'implement_then_review',
-            workflowSkillId: 'captain_implement_then_review',
+            workflowVariant: 'mutation',
+            workflowSkillId: 'captain_mutation',
             workflowAgentRoute: ['captain', 'raider', 'arbiter', 'captain'],
-            workflowSummary: 'Captain should use the hidden implement-then-review route because explicit mutation intent still needs bounded implementation and acceptance review.',
+            workflowSummary: 'Captain should use the canonical mutation route because explicit mutation intent still needs bounded implementation and acceptance review.',
         });
     }
     if (hasParallelHints && input.recommendation.recommended_task_kind === 'explore') {
         return createSelection({
-            workflowVariant: 'parallel_fanout',
-            workflowSkillId: 'captain_parallel_fanout',
+            workflowVariant: 'parallel',
+            workflowSkillId: 'captain_parallel',
             workflowAgentRoute: ['captain', 'scout', 'tactician', 'captain'],
-            workflowSummary: 'Captain should use the hidden bounded parallel fan-out route so exploration can split into parallel evidence passes and one bounded synthesis handoff before the final answer.',
+            workflowSummary: 'Captain should use the canonical parallel route so exploration can split into parallel evidence passes and one bounded synthesis handoff before the final answer.',
         });
     }
     return createSelection({
-        workflowVariant: 'investigate_only',
-        workflowSkillId: 'captain_investigate_only',
+        workflowVariant: 'read_only',
+        workflowSkillId: 'captain_read_only',
         workflowAgentRoute: ['captain', 'scout', 'captain'],
-        workflowSummary: 'Captain should use the hidden investigate-only route because the request is read-heavy and should stay on bounded evidence gathering before synthesis.',
+        workflowSummary: 'Captain should use the canonical read-only route because the request is read-heavy and should stay on bounded evidence gathering before synthesis.',
     });
 }
 //# sourceMappingURL=workflow-variants.js.map

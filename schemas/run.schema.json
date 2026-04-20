@@ -803,6 +803,11 @@
                 "workflow_variant": {
                   "type": "string",
                   "enum": [
+                    "read_only",
+                    "mutation",
+                    "planning",
+                    "verification",
+                    "parallel",
                     "investigate_only",
                     "investigate_then_document",
                     "diagnose_then_fix",
@@ -817,6 +822,11 @@
                 "workflow_skill_id": {
                   "type": "string",
                   "enum": [
+                    "captain_read_only",
+                    "captain_mutation",
+                    "captain_planning",
+                    "captain_verification",
+                    "captain_parallel",
                     "captain_investigate_only",
                     "captain_investigate_then_document",
                     "captain_diagnose_then_fix",
