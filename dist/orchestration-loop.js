@@ -4,6 +4,7 @@ exports.clampOrchestrationLoopMaxSteps = clampOrchestrationLoopMaxSteps;
 exports.loadOrchestrationLoopSnapshot = loadOrchestrationLoopSnapshot;
 exports.resolveOrchestrationLoopCommand = resolveOrchestrationLoopCommand;
 exports.runBoundedOrchestrationLoop = runBoundedOrchestrationLoop;
+const promises_1 = require("node:timers/promises");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
 const runtime_1 = require("./runtime");
@@ -21,6 +22,9 @@ function selectCurrentStageDelegations(run, taskCard, taskDelegations) {
 const DEFAULT_ORCHESTRATION_LOOP_MAX_STEPS = 2;
 const MIN_ORCHESTRATION_LOOP_MAX_STEPS = 1;
 const MAX_ORCHESTRATION_LOOP_MAX_STEPS = 12;
+const DEFAULT_PROCESS_WATCH_TIMEOUT_MS = 9_000;
+const DEFAULT_PROCESS_WATCH_INTERVAL_MS = 500;
+const PROCESS_EXIT_FOLD_GRACE_MS = 2_000;
 const DEFAULT_DISPATCHERS = {
     advance: run_command_1.advanceForemanRun,
     verify: run_command_1.verifyForemanRun,
@@ -67,6 +71,36 @@ function clampOrchestrationLoopMaxSteps(maxSteps) {
     const normalized = Number.isFinite(maxSteps) ? Math.trunc(maxSteps) : DEFAULT_ORCHESTRATION_LOOP_MAX_STEPS;
     return Math.min(MAX_ORCHESTRATION_LOOP_MAX_STEPS, Math.max(MIN_ORCHESTRATION_LOOP_MAX_STEPS, normalized));
 }
+function clampProcessWatchMs(value) {
+    if (value === undefined) {
+        return DEFAULT_PROCESS_WATCH_TIMEOUT_MS;
+    }
+    if (!Number.isFinite(value)) {
+        return DEFAULT_PROCESS_WATCH_TIMEOUT_MS;
+    }
+    return Math.max(0, Math.trunc(value));
+}
+function clampProcessWatchIntervalMs(value) {
+    if (value === undefined) {
+        return DEFAULT_PROCESS_WATCH_INTERVAL_MS;
+    }
+    if (!Number.isFinite(value)) {
+        return DEFAULT_PROCESS_WATCH_INTERVAL_MS;
+    }
+    return Math.max(50, Math.trunc(value));
+}
+function isProcessAlive(processId) {
+    try {
+        process.kill(processId, 0);
+        return true;
+    }
+    catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'EPERM') {
+            return true;
+        }
+        return false;
+    }
+}
 async function loadOrchestrationLoopSnapshot(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
     const { run, taskCard, orchestratorState } = await (0, runtime_1.loadHotRunContext)(runPaths);
@@ -96,6 +130,71 @@ async function loadOrchestrationLoopSnapshot(options) {
             reducer_next_action: runStateProjection?.next_action ?? null,
         },
     };
+}
+async function loadProcessBackedCurrentStageDelegations(options) {
+    const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
+    const { run, taskCard } = await (0, runtime_1.loadHotRunContext)(runPaths);
+    const taskDelegationSummary = await (0, runtime_1.loadTaskDelegationSummary)(runPaths, taskCard.task_card_id);
+    return selectCurrentStageDelegations(run, taskCard, taskDelegationSummary.delegations)
+        .filter((delegation) => delegation.child_agent.status === 'running' &&
+        typeof delegation.worker_lifecycle?.process_id === 'number' &&
+        delegation.worker_lifecycle.process_id > 0)
+        .map((delegation) => ({
+        delegationId: delegation.delegation_id,
+        processId: delegation.worker_lifecycle?.process_id,
+    }));
+}
+async function waitForProcessBackedFanInProgress(options, currentState) {
+    if (currentState.snapshot.next_step !== 'await_fan_in') {
+        return currentState;
+    }
+    const watchMs = clampProcessWatchMs(options.processWatchMs);
+    if (watchMs <= 0) {
+        return currentState;
+    }
+    const intervalMs = clampProcessWatchIntervalMs(options.processWatchIntervalMs);
+    const deadline = Date.now() + watchMs;
+    let watchedDelegations = await loadProcessBackedCurrentStageDelegations({
+        cwd: options.cwd,
+        runId: options.runId,
+    });
+    if (watchedDelegations.length === 0) {
+        return currentState;
+    }
+    let latestState = currentState;
+    while (Date.now() <= deadline) {
+        latestState = await loadOrchestrationLoopSnapshot({
+            cwd: options.cwd,
+            runId: options.runId,
+        });
+        if (latestState.snapshot.next_step !== 'await_fan_in' || latestState.snapshot.can_advance) {
+            return latestState;
+        }
+        watchedDelegations = await loadProcessBackedCurrentStageDelegations({
+            cwd: options.cwd,
+            runId: options.runId,
+        });
+        if (watchedDelegations.length === 0) {
+            return latestState;
+        }
+        const aliveWorkers = watchedDelegations.filter((delegation) => isProcessAlive(delegation.processId));
+        if (aliveWorkers.length === 0) {
+            const foldDeadline = Math.min(Date.now() + PROCESS_EXIT_FOLD_GRACE_MS, deadline);
+            while (Date.now() <= foldDeadline) {
+                latestState = await loadOrchestrationLoopSnapshot({
+                    cwd: options.cwd,
+                    runId: options.runId,
+                });
+                if (latestState.snapshot.next_step !== 'await_fan_in' || latestState.snapshot.can_advance) {
+                    return latestState;
+                }
+                await (0, promises_1.setTimeout)(Math.min(intervalMs, Math.max(0, foldDeadline - Date.now())));
+            }
+            return latestState;
+        }
+        await (0, promises_1.setTimeout)(Math.min(intervalMs, Math.max(0, deadline - Date.now())));
+    }
+    return latestState;
 }
 function resolveOrchestrationLoopCommand(snapshot, inputs) {
     switch (snapshot.next_step) {
@@ -234,6 +333,7 @@ async function runBoundedOrchestrationLoop(options) {
     let requiresExplicitInput = false;
     await persistAttemptRecord(options, runPaths, attempt);
     for (let stepNumber = 1; stepNumber <= maxSteps; stepNumber += 1) {
+        currentState = await waitForProcessBackedFanInProgress(options, currentState);
         const commandResolution = resolveOrchestrationLoopCommand(currentState.snapshot, options);
         if (!commandResolution.command) {
             requiresExplicitInput = commandResolution.requiresExplicitInput;

@@ -124,8 +124,11 @@ const workflow_variants_1 = require("./workflow-variants");
 const tool_routing_1 = require("./tool-routing");
 const role_roster_1 = require("./role-roster");
 const validation_1 = require("./validation");
-function writeJsonDocument(filePath, value) {
-    return (0, promises_1.writeFile)(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+async function writeJsonDocument(filePath, value) {
+    await (0, promises_1.mkdir)(node_path_1.default.dirname(filePath), { recursive: true });
+    const tempPath = node_path_1.default.join(node_path_1.default.dirname(filePath), `.${node_path_1.default.basename(filePath)}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`);
+    await (0, promises_1.writeFile)(tempPath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    await (0, promises_1.rename)(tempPath, filePath);
 }
 async function readJsonDocument(filePath) {
     const content = await (0, promises_1.readFile)(filePath, 'utf8');

@@ -3377,6 +3377,33 @@ function selectExecutionStageDelegations(taskCard, taskDelegations) {
         return delegation.child_agent.role === taskCard.assigned_role;
     });
 }
+function buildRetiredRetryDelegationSummary(taskCard) {
+    return `Delegated retry follow-up was retired for task "${taskCard.title}" before a fresh retry attempt.`;
+}
+function cancelQueuedDelegationForRetryRetirement(delegation, taskCard, timestamp) {
+    delegation.child_agent.status = 'cancelled';
+    delegation.executor.status = 'cancelled';
+    delegation.result_summary = buildRetiredRetryDelegationSummary(taskCard);
+    delegation.worker_result = null;
+    delegation.reviewer_outcome = null;
+    delegation.latest_failure = null;
+    delegation.completed_at = timestamp;
+    delegation.worker_lifecycle = {
+        ...(delegation.worker_lifecycle ??
+            (0, runtime_1.createDelegationWorkerLifecycleRecord)({
+                createdAt: delegation.created_at,
+            })),
+        state: 'cancelled',
+        reclaim_state: 'not_needed',
+        launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? null,
+        started_at: delegation.worker_lifecycle?.started_at ?? null,
+        last_progress_at: timestamp,
+        returned_at: timestamp,
+        stale_at: null,
+        timed_out_at: null,
+        summary: 'Queued retry follow-up was cancelled because captain opened a fresh retry attempt.',
+    };
+}
 async function retireExecutionStageDelegationsForRetry(runPaths, run, taskCard) {
     const existingDelegations = (await (0, runtime_1.loadDelegationArtifacts)(runPaths)).filter((delegation) => delegation.task_card_id === taskCard.task_card_id && delegation.fan_in_collapsed_at === null);
     if (existingDelegations.length === 0) {
@@ -3386,7 +3413,10 @@ async function retireExecutionStageDelegationsForRetry(runPaths, run, taskCard) 
     for (const delegation of existingDelegations) {
         delegation.fan_in_collapsed_at = collapseTimestamp;
         delegation.updated_at = collapseTimestamp;
-        await (0, runtime_1.persistDelegationWithVisibilitySync)(runPaths, delegation);
+        if (delegation.child_agent.status === 'queued') {
+            cancelQueuedDelegationForRetryRetirement(delegation, taskCard, collapseTimestamp);
+        }
+        await (0, runtime_1.persistDelegationArtifact)(runPaths, delegation);
         syncDelegationChildAgent(run, delegation);
     }
 }
