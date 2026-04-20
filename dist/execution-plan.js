@@ -7,6 +7,23 @@ exports.getFirstSpecialistAgentFromExecutionPlan = getFirstSpecialistAgentFromEx
 const request_shape_1 = require("./request-shape");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
 const CODE_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.css', '.html', '.py', '.go', '.rs', '.java', '.swift'];
+const CODE_SURFACE_HINTS = [
+    'src/',
+    'tests/',
+    'runtime_bundle',
+    'monitor_runtime',
+    'publisher',
+    'snapshot',
+    'viewer',
+    'render',
+    'inference',
+    'bridge',
+    'fvp',
+    'fvs',
+    '구현',
+    '테스트',
+    '실행 경로',
+];
 const DRIFT_HINTS = [
     'drift',
     'ownership',
@@ -53,11 +70,17 @@ function mentionsCodeMutationTarget(filePathMentions) {
         return CODE_FILE_EXTENSIONS.some((extension) => normalizedFilePath.endsWith(extension)) && !normalizedFilePath.endsWith('.md');
     });
 }
+function mentionsCodeMutationSurface(normalizedRequest, filePathMentions) {
+    return mentionsCodeMutationTarget(filePathMentions) || includesAnyKeyword(normalizedRequest, CODE_SURFACE_HINTS);
+}
 function inferOutputKind(normalizedRequest, requestShape, filePathMentions) {
     const hasDocHints = includesAnyKeyword(normalizedRequest, DOC_HINTS);
-    const hasCodeTarget = mentionsCodeMutationTarget(filePathMentions);
-    if (requestShape === 'mutation' && hasDocHints && hasCodeTarget) {
+    const hasCodeSurface = mentionsCodeMutationSurface(normalizedRequest, filePathMentions);
+    if (requestShape === 'mutation' && hasDocHints && hasCodeSurface) {
         return 'mixed';
+    }
+    if (requestShape === 'mutation' && hasCodeSurface) {
+        return 'code';
     }
     if (hasDocHints) {
         return 'docs';

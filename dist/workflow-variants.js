@@ -11,6 +11,23 @@ const request_shape_1 = require("./request-shape");
 const workflow_route_catalog_1 = require("./workflow-route-catalog");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
 const CODE_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.css', '.html', '.py', '.go', '.rs', '.java', '.swift'];
+const CODE_SURFACE_HINTS = [
+    'src/',
+    'tests/',
+    'runtime_bundle',
+    'monitor_runtime',
+    'publisher',
+    'snapshot',
+    'viewer',
+    'render',
+    'inference',
+    'bridge',
+    'fvp',
+    'fvs',
+    '구현',
+    '테스트',
+    '실행 경로',
+];
 const DRIFT_HINTS = [
     'drift',
     'ownership',
@@ -103,6 +120,9 @@ function mentionsCodeMutationTarget(filePathMentions) {
         return CODE_FILE_EXTENSIONS.some((extension) => normalizedFilePath.endsWith(extension)) && !normalizedFilePath.endsWith('.md');
     });
 }
+function mentionsCodeMutationSurface(normalizedRequest, filePathMentions) {
+    return mentionsCodeMutationTarget(filePathMentions) || includesAnyKeyword(normalizedRequest, CODE_SURFACE_HINTS);
+}
 function mapRoleToInternalRouteStep(role) {
     switch (role) {
         case 'orchestrator':
@@ -121,7 +141,7 @@ function mapRoleToInternalRouteStep(role) {
             return null;
     }
 }
-function getTaskKindForFirstSpecialistStep(step) {
+function getTaskKindForRouteStep(step) {
     switch (step) {
         case 'tactician':
             return 'plan';
@@ -163,7 +183,7 @@ function getWorkflowRouteEntryTaskKind(selection, fallbackTaskKind) {
     if (contract.workflow_skill_id === 'captain_parallel' || contract.workflow_skill_id === 'captain_parallel_fanout') {
         return fallbackTaskKind;
     }
-    const selectedEntryTaskKind = getTaskKindForFirstSpecialistStep(getWorkflowRouteFirstSpecialistStep(selection));
+    const selectedEntryTaskKind = getTaskKindForRouteStep(getWorkflowRouteFirstSpecialistStep(selection));
     if (selectedEntryTaskKind) {
         return selectedEntryTaskKind;
     }
@@ -230,12 +250,11 @@ function doesWorkflowRouteRequireDelegatedEntryLaunch(input) {
     if (!contract) {
         return false;
     }
-    const firstStep = getWorkflowRouteFirstSpecialistStep(input.selection);
     const assignedStep = mapRoleToInternalRouteStep(input.assignedRole);
-    const entryTaskKind = getWorkflowRouteEntryTaskKind(input.selection, input.taskKind);
-    return (firstStep !== null &&
-        assignedStep === firstStep &&
-        entryTaskKind === input.taskKind &&
+    const assignedStepTaskKind = getTaskKindForRouteStep(assignedStep);
+    return (assignedStep !== null &&
+        contract.workflow_agent_route.includes(assignedStep) &&
+        assignedStepTaskKind === input.taskKind &&
         input.ownerRole !== 'verifier');
 }
 function deriveWorkflowVariantSelection(input) {
@@ -245,7 +264,7 @@ function deriveWorkflowVariantSelection(input) {
     const hasDiagnosisHints = includesAnyKeyword(normalizedRequest, DIAGNOSIS_HINTS);
     const hasParallelHints = includesAnyKeyword(normalizedRequest, PARALLEL_HINTS) || filePathMentions.length >= 4;
     const docShapedMutation = isDocShapedMutation(input.recommendation.request_shape, normalizedRequest);
-    const hasCodeMutationTarget = mentionsCodeMutationTarget(filePathMentions);
+    const hasCodeMutationSurface = mentionsCodeMutationSurface(normalizedRequest, filePathMentions);
     const hasDocFixHints = includesAnyKeyword(normalizedRequest, DOC_FIX_HINTS);
     const hasConditionalMutationGate = (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
     const readOnlyProgressRequest = isReadOnlyProgressRequest({
@@ -282,7 +301,7 @@ function deriveWorkflowVariantSelection(input) {
         });
     }
     if (input.recommendation.mutation_intent === 'explicit_or_strong') {
-        if (docShapedMutation && hasCodeMutationTarget) {
+        if (docShapedMutation && hasCodeMutationSurface) {
             return createSelection({
                 workflowVariant: 'mutation',
                 workflowSkillId: 'captain_mutation',

@@ -239,6 +239,7 @@ Write the request with the intended boundary:
 - \`inspect current status/progress ... next task ... do not change files\`: stays on one bounded read-only \`scout\` pass instead of escalating into mutation
 - \`check ... and fix if needed\`: evidence first, then conditional \`raider\` or \`scribe\` work only if a mismatch is found
 - \`implement ... run tests ...\`: bounded implementation on \`raider\`, then \`arbiter\` review
+- \`implement ... based on docs/... and also update tests/docs\`: mixed work stays on \`raider\` first, then \`scribe\` only for the doc tail
 - \`update README/docs ...\`: document work on \`scribe\`, not \`raider\`
 - \`continue current run\`: reuse the active run instead of starting a fresh one
 
@@ -263,6 +264,8 @@ Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a n
 - request-shape checks that keep read-only work off mutation routes
 - status/progress requests that mention a degraded gap stay on the read-only route unless the operator explicitly asks for verification truth
 - configured role model, reasoning, and per-agent fast-mode launch policy
+- mixed code-plus-doc mutation keeps code/test work on \`raider\`; docs-only mutation stays on \`scribe\`
+- route-linked later worker steps still launch delegated specialists instead of silently dropping into host fallback
 - local route journals under \`.foreman/sessions/<session-id>/\`
 
 Codex remains the orchestrator. Foreman does not proxy Codex auth.
@@ -310,12 +313,16 @@ Foreman prepares and records the local archive bundle. Direct NotebookLM source 
 
 ## Phase Chain
 
-\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input. Background \`codex exec\` launches use the configured role profile, model, reasoning effort, extra config entries, and per-agent fast-mode setting from \`foreman-config.json\`.
+\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input.
+
+Background \`codex exec\` launches use the configured role profile, model, reasoning effort, extra config entries, and per-agent fast-mode setting from \`foreman-config.json\`.
+
+When a delegated worker is running, Foreman records its PID and uses a bounded internal \`ps\` watch during fan-in.
 
 ## Route Families
 
 - \`read_only\`: \`captain -> scout -> captain\`
-- \`mutation\`: \`captain -> scout? -> raider or scribe -> arbiter -> captain\`
+- \`mutation\`: docs-only \`captain -> scout? -> scribe -> arbiter -> captain\`; code/mixed \`captain -> scout? -> raider -> scribe? -> arbiter -> captain\`
 - \`planning\`: \`captain -> tactician -> worker -> arbiter -> captain\`
 - \`verification\`: \`captain -> scout? -> arbiter -> captain\`
 - \`parallel\`: bounded fan-out, fan-in, then optional review
