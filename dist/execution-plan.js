@@ -6,6 +6,7 @@ exports.isForemanExecutionPlan = isForemanExecutionPlan;
 exports.getFirstSpecialistAgentFromExecutionPlan = getFirstSpecialistAgentFromExecutionPlan;
 const request_shape_1 = require("./request-shape");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
+const CODE_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.css', '.html', '.py', '.go', '.rs', '.java', '.swift'];
 const DRIFT_HINTS = [
     'drift',
     'ownership',
@@ -27,12 +28,13 @@ const PHASE_IDS = [
     'inspect',
     'gate',
     'ownership_check',
+    'document',
     'mutate',
     'verify',
     'fan_in',
     'synthesize',
 ];
-const OWNER_AGENTS = ['captain', 'tactician', 'scout', 'raider', 'arbiter', 'sentinel'];
+const OWNER_AGENTS = ['captain', 'tactician', 'scout', 'scribe', 'raider', 'arbiter', 'sentinel'];
 const OUTPUT_KINDS = ['answer', 'docs', 'code', 'mixed'];
 const MUTATION_MODES = ['none', 'conditional', 'required'];
 const RISK_LEVELS = ['low', 'medium', 'high'];
@@ -46,8 +48,19 @@ function extractFilePathMentions(request) {
     const matches = request.match(/\b[\w./-]+\.[A-Za-z0-9]+\b/g);
     return matches ? Array.from(new Set(matches)) : [];
 }
-function inferOutputKind(normalizedRequest, requestShape) {
-    if (includesAnyKeyword(normalizedRequest, DOC_HINTS)) {
+function mentionsCodeMutationTarget(filePathMentions) {
+    return filePathMentions.some((filePath) => {
+        const normalizedFilePath = filePath.toLowerCase();
+        return CODE_FILE_EXTENSIONS.some((extension) => normalizedFilePath.endsWith(extension)) && !normalizedFilePath.endsWith('.md');
+    });
+}
+function inferOutputKind(normalizedRequest, requestShape, filePathMentions) {
+    const hasDocHints = includesAnyKeyword(normalizedRequest, DOC_HINTS);
+    const hasCodeTarget = mentionsCodeMutationTarget(filePathMentions);
+    if (requestShape === 'mutation' && hasDocHints && hasCodeTarget) {
+        return 'mixed';
+    }
+    if (hasDocHints) {
         return 'docs';
     }
     if (requestShape === 'mutation') {
@@ -102,6 +115,15 @@ function createPhase(phase) {
                 preconditions: ['conditional mutation requires evidence before implementation'],
                 handoff_inputs: ['scout findings', 'mismatch candidates', 'acceptance checks'],
             };
+        case 'document':
+            return {
+                phase,
+                owner_agent: 'scribe',
+                requires_codex_exec: true,
+                skill_contract: 'foreman-documenter',
+                preconditions: ['documentation or release-note authoring is required'],
+                handoff_inputs: ['documentation scope', 'evidence checkpoint', 'acceptance checks'],
+            };
         case 'mutate':
             return {
                 phase,
@@ -142,13 +164,14 @@ function createPhase(phase) {
 }
 function deriveForemanRequestTraits(input) {
     const normalizedRequest = input.request.trim().toLowerCase();
-    const filePathCount = extractFilePathMentions(input.request).length;
+    const filePathMentions = extractFilePathMentions(input.request);
+    const filePathCount = filePathMentions.length;
     const parallel = includesAnyKeyword(normalizedRequest, PARALLEL_HINTS) || filePathCount >= 4;
     const investigationFirstMutation = input.mutationIntent === 'explicit_or_strong' && input.recommendedTaskKind === 'explore';
     const conditionalMutation = input.mutationIntent === 'explicit_or_strong' &&
         ((0, request_shape_1.looksLikeConditionalMutationRequest)(input.request) || investigationFirstMutation);
     const readOnly = (0, request_shape_1.isExplicitlyReadOnlyRequest)(input.request);
-    const outputKind = inferOutputKind(normalizedRequest, input.requestShape);
+    const outputKind = inferOutputKind(normalizedRequest, input.requestShape, filePathMentions);
     const needsOwnershipCheck = includesAnyKeyword(normalizedRequest, DRIFT_HINTS);
     const needsMutation = input.mutationIntent === 'explicit_or_strong' && !readOnly;
     const needsPlanning = input.requestShape === 'planning' || parallel;
@@ -199,9 +222,18 @@ function composeForemanExecutionPlan(input) {
         appendUniquePhase(phaseIds, 'gate');
     }
     if (requestTraits.needs_mutation) {
-        appendUniquePhase(phaseIds, 'mutate');
+        if (requestTraits.output_kind === 'docs') {
+            appendUniquePhase(phaseIds, 'document');
+        }
+        else if (requestTraits.output_kind === 'mixed') {
+            appendUniquePhase(phaseIds, 'mutate');
+            appendUniquePhase(phaseIds, 'document');
+        }
+        else {
+            appendUniquePhase(phaseIds, 'mutate');
+        }
     }
-    if (requestTraits.parallel && phaseIds.some((phase) => phase === 'inspect' || phase === 'mutate')) {
+    if (requestTraits.parallel && phaseIds.some((phase) => phase === 'inspect' || phase === 'document' || phase === 'mutate')) {
         appendUniquePhase(phaseIds, 'fan_in');
     }
     if (requestTraits.needs_review) {
@@ -286,10 +318,12 @@ function getFirstSpecialistAgentFromExecutionPlan(plan) {
     const firstSpecialist = plan.phases.find((phase) => phase.requires_codex_exec &&
         (phase.owner_agent === 'tactician' ||
             phase.owner_agent === 'scout' ||
+            phase.owner_agent === 'scribe' ||
             phase.owner_agent === 'raider' ||
             phase.owner_agent === 'arbiter'));
     return firstSpecialist?.owner_agent === 'tactician' ||
         firstSpecialist?.owner_agent === 'scout' ||
+        firstSpecialist?.owner_agent === 'scribe' ||
         firstSpecialist?.owner_agent === 'raider' ||
         firstSpecialist?.owner_agent === 'arbiter'
         ? firstSpecialist.owner_agent

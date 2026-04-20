@@ -13,7 +13,7 @@ Copy this into Codex CLI:
 ```text
 Run these shell commands exactly in order without browsing or searching first. If one command fails, stop and report that failure.
 
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.3/codex-foreman-1.6.3.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.4/codex-foreman-1.6.4.tgz
 codex-foreman setup
 codex-foreman check-install
 
@@ -25,7 +25,7 @@ Finish with exactly: Please restart Codex CLI.
 Direct shell reference:
 
 ```bash
-npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.3/codex-foreman-1.6.3.tgz
+npm install -g https://github.com/HoRi0506/Codex-Foreman-release/releases/download/v1.6.4/codex-foreman-1.6.4.tgz
 codex-foreman setup
 codex-foreman check-install
 ```
@@ -44,7 +44,7 @@ Each fresh `$cap` request starts a new request-run by default.
 ## What You Get
 
 - captain-first routing
-- bounded scout, raider, arbiter, and companion-owner paths
+- bounded scout, raider, scribe, arbiter, and companion-owner paths
 - request-shape checks that keep read-only work off mutation routes
 - compact status and run-hygiene visibility
 - local route journals under `.foreman/sessions/<session-id>/`
@@ -93,7 +93,15 @@ Current boundary: Foreman prepares and records the local archive bundle, but dir
 
 ## Phase Chain
 
-`$cap` uses `foreman_orchestrate` with `progression_mode=drain_until_boundary` when a Foreman phase chain should continue without operator input. Background `codex exec` launches use the configured role profile, model, reasoning effort, and extra config entries from `foreman-config.json`.
+`$cap` uses `foreman_orchestrate` with `progression_mode=drain_until_boundary` when a Foreman phase chain should continue without operator input. Background `codex exec` launches use the configured role profile, model, reasoning effort, extra config entries, and per-agent fast-mode setting from `foreman-config.json`.
+
+## Tool Routing
+
+Foreman cannot intercept arbitrary host Codex tools after those tools are exposed to the host session. Under `$cap`, host-local git/filesystem mutation is forbidden while Foreman owns the run unless the operator explicitly approves a bypass in that turn.
+
+- git read: `companion_reader`
+- git mutation: `companion_operator`
+- filesystem/docs/fetch/reference reads: `companion_reader`
 
 ## Run Hygiene
 
@@ -113,7 +121,8 @@ These commands are shipped in the release tarball.
 | `captain` | route, supervise, synthesize |
 | `tactician` | scope and plan |
 | `scout` | gather bounded evidence |
-| `raider` | execute scoped mutation |
+| `raider` | execute code, config, and test mutation |
+| `scribe` | write docs, README, release notes, and operator guidance |
 | `arbiter` | review and decide pass, repair, or hold |
 | `sentinel` | classify ownership and execution-path drift |
 
@@ -123,7 +132,7 @@ These commands are shipped in the release tarball.
 - `agents/`: packaged Foreman custom-agent roster
 - `schemas/`: packaged config and specialist-contract schemas
 - `docs/install.md`: full install/update guide
-- `docs/release/notes/v1.6.3.md`: release notes
+- `docs/release/notes/v1.6.4.md`: release notes
 
-Source commit: 69a75bfb34285ded7d4c3c788269fb5d7ed1bf42
+Source commit: 39cf9beedf12bd29fb62b9fd5c4ae0d7c9bc5ea2
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases

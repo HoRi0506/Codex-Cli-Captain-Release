@@ -65,6 +65,7 @@ async function listPackagedForemanCustomAgentFiles(packageRoot = defaultPackageR
     return public_surface_1.FOREMAN_PACKAGED_CUSTOM_AGENT_FILES.filter((fileName) => presentFiles.has(fileName));
 }
 function createConfiguredRoleModelsSummary(config) {
+    const documenterConfig = (config.agents.documenter ?? (0, runtime_1.getDefaultForemanAgentConfigForRole)('documenter'));
     const entries = [
         {
             role: 'captain',
@@ -93,6 +94,12 @@ function createConfiguredRoleModelsSummary(config) {
             rosterName: config.agents['code specialist'].name,
             model: config.agents['code specialist'].model,
             variant: config.agents['code specialist'].variant,
+        },
+        {
+            role: 'scribe',
+            rosterName: documenterConfig.name,
+            model: documenterConfig.model,
+            variant: documenterConfig.variant,
         },
         {
             role: 'arbiter',

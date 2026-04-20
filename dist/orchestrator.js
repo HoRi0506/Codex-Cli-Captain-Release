@@ -16,11 +16,11 @@ const workflow_variants_1 = require("./workflow-variants");
 const DEFAULT_EXPLICIT_REVIEW_POLICY = {
     mode: 'explicit_only',
     max_review_passes: 1,
-    max_active_reviewers: 2,
+    max_active_reviewers: 1,
 };
 const READ_ONLY_ORACLE_REVIEW_PATH = 'Oracle-backed advisory review is read-only; explicit operator control remains required.';
 function isExecutionOwnerRole(role) {
-    return role === 'planner' || role === 'explorer' || role === 'code specialist';
+    return role === 'planner' || role === 'explorer' || role === 'code specialist' || role === 'documenter';
 }
 function createExplicitFallbackRouteSelection(reason) {
     return {
@@ -633,7 +633,7 @@ function createAwaitFanInDecision(taskCard, counts, phase = 'execution') {
     };
 }
 function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
-    const isRoutingTargetRole = (role) => role === 'planner' || role === 'explorer' || role === 'code specialist' || role === 'verifier';
+    const isRoutingTargetRole = (role) => role === 'planner' || role === 'explorer' || role === 'code specialist' || role === 'documenter' || role === 'verifier';
     const normalizedDecision = normalizeOrchestratorDecision(decision);
     const { recommendedCategory, recommendedSkills } = deriveOmORecommendations({
         run,
@@ -658,9 +658,11 @@ function derivePolicyAwareRoutingMetadata(run, taskCard, policy, decision) {
             ? 'scout'
             : routeTargetRole === 'code specialist'
                 ? 'raider'
-                : routeTargetRole === 'verifier'
-                    ? 'arbiter'
-                    : null;
+                : routeTargetRole === 'documenter'
+                    ? 'scribe'
+                    : routeTargetRole === 'verifier'
+                        ? 'arbiter'
+                        : null;
     const routeTargetRosterName = routeTargetRole === null
         ? null
         : taskCard.assigned_agent_id ?? defaultRouteTargetRosterName;

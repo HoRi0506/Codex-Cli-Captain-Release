@@ -134,26 +134,26 @@
     },
     "owner_role": {
       "type": "string",
-      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
     },
     "assigned_role": {
       "type": "string",
-      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
     },
     "assigned_agent_id": {
-      "enum": ["tactician", "scout", "raider", "arbiter", null]
+      "enum": ["tactician", "scout", "raider", "scribe", "arbiter", null]
     },
     "role_config_snapshot": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["source", "role", "profile", "model", "variant", "config_entries"],
+      "required": ["source", "role", "profile", "model", "variant", "fast_mode", "config_entries"],
       "properties": {
         "source": {
           "const": "shared_role_config"
         },
         "role": {
           "type": "string",
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "profile": {
           "type": ["string", "null"],
@@ -166,6 +166,9 @@
         "variant": {
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "fast_mode": {
+          "type": "boolean"
         },
         "config_entries": {
           "type": "array",
@@ -251,7 +254,7 @@
       "uniqueItems": true
     },
     "completed_by_agent_id": {
-      "enum": ["tactician", "scout", "raider", "arbiter", null]
+      "enum": ["tactician", "scout", "raider", "scribe", "arbiter", null]
     },
     "created_at": {
       "type": "string",
@@ -330,7 +333,7 @@
         },
         "assigned_role": {
           "type": "string",
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "assigned_agent_id": {
           "type": ["string", "null"],
@@ -417,13 +420,16 @@
         "configured_profile",
         "configured_model",
         "configured_variant",
+        "configured_fast_mode",
         "dispatched_profile",
         "dispatched_model",
         "dispatched_variant",
+        "dispatched_fast_mode",
         "dispatched_config_entries",
         "actual_profile",
         "actual_model",
         "actual_variant",
+        "actual_fast_mode",
         "actual_config_entries",
         "observed_profile",
         "observed_model",
@@ -442,7 +448,7 @@
       "properties": {
         "role": {
           "type": "string",
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "request_kind": {
           "type": "string",
@@ -467,6 +473,9 @@
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
         },
+        "configured_fast_mode": {
+          "type": "boolean"
+        },
         "dispatched_profile": {
           "type": ["string", "null"],
           "minLength": 1
@@ -478,6 +487,9 @@
         "dispatched_variant": {
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "dispatched_fast_mode": {
+          "type": "boolean"
         },
         "dispatched_config_entries": {
           "type": "array",
@@ -497,6 +509,9 @@
         "actual_variant": {
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
+        },
+        "actual_fast_mode": {
+          "type": "boolean"
         },
         "actual_config_entries": {
           "type": "array",

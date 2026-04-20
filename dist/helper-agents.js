@@ -19,7 +19,7 @@ const node_path_1 = __importDefault(require("node:path"));
 const constants_1 = require("./constants");
 const runtime_1 = require("./runtime");
 const validation_1 = require("./validation");
-exports.SPECIALIST_ROLES = ['planner', 'explorer', 'code specialist', 'verifier'];
+exports.SPECIALIST_ROLES = ['planner', 'explorer', 'code specialist', 'documenter', 'verifier'];
 function isCaptainOwnedReadOnlyFallbackAllowed(taskCard) {
     const modelTierIntent = taskCard.model_tier_intent ?? 'standard';
     if (taskCard.task_kind === 'review' || taskCard.assigned_role === 'verifier') {
@@ -281,6 +281,21 @@ const EMBEDDED_AGENT_ROLE_CATALOG = {
             result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
             result_contract_summary: 'Return implementation findings, changed files, evidence, remaining questions, and a clear recommendation for verification or follow-up.',
         },
+        scribe: {
+            kind: 'primary',
+            canonical_role: 'documenter',
+            codex_custom_agent: 'foreman_scribe',
+            purpose: 'Write scoped documentation and release-note changes from bounded evidence.',
+            strengths: ['documentation authoring', 'release notes', 'compact technical summaries'],
+            framing_seed: 'Act as a documentation specialist who writes only the scoped docs change backed by the provided evidence.',
+            default_model: 'gpt-5.4-mini',
+            default_reasoning_effort: 'medium',
+            playbook_bundle: ['technical-writing', 'documentation'],
+            wrapper_doc_path: 'skills/foreman-documenter.md',
+            wrapper_summary: 'Documenter wrapper keeps docs and release-note authoring separate from implementation work.',
+            result_contract_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            result_contract_summary: 'Return documentation changes, evidence, remaining questions, and a clear verification recommendation.',
+        },
         arbiter: {
             kind: 'primary',
             canonical_role: 'verifier',
@@ -377,6 +392,22 @@ const EMBEDDED_SPECIALIST_ROLE_CONTRACTS = {
         },
         contract_summary: 'Code-specialist protocol returns the scoped implementation result, evidence, and a verification-oriented next action.',
     },
+    documenter: {
+        role: 'documenter',
+        wrapper_doc_path: 'skills/foreman-documenter.md',
+        playbook_source: 'agent-skills',
+        playbook_bundle: ['technical-writing', 'documentation'],
+        input_contract: {
+            allowed_task_kinds: ['execution'],
+            required_task_fields: ['title', 'scope', 'acceptance', 'execution_prompt'],
+            prompt_contract_sections: ['Role:', 'Mode:', 'Focus:', 'Scope:', 'Acceptance:', 'Return fields:', 'Acceptance status:'],
+        },
+        output_contract: {
+            required_fields: [...constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS],
+            acceptance_status_values: ['documented', 'blocked', 'needs_review'],
+        },
+        contract_summary: 'Documenter protocol returns the scoped documentation result, supporting evidence, and a verification-oriented next action.',
+    },
     verifier: {
         role: 'verifier',
         wrapper_doc_path: 'skills/foreman-verifier.md',
@@ -406,10 +437,10 @@ function isReasoningVariant(value) {
     return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' || value === null;
 }
 function isRole(value) {
-    return value === 'orchestrator' || value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'verifier';
+    return value === 'orchestrator' || value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'documenter' || value === 'verifier';
 }
 function isSpecialistRole(value) {
-    return value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'verifier';
+    return value === 'planner' || value === 'explorer' || value === 'code specialist' || value === 'documenter' || value === 'verifier';
 }
 function isResultContractField(value) {
     return typeof value === 'string' && constants_1.FOREMAN_SPECIALIST_RESULT_CONTRACT_FIELDS.includes(value);
@@ -513,14 +544,16 @@ function normalizeSpecialistContracts(value) {
     const planner = value.contracts.planner;
     const explorer = value.contracts.explorer;
     const codeSpecialist = value.contracts.code_specialist;
+    const documenter = value.contracts.documenter;
     const verifier = value.contracts.verifier;
-    if (!planner || !explorer || !codeSpecialist || !verifier) {
+    if (!planner || !explorer || !codeSpecialist || !documenter || !verifier) {
         return null;
     }
     return {
         planner,
         explorer,
         'code specialist': codeSpecialist,
+        documenter,
         verifier,
     };
 }

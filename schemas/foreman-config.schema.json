@@ -133,7 +133,7 @@
     "agents": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["orchestrator", "planner", "code specialist", "verifier"],
+      "required": ["orchestrator", "planner", "code specialist", "documenter", "verifier"],
       "properties": {
         "orchestrator": {
           "allOf": [
@@ -195,6 +195,21 @@
             }
           ]
         },
+        "documenter": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/agentConfig"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "const": "scribe"
+                }
+              }
+            }
+          ]
+        },
         "verifier": {
           "allOf": [
             {
@@ -250,7 +265,7 @@
     "agentConfig": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["name", "profile", "model", "variant", "config_entries"],
+      "required": ["name", "profile", "model", "variant", "fast_mode", "config_entries"],
       "properties": {
         "name": {
           "type": "string",
@@ -268,6 +283,9 @@
           "type": ["string", "null"],
           "enum": ["low", "medium", "high", "xhigh", null]
         },
+        "fast_mode": {
+          "type": "boolean"
+        },
         "config_entries": {
           "type": "array",
           "items": {
@@ -284,7 +302,7 @@
       "properties": {
         "owner_role": {
           "type": "string",
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "model": {
           "type": ["string", "null"],
@@ -300,7 +318,7 @@
         },
         "mutation_owner_role": {
           "type": ["string", "null"],
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier", null]
         },
         "mutation_model": {
           "type": ["string", "null"],

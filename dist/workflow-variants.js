@@ -10,6 +10,7 @@ exports.deriveWorkflowVariantSelection = deriveWorkflowVariantSelection;
 const request_shape_1 = require("./request-shape");
 const workflow_route_catalog_1 = require("./workflow-route-catalog");
 const DOC_HINTS = ['readme', 'docs', 'documentation', 'release-work', 'release notes', '문서', '정리', '작성'];
+const CODE_FILE_EXTENSIONS = ['.ts', '.tsx', '.js', '.jsx', '.json', '.yaml', '.yml', '.toml', '.css', '.html', '.py', '.go', '.rs', '.java', '.swift'];
 const DRIFT_HINTS = [
     'drift',
     'ownership',
@@ -66,8 +67,17 @@ function createSelection(input) {
         operator_visible: false,
     };
 }
+function createLinkedStepSkillIds(workflowSkillId, workflowAgentRoute) {
+    return workflowAgentRoute.filter((step) => step !== 'captain').map((step) => `${workflowSkillId}__${step}`);
+}
 function isDocShapedMutation(requestShape, normalizedRequest) {
     return requestShape === 'mutation' && includesAnyKeyword(normalizedRequest, DOC_HINTS);
+}
+function mentionsCodeMutationTarget(filePathMentions) {
+    return filePathMentions.some((filePath) => {
+        const normalizedFilePath = filePath.toLowerCase();
+        return CODE_FILE_EXTENSIONS.some((extension) => normalizedFilePath.endsWith(extension)) && !normalizedFilePath.endsWith('.md');
+    });
 }
 function mapRoleToInternalRouteStep(role) {
     switch (role) {
@@ -79,6 +89,8 @@ function mapRoleToInternalRouteStep(role) {
             return 'scout';
         case 'code specialist':
             return 'raider';
+        case 'documenter':
+            return 'scribe';
         case 'verifier':
             return 'arbiter';
         default:
@@ -93,11 +105,13 @@ function getWorkflowRouteContract(selection) {
     if (!baseContract) {
         return null;
     }
+    const workflowAgentRoute = selection.workflow_agent_route && selection.workflow_agent_route.length > 0
+        ? [...selection.workflow_agent_route]
+        : [...baseContract.workflow_agent_route];
     return {
         ...baseContract,
-        workflow_agent_route: selection.workflow_agent_route && selection.workflow_agent_route.length > 0
-            ? [...selection.workflow_agent_route]
-            : [...baseContract.workflow_agent_route],
+        workflow_agent_route: workflowAgentRoute,
+        linked_step_skill_ids: createLinkedStepSkillIds(baseContract.workflow_skill_id, workflowAgentRoute),
     };
 }
 function getWorkflowRouteEntryTaskKind(selection, fallbackTaskKind) {
@@ -176,6 +190,7 @@ function deriveWorkflowVariantSelection(input) {
     const hasDiagnosisHints = includesAnyKeyword(normalizedRequest, DIAGNOSIS_HINTS);
     const hasParallelHints = includesAnyKeyword(normalizedRequest, PARALLEL_HINTS) || filePathMentions.length >= 4;
     const docShapedMutation = isDocShapedMutation(input.recommendation.request_shape, normalizedRequest);
+    const hasCodeMutationTarget = mentionsCodeMutationTarget(filePathMentions);
     const hasDocFixHints = includesAnyKeyword(normalizedRequest, DOC_FIX_HINTS);
     const hasConditionalMutationGate = (0, request_shape_1.looksLikeConditionalMutationRequest)(input.request);
     if (hasDriftHints) {
@@ -207,14 +222,22 @@ function deriveWorkflowVariantSelection(input) {
         });
     }
     if (input.recommendation.mutation_intent === 'explicit_or_strong') {
+        if (docShapedMutation && hasCodeMutationTarget) {
+            return createSelection({
+                workflowVariant: 'diagnose_then_fix',
+                workflowSkillId: 'captain_diagnose_then_fix',
+                workflowAgentRoute: ['captain', 'scout', 'raider', 'scribe', 'arbiter', 'captain'],
+                workflowSummary: 'Captain should use the hidden diagnose-then-fix route so scout gathers evidence, raider owns code mutation, scribe follows with documentation, and arbiter reviews.',
+            });
+        }
         if (docShapedMutation && (hasDiagnosisHints || hasDocFixHints)) {
             return createSelection({
                 workflowVariant: 'diagnose_then_fix',
                 workflowSkillId: 'captain_diagnose_then_fix',
-                workflowAgentRoute: ['captain', 'scout', 'raider', 'arbiter', 'captain'],
+                workflowAgentRoute: ['captain', 'scout', 'scribe', 'arbiter', 'captain'],
                 workflowSummary: hasConditionalMutationGate
-                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, raider mutates only if the evidence proves a mismatch, and arbiter reviews the final result.'
-                    : 'Captain should use the hidden diagnose-then-fix route so bounded evidence, implementation, and review intent remain preserved for this document-and-fix request.',
+                    ? 'Captain should use the hidden diagnose-then-fix route as a compound skeleton: scout gathers evidence first, scribe writes docs only if the evidence proves a mismatch, and arbiter reviews the final result.'
+                    : 'Captain should use the hidden diagnose-then-fix route so bounded evidence, documentation, and review intent remain preserved for this document request.',
             });
         }
         if (hasDiagnosisHints) {
@@ -231,7 +254,7 @@ function deriveWorkflowVariantSelection(input) {
             return createSelection({
                 workflowVariant: 'investigate_then_document',
                 workflowSkillId: 'captain_investigate_then_document',
-                workflowAgentRoute: ['captain', 'scout', 'raider', 'captain'],
+                workflowAgentRoute: ['captain', 'scout', 'scribe', 'arbiter', 'captain'],
                 workflowSummary: 'Captain should use the hidden investigate-then-document route because the request needs bounded repository evidence followed by document authoring.',
             });
         }

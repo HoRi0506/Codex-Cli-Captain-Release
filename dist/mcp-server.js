@@ -180,6 +180,7 @@ const EMPTY_TASK_GRAPH_SUMMARY = {
         planner: 0,
         explorer: 0,
         'code specialist': 0,
+        documenter: 0,
         verifier: 0,
     },
 };
@@ -1515,6 +1516,8 @@ function getRosterNameForRole(role, foremanConfig) {
             return constants_1.FOREMAN_AGENT_ROSTER.explorer;
         case 'code specialist':
             return constants_1.FOREMAN_AGENT_ROSTER.codeSpecialist;
+        case 'documenter':
+            return constants_1.FOREMAN_AGENT_ROSTER.documenter;
         case 'verifier':
             return constants_1.FOREMAN_AGENT_ROSTER.verifier;
     }
@@ -2400,6 +2403,7 @@ function createTaskGraphSummary(taskCardIndex) {
         planner: 0,
         explorer: 0,
         'code specialist': 0,
+        documenter: 0,
         verifier: 0,
     };
     for (const taskCard of taskCardIndex) {
@@ -4448,6 +4452,9 @@ function createForemanOrchestrateResult(status, detail) {
         stop_reason: detail.stop_reason,
         orchestration_loop_stop_reason: detail.orchestration_loop_stop_reason,
         captain_boundary_reached: detail.captain_boundary_reached,
+        captain_synthesis_allowed: detail.captain_synthesis_allowed ?? detail.captain_boundary_reached,
+        host_mutation_allowed: detail.host_mutation_allowed ?? false,
+        host_mutation_requires_operator_approval: detail.host_mutation_requires_operator_approval ?? true,
         host_local_work_allowed: detail.host_local_work_allowed,
         orchestration_summary: detail.orchestration_summary,
         timeout_diagnosis: detail.timeout_diagnosis ?? null,
@@ -5199,7 +5206,10 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                     stop_reason: dispatchedStopReason,
                     orchestration_loop_stop_reason: loopResult.stopReason,
                     captain_boundary_reached: captainBoundaryReached,
-                    host_local_work_allowed: captainBoundaryReached,
+                    captain_synthesis_allowed: captainBoundaryReached,
+                    host_mutation_allowed: false,
+                    host_mutation_requires_operator_approval: true,
+                    host_local_work_allowed: false,
                     orchestration_summary: orchestrationSummary,
                 });
             }
@@ -5215,7 +5225,10 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                 stop_reason: loopResult.stopReason,
                 orchestration_loop_stop_reason: loopResult.stopReason,
                 captain_boundary_reached: captainBoundaryReached,
-                host_local_work_allowed: captainBoundaryReached,
+                captain_synthesis_allowed: captainBoundaryReached,
+                host_mutation_allowed: false,
+                host_mutation_requires_operator_approval: true,
+                host_local_work_allowed: false,
                 orchestration_summary: `No automatic orchestration action is available when next_step=${currentStatus.next_step}. ` +
                     (currentStatus.decision_summary ?? 'No task-backed orchestrator summary is available for this run state.'),
             });
@@ -5233,6 +5246,9 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                 stop_reason: null,
                 orchestration_loop_stop_reason: null,
                 captain_boundary_reached: false,
+                captain_synthesis_allowed: false,
+                host_mutation_allowed: false,
+                host_mutation_requires_operator_approval: true,
                 host_local_work_allowed: false,
                 orchestration_summary: `foreman_orchestrate exceeded the bounded ${diagnosis.budget_ms}ms budget and returned a visible timeout acknowledgement. ` +
                     `${diagnosis.execution_continuity.summary} ` +

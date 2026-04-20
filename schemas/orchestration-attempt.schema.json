@@ -190,7 +190,7 @@
         },
         "route_target_role": {
           "type": ["string", "null"],
-          "enum": ["planner", "explorer", "code specialist", "verifier", null]
+          "enum": ["planner", "explorer", "code specialist", "documenter", "verifier", null]
         },
         "route_target_roster_name": {
           "type": ["string", "null"],

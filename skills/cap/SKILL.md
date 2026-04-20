@@ -41,7 +41,9 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 - prefer the compact workflow truth already exposed by `foreman_status` such as execution plan phases, workflow progress, requester-session continuity, and worker-session alignment before paying for deeper activity inspection
 - if `foreman_orchestrate` returns `timeout_acknowledged`, inspect status first and retry only when the next bounded move is still pending
 - when an active phase chain can continue without operator input, call `foreman_orchestrate` with `progression_mode=drain_until_boundary` and a bounded `max_steps` instead of doing the next specialist step locally
-- treat `orchestration_loop_stop_reason`, `captain_boundary_reached`, and `host_local_work_allowed` as the boundary contract; do not synthesize final answers or mutate locally while Foreman still reports a worker-owned next action
+- treat `orchestration_loop_stop_reason`, `captain_boundary_reached`, `captain_synthesis_allowed`, `host_mutation_allowed`, and `host_mutation_requires_operator_approval` as the boundary contract; do not synthesize final answers while Foreman still reports a worker-owned next action
+- treat `host_mutation_allowed=false` as a hard stop for host-local file, shell, git, or MCP mutation unless the operator explicitly approves bypassing Foreman in that turn
+- do not run host-local `git` commands or git MCP mutation under `$cap`; route git read work to the configured companion reader and git mutation such as add, commit, push, tag, or release upload to the configured companion operator
 - when specialist routing is chosen, pass the narrowest task scope that still preserves title, scope, acceptance, and the result contract
 - once a phase plan is composed, prefer Foreman-owned progression through that generated specialist chain before bringing control back to captain
 - if the request decomposes into independent bounded subtasks, prefer bounded parallel specialist fan-out within the configured worker cap, then wait and synthesize once all required subtasks finish
@@ -68,6 +70,7 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 10. Keep worker routing internal. Do not tell the operator to invoke separate public worker skills or slash commands. If internal specialist execution is needed and the packaged custom-agent roster is present, prefer these Codex-native custom agents as linked specialist phases inside the generated plan:
    - `foreman_tactician` for planning
    - `foreman_scout` for exploration
+   - `foreman_scribe` for documentation and release-note authoring
    - `foreman_raider` for implementation
    - `foreman_arbiter` for review
    - `foreman_sentinel` for ownership classification
@@ -75,12 +78,13 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 11. Compose specialist work deliberately:
    - use `foreman_tactician` when the next bounded move, scope, or acceptance is still ambiguous
    - use `foreman_scout` for repository inspection, evidence gathering, read-only diagnosis, and documentation lookup
-   - use `foreman_raider` for code changes, file edits, doc authoring, release-note authoring, and other explicit mutation work
+   - use `foreman_scribe` for doc authoring and release-note authoring
+   - use `foreman_raider` for code changes, implementation patches, and other explicit code mutation work
    - use `foreman_arbiter` for acceptance review, regression judgment, and repair-or-pass decisions
    - use `foreman_sentinel` only for ownership classification or drift checks
 12. Treat the specialists inside one generated phase plan as a linked chain. A normal successful specialist result should hand off to the next specialist phase inside Foreman rather than bouncing back to captain after every step.
 12a. When `foreman_status` or `foreman_orchestrate` shows a runnable Foreman next action for that chain, use `foreman_orchestrate` with `progression_mode=drain_until_boundary` and an explicit bounded `max_steps`. This is the hard wait gate for `$cap`: host Codex must not perform the continuation step locally while Foreman can still dispatch the configured specialist worker.
-12b. Treat captain continuation as allowed only when Foreman returns a real boundary: `halt_completed`, `halt_failed`, `halt_cancelled`, `await_verification`, `await_repair_decision`, `await_operator`, `await_fan_in`, `max_steps_reached`, timeout acknowledgement, or an explicit degraded result. If `captain_boundary_reached=false`, inspect status and continue Foreman orchestration instead of answering.
+12b. Treat captain continuation as allowed only when Foreman returns a real boundary: `halt_completed`, `halt_failed`, `halt_cancelled`, `await_verification`, `await_repair_decision`, `await_operator`, `await_fan_in`, `max_steps_reached`, timeout acknowledgement, or an explicit degraded result. If `captain_boundary_reached=false`, inspect status and continue Foreman orchestration instead of answering. Even when `captain_synthesis_allowed=true`, host mutation remains forbidden unless `host_mutation_allowed=true` or the operator explicitly approves a host fallback.
 13. After a phase finishes or reaches an explicit boundary, decide the next step from that evidence. If the next step is mutation, verification, or another scoped investigation pass, continue by advancing or composing the next phase instead of doing the work directly in the host Codex session.
 14. Treat host Codex synthesis as the last step, not the default continuation step. Host-local synthesis is for operator updates, explicit hold decisions, and final answers after the required specialist passes have completed or a degraded boundary has been surfaced.
 15. One operator `$cap` request may require multiple internal Foreman hops. Do not require the operator to repeat `$cap` just because one route or one specialist pass finished. Keep routing inside Foreman until acceptance is met, a manual boundary is reached, or degraded truth must be surfaced.
@@ -95,11 +99,12 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 ## Captain-directed loop
 
 - the common review path is `captain -> assigned agent -> arbiter -> captain`
-- the common repair path should read as `captain -> scout/tactician -> raider -> arbiter -> captain`
+- the common repair path should read as `captain -> scout/tactician -> scribe|raider -> arbiter -> captain`
 - inside one generated phase plan, the linked specialists should hand off directly to the next specialist phase until the plan reaches a real captain boundary
 - if `scout` or `tactician` returns evidence that implies a code change, do not let `captain` implement from that evidence directly; `captain` should route the bounded implementation task to `raider`
-- if `raider` returns implementation results that need acceptance judgment, do not let `captain` self-certify the change; `captain` should route the bounded review task to `arbiter`
-- one pass through `scout`, `tactician`, `raider`, or `arbiter` is not by itself a reason to end the `$cap` request; `captain` keeps the workstream open until the request is complete, explicitly blocked, or awaiting operator input
+- if `scout` or `tactician` returns evidence that implies a docs change, do not let `captain` write it directly; `captain` should route the bounded documentation task to `scribe`
+- if `scribe` or `raider` returns results that need acceptance judgment, do not let `captain` self-certify the change; `captain` should route the bounded review task to `arbiter`
+- one pass through `scout`, `tactician`, `scribe`, `raider`, or `arbiter` is not by itself a reason to end the `$cap` request; `captain` keeps the workstream open until the request is complete, explicitly blocked, or awaiting operator input
 - the actual loop is not fixed; `captain` may continue, reroute, request another bounded pass, hold for operator input, or synthesize the final response
 - when review is needed, keep it visible through Foreman state instead of inventing a parallel public worker command surface
 - if multiple independent bounded subtasks can proceed in parallel, `captain` may dispatch them in parallel through Foreman specialists, wait for the required results, then synthesize or reroute
@@ -112,7 +117,7 @@ Use this skill when the operator invokes `$cap` and wants host Codex/captain to 
 - a packaged `foreman_captain` definition may still exist for internal or future compatibility, but it is not the default public `$cap` receiver
 - those custom agents or subagents are bounded specialist executors that Codex chooses deliberately; they are not hidden always-on workers
 - unrelated MCP servers or OpenAI reference surfaces may still exist in the same Codex session, but under `$cap` they should remain subordinate tool surfaces rather than replacements for the packaged Foreman specialist roster
-- packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, code specialist, and verifier; those are internal specialist contracts, not public operator commands
+- packaged role metadata may also expose mapped playbook bundles and wrapper docs for planner, explorer, documenter, code specialist, and verifier; those are internal specialist contracts, not public operator commands
 - upstream lifecycle commands such as `/spec`, `/plan`, `/build`, `/test`, `/review`, and `/ship` are playbook inspiration only here, not the public Codex-Foreman operator surface
 - if the packaged custom-agent roster is unavailable, stay on the persisted Foreman MCP path rather than inventing a public worker command surface
 - when the operator asks for commit, push, or release work without a stricter commit plan, default to small split commits grouped by coherent work type and use `<type>: <summary>` commit titles

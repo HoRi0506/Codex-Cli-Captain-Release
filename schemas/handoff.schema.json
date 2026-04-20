@@ -28,11 +28,11 @@
     },
     "from_role": {
       "type": "string",
-      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
     },
     "to_role": {
       "type": "string",
-      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
     },
     "outcome": {
       "type": "string",

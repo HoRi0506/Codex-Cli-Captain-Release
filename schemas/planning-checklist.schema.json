@@ -55,7 +55,7 @@
     },
     "active_phase_name": {
       "type": ["string", "null"],
-      "enum": ["plan", "inspect", "gate", "ownership_check", "mutate", "verify", "fan_in", "synthesize", "archive", "custom", null]
+      "enum": ["plan", "inspect", "gate", "ownership_check", "document", "mutate", "verify", "fan_in", "synthesize", "archive", "custom", null]
     },
     "phases": {
       "type": "array",
@@ -237,7 +237,7 @@
         },
         "phase_name": {
           "type": "string",
-          "enum": ["plan", "inspect", "gate", "ownership_check", "mutate", "verify", "fan_in", "synthesize", "archive", "custom"]
+          "enum": ["plan", "inspect", "gate", "ownership_check", "document", "mutate", "verify", "fan_in", "synthesize", "archive", "custom"]
         },
         "task_card_id": {
           "type": ["string", "null"],

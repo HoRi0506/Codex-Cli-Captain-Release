@@ -156,7 +156,15 @@ Current boundary:
 
 \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when Foreman can keep a phase chain moving without operator input. Foreman drains across task boundaries until a terminal, manual, fan-in, timeout, or max-step boundary.
 
-Background \`codex exec\` launches use \`foreman-config.json\` role settings: \`profile\`, \`model\`, \`model_reasoning_effort\`, and extra \`config_entries\`.
+Background \`codex exec\` launches use \`foreman-config.json\` role settings: \`profile\`, \`model\`, \`model_reasoning_effort\`, extra \`config_entries\`, and per-agent \`fast_mode\`. Enabled fast-mode workers launch with \`service_tier=fast\`.
+
+## Tool Routing
+
+Foreman cannot intercept arbitrary host Codex tools after those tools are exposed to the host session. Under \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`, host-local git/filesystem mutation is forbidden while Foreman owns the run unless the operator explicitly approves a bypass in that turn.
+
+- git read: \`companion_reader\`
+- git mutation: \`companion_operator\`
+- filesystem/docs/fetch/reference reads: \`companion_reader\`
 
 ## Run Hygiene
 
@@ -237,7 +245,7 @@ Each fresh \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` request starts a n
 ## What You Get
 
 - captain-first routing
-- bounded scout, raider, arbiter, and companion-owner paths
+- bounded scout, raider, scribe, arbiter, and companion-owner paths
 - request-shape checks that keep read-only work off mutation routes
 - compact status and run-hygiene visibility
 - local route journals under \`.foreman/sessions/<session-id>/\`
@@ -286,7 +294,15 @@ Current boundary: Foreman prepares and records the local archive bundle, but dir
 
 ## Phase Chain
 
-\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input. Background \`codex exec\` launches use the configured role profile, model, reasoning effort, and extra config entries from \`foreman-config.json\`.
+\`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\` uses \`foreman_orchestrate\` with \`progression_mode=drain_until_boundary\` when a Foreman phase chain should continue without operator input. Background \`codex exec\` launches use the configured role profile, model, reasoning effort, extra config entries, and per-agent fast-mode setting from \`foreman-config.json\`.
+
+## Tool Routing
+
+Foreman cannot intercept arbitrary host Codex tools after those tools are exposed to the host session. Under \`${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL}\`, host-local git/filesystem mutation is forbidden while Foreman owns the run unless the operator explicitly approves a bypass in that turn.
+
+- git read: \`companion_reader\`
+- git mutation: \`companion_operator\`
+- filesystem/docs/fetch/reference reads: \`companion_reader\`
 
 ## Run Hygiene
 
@@ -306,7 +322,8 @@ These commands are shipped in the release tarball.
 | \`captain\` | route, supervise, synthesize |
 | \`tactician\` | scope and plan |
 | \`scout\` | gather bounded evidence |
-| \`raider\` | execute scoped mutation |
+| \`raider\` | execute code, config, and test mutation |
+| \`scribe\` | write docs, README, release notes, and operator guidance |
 | \`arbiter\` | review and decide pass, repair, or hold |
 | \`sentinel\` | classify ownership and execution-path drift |
 

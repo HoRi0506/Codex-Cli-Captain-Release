@@ -22,6 +22,9 @@
         "code specialist": {
           "$ref": "#/definitions/roleDefaultSettings"
         },
+        "documenter": {
+          "$ref": "#/definitions/roleDefaultSettings"
+        },
         "verifier": {
           "$ref": "#/definitions/roleDefaultSettings"
         }

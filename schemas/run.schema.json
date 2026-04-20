@@ -46,10 +46,10 @@
       "enum": ["planning", "handoff", "execution", "verification", "compatibility"]
     },
     "active_role": {
-      "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier", null]
+      "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier", null]
     },
     "active_agent_id": {
-      "enum": ["captain", "tactician", "scout", "raider", "arbiter", null]
+      "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter", null]
     },
     "active_task_card_id": {
       "type": ["string", "null"],
@@ -190,7 +190,7 @@
         },
         "role": {
           "type": "string",
-          "enum": ["orchestrator", "planner", "explorer", "code specialist", "verifier"]
+          "enum": ["orchestrator", "planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "status": {
           "type": "string",
@@ -600,7 +600,7 @@
             },
             "tool_owner_role": {
               "type": ["string", "null"],
-              "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
+              "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
             },
             "tool_owner_model": {
               "type": ["string", "null"],
@@ -616,7 +616,7 @@
             },
             "tool_execution_owner": {
               "type": ["string", "null"],
-              "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
+              "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter", "sentinel", "companion_reader", "companion_operator", null]
             },
             "execution_plan": {
               "type": "object",
@@ -706,11 +706,11 @@
                     "properties": {
                       "phase": {
                         "type": "string",
-                        "enum": ["plan", "inspect", "gate", "ownership_check", "mutate", "verify", "fan_in", "synthesize"]
+                        "enum": ["plan", "inspect", "gate", "ownership_check", "document", "mutate", "verify", "fan_in", "synthesize"]
                       },
                       "owner_agent": {
                         "type": "string",
-                        "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel"]
+                        "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter", "sentinel"]
                       },
                       "requires_codex_exec": {
                         "type": "boolean"
@@ -777,11 +777,11 @@
                 },
                 "current_phase": {
                   "type": "string",
-                  "enum": ["plan", "inspect", "gate", "ownership_check", "mutate", "verify", "fan_in", "synthesize"]
+                  "enum": ["plan", "inspect", "gate", "ownership_check", "document", "mutate", "verify", "fan_in", "synthesize"]
                 },
                 "next_phase": {
                   "type": ["string", "null"],
-                  "enum": ["plan", "inspect", "gate", "ownership_check", "mutate", "verify", "fan_in", "synthesize", null]
+                  "enum": ["plan", "inspect", "gate", "ownership_check", "document", "mutate", "verify", "fan_in", "synthesize", null]
                 },
                 "summary": {
                   "type": "string",
@@ -833,7 +833,7 @@
                   "minItems": 1,
                   "items": {
                     "type": "string",
-                    "enum": ["captain", "tactician", "scout", "raider", "arbiter", "sentinel"]
+                    "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter", "sentinel"]
                   }
                 },
                 "workflow_summary": {
@@ -847,7 +847,7 @@
             },
             "selected_role": {
               "type": "string",
-              "enum": ["captain", "tactician", "scout", "raider", "arbiter"]
+              "enum": ["captain", "tactician", "scout", "raider", "scribe", "arbiter"]
             },
             "execution_path": {
               "type": "string",

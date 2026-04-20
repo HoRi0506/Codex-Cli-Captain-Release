@@ -49,6 +49,22 @@
       },
       "contract_summary": "Code-specialist protocol returns the scoped implementation result, evidence, and a verification-oriented next action."
     },
+    "documenter": {
+      "role": "documenter",
+      "wrapper_doc_path": "skills/foreman-documenter.md",
+      "playbook_source": "agent-skills",
+      "playbook_bundle": ["technical-writing", "documentation"],
+      "input_contract": {
+        "allowed_task_kinds": ["execution"],
+        "required_task_fields": ["title", "scope", "acceptance", "execution_prompt"],
+        "prompt_contract_sections": ["Role:", "Mode:", "Focus:", "Scope:", "Acceptance:", "Return fields:", "Acceptance status:"]
+      },
+      "output_contract": {
+        "required_fields": ["summary", "findings", "changed_files", "evidence_paths", "open_questions", "recommended_next_action", "acceptance_status"],
+        "acceptance_status_values": ["documented", "blocked", "needs_review"]
+      },
+      "contract_summary": "Documenter protocol returns the scoped documentation result, supporting evidence, and a verification-oriented next action."
+    },
     "verifier": {
       "role": "verifier",
       "wrapper_doc_path": "skills/foreman-verifier.md",

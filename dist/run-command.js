@@ -793,6 +793,8 @@ function mapRoleToWorkflowRouteStep(role) {
             return 'scout';
         case 'code specialist':
             return 'raider';
+        case 'documenter':
+            return 'scribe';
         case 'verifier':
             return 'arbiter';
         default:
@@ -805,6 +807,8 @@ function createWorkflowRouteStepTitle(step, title) {
             return `Prepare the next scoped move for ${title}`;
         case 'scout':
             return `Inspect the minimum source context for ${title}`;
+        case 'scribe':
+            return `Write the scoped documentation result for ${title}`;
         case 'raider':
             return `Deliver the requested scoped result for ${title}`;
         case 'arbiter':
@@ -817,8 +821,10 @@ function createWorkflowRouteStepIntent(step, title) {
             return `Prepare the next scoped move for "${title}" before wider work continues.`;
         case 'scout':
             return `Inspect only the smallest source context needed for "${title}".`;
+        case 'scribe':
+            return `Produce only the scoped documentation result for "${title}".`;
         case 'raider':
-            return `Produce only the requested scoped implementation or authored result for "${title}".`;
+            return `Produce only the requested scoped implementation result for "${title}".`;
         case 'arbiter':
             return `Judge whether the requested scoped result for "${title}" satisfies the acceptance target.`;
     }
@@ -829,8 +835,10 @@ function createWorkflowRouteStepScope(step, request) {
             return `Keep planning limited to the next scoped move only. Request: ${request}`;
         case 'scout':
             return `Inspect only the smallest repository context needed for the request: ${request}`;
+        case 'scribe':
+            return `Write only the scoped documentation change needed for the request: ${request}`;
         case 'raider':
-            return `Produce only the scoped mutation or authored result needed for the request: ${request}`;
+            return `Produce only the scoped implementation mutation needed for the request: ${request}`;
         case 'arbiter':
             return `Review only the scoped result against the request and acceptance target: ${request}`;
     }
@@ -845,6 +853,10 @@ function createWorkflowRouteStepAcceptance(input) {
             return input.nextStep === 'captain'
                 ? 'Return the bounded repository evidence needed for captain synthesis without mutating files.'
                 : 'Return only the bounded evidence needed for the next route step without mutating files.';
+        case 'scribe':
+            return input.nextStep === 'captain'
+                ? input.originalAcceptance
+                : 'Produce a bounded documentation result that is ready for the next route step and stays inside the original request.';
         case 'raider':
             return input.nextStep === 'captain'
                 ? input.originalAcceptance
@@ -860,6 +872,10 @@ function createWorkflowRouteStepPrompt(input) {
             return `Plan only the next bounded move for this request and keep the route ready for the next specialist step: ${compactRequest}`;
         case 'scout':
             return `Inspect only the bounded evidence needed for this request before the next route step: ${compactRequest}`;
+        case 'scribe':
+            return input.nextStep === 'captain'
+                ? `Write only the requested documentation result from the bounded evidence: ${compactRequest}`
+                : `Write only the bounded documentation result needed for this request and leave it ready for the next route step: ${compactRequest}`;
         case 'raider':
             if ((0, request_shape_1.looksLikeConditionalMutationRequest)(input.request)) {
                 return ('Implement only if the prior route evidence shows a concrete mismatch or required repair. ' +
@@ -927,11 +943,13 @@ function createConditionalWorkflowStepMetadata(input) {
 function createConditionalDiagnoseThenFixTaskCards(input) {
     const scoutTaskId = (0, node_crypto_1.randomUUID)();
     const compareGateTaskId = (0, node_crypto_1.randomUUID)();
-    const raiderTaskId = (0, node_crypto_1.randomUUID)();
+    const authorTaskId = (0, node_crypto_1.randomUUID)();
     const finalReviewTaskId = (0, node_crypto_1.randomUUID)();
+    const authorStep = input.contract.workflow_agent_route.includes('scribe') ? 'scribe' : 'raider';
+    const authorRole = authorStep === 'scribe' ? 'documenter' : 'code specialist';
     const scoutSkillId = `${input.contract.workflow_skill_id}__scout`;
     const compareGateSkillId = `${input.contract.workflow_skill_id}__compare_gate`;
-    const raiderSkillId = `${input.contract.workflow_skill_id}__raider`;
+    const authorSkillId = `${input.contract.workflow_skill_id}__${authorStep}`;
     const arbiterSkillId = `${input.contract.workflow_skill_id}__arbiter`;
     const scoutTask = (0, runtime_1.createInitialTaskCardRecord)({
         taskCardId: scoutTaskId,
@@ -959,11 +977,11 @@ function createConditionalDiagnoseThenFixTaskCards(input) {
         taskCardId: compareGateTaskId,
         runId: input.runId,
         title: `Compare evidence before conditional mutation for ${input.title}`,
-        intent: `Decide whether the conditional mutation request for "${input.title}" requires a raider step.`,
+        intent: `Decide whether the conditional mutation request for "${input.title}" requires a ${authorStep} step.`,
         scope: `Review the scout evidence against the original conditional request without mutating files: ${input.request}`,
-        acceptance: 'Return passed when no mutation is needed, needs_work when a concrete mismatch requires raider repair, or blocked when evidence is insufficient.',
+        acceptance: `Return passed when no mutation is needed, needs_work when a concrete mismatch requires ${authorStep} repair, or blocked when evidence is insufficient.`,
         executionPrompt: `Compare the scout evidence with the request and decide the conditional gate. ` +
-            `Return passed if no mutation is needed; return needs_work only when a concrete mismatch requires raider repair; return blocked if evidence is insufficient: ${compactAutoEntryPrompt(input.request)}`,
+            `Return passed if no mutation is needed; return needs_work only when a concrete mismatch requires ${authorStep} repair; return blocked if evidence is insufficient: ${compactAutoEntryPrompt(input.request)}`,
         taskKind: 'review',
         acceptanceChecks: [input.acceptance],
         reviewOfTaskCardIds: [scoutTaskId],
@@ -974,33 +992,33 @@ function createConditionalDiagnoseThenFixTaskCards(input) {
             contract: input.contract,
             stepIndex: 2,
             stepSkillId: compareGateSkillId,
-            nextStepSkillId: raiderSkillId,
+            nextStepSkillId: authorSkillId,
         }),
     });
-    const raiderTask = (0, runtime_1.createQueuedTaskCardRecord)({
-        taskCardId: raiderTaskId,
+    const authorTask = (0, runtime_1.createQueuedTaskCardRecord)({
+        taskCardId: authorTaskId,
         runId: input.runId,
-        title: createWorkflowRouteStepTitle('raider', input.title),
-        intent: createWorkflowRouteStepIntent('raider', input.title),
-        scope: createWorkflowRouteStepScope('raider', input.request),
+        title: createWorkflowRouteStepTitle(authorStep, input.title),
+        intent: createWorkflowRouteStepIntent(authorStep, input.title),
+        scope: createWorkflowRouteStepScope(authorStep, input.request),
         acceptance: createWorkflowRouteStepAcceptance({
-            step: 'raider',
+            step: authorStep,
             nextStep: 'arbiter',
             originalAcceptance: input.acceptance,
         }),
         executionPrompt: createWorkflowRouteStepPrompt({
-            step: 'raider',
+            step: authorStep,
             request: input.request,
             nextStep: 'arbiter',
         }),
         taskKind: 'execution',
         dependsOnTaskCardIds: [compareGateTaskId],
         nodeKind: 'execution',
-        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('code specialist', input.foremanConfig),
+        roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)(authorRole, input.foremanConfig),
         ...createConditionalWorkflowStepMetadata({
             contract: input.contract,
             stepIndex: 3,
-            stepSkillId: raiderSkillId,
+            stepSkillId: authorSkillId,
             nextStepSkillId: arbiterSkillId,
         }),
     });
@@ -1010,14 +1028,14 @@ function createConditionalDiagnoseThenFixTaskCards(input) {
         title: input.title,
         request: input.request,
         acceptance: input.acceptance,
-        dependsOnTaskCardId: raiderTaskId,
+        dependsOnTaskCardId: authorTaskId,
         roleConfigSnapshot: (0, runtime_1.createTaskRoleConfigSnapshot)('verifier', input.foremanConfig),
         workflowSkillId: input.contract.workflow_skill_id,
         workflowStepIndex: 4,
         workflowStepSkillId: arbiterSkillId,
         workflowNextStepSkillId: null,
     });
-    return [scoutTask, compareGateTask, raiderTask, finalReviewTask];
+    return [scoutTask, compareGateTask, authorTask, finalReviewTask];
 }
 function createWorkflowRouteStartTaskCards(input) {
     const contract = (0, workflow_variants_1.getWorkflowRouteContract)(input.workflowVariantSelection);
@@ -1204,7 +1222,7 @@ function createWorkflowRouteStartTaskCards(input) {
         });
         return [firstTask, scoutChild, planChild, fanInTask];
     }
-    const serialSteps = specialistSteps.filter((step) => step !== 'sentinel');
+    const serialSteps = specialistSteps.filter((step) => step === 'tactician' || step === 'scout' || step === 'scribe' || step === 'raider' || step === 'arbiter');
     if (serialSteps.length === 0) {
         return null;
     }
@@ -1259,7 +1277,7 @@ function createWorkflowRouteStartTaskCards(input) {
             continue;
         }
         const taskKindForStep = step === 'tactician' ? 'plan' : step === 'scout' ? 'explore' : 'execution';
-        const roleForStep = step === 'tactician' ? 'planner' : step === 'scout' ? 'explorer' : 'code specialist';
+        const roleForStep = step === 'tactician' ? 'planner' : step === 'scout' ? 'explorer' : step === 'scribe' ? 'documenter' : 'code specialist';
         const recordInput = {
             taskCardId,
             runId: input.runId,
@@ -1560,6 +1578,8 @@ function extractModelSelectionFromConfigEntries(configEntries) {
 }
 function createRoleModelLaunchEvidence(input) {
     const actualSelection = extractModelSelectionFromConfigEntries(input.actualRequest.config_entries);
+    const actualFastMode = input.actualRequest.config_entries.includes('service_tier=fast');
+    const configuredFastMode = input.configuredFastMode === true;
     const mismatchReasons = [];
     const observationDefaults = (0, runtime_1.deriveRoleModelObservationDefaults)({
         requestKind: input.requestKind,
@@ -1574,6 +1594,9 @@ function createRoleModelLaunchEvidence(input) {
     if (input.configuredVariant !== actualSelection.variant) {
         mismatchReasons.push(`reasoning expected ${input.configuredVariant ?? 'none'} but launched ${actualSelection.variant ?? 'none'}`);
     }
+    if (configuredFastMode !== actualFastMode) {
+        mismatchReasons.push(`fast_mode expected ${configuredFastMode ? 'true' : 'false'} but launched ${actualFastMode ? 'true' : 'false'}`);
+    }
     return {
         role: input.role,
         request_kind: input.requestKind,
@@ -1582,13 +1605,16 @@ function createRoleModelLaunchEvidence(input) {
         configured_profile: input.configuredProfile,
         configured_model: input.configuredModel,
         configured_variant: input.configuredVariant,
+        configured_fast_mode: configuredFastMode,
         dispatched_profile: input.actualRequest.profile,
         dispatched_model: actualSelection.model,
         dispatched_variant: actualSelection.variant,
+        dispatched_fast_mode: actualFastMode,
         dispatched_config_entries: [...input.actualRequest.config_entries],
         actual_profile: input.actualRequest.profile,
         actual_model: actualSelection.model,
         actual_variant: actualSelection.variant,
+        actual_fast_mode: actualFastMode,
         actual_config_entries: [...input.actualRequest.config_entries],
         observed_profile: null,
         observed_model: null,
@@ -1895,6 +1921,7 @@ async function applyObservedMismatchRetryPolicy(input) {
         configuredProfile: input.retryRoleConfigSnapshot.profile,
         configuredModel: input.retryRoleConfigSnapshot.model,
         configuredVariant: input.retryRoleConfigSnapshot.variant,
+        configuredFastMode: input.retryRoleConfigSnapshot.fast_mode === true,
         actualRequest: retryRequest,
     });
     await input.persistRetryLaunchEvidence(retryLaunchEvidence);
@@ -3924,6 +3951,7 @@ async function executeDelegatedGraphChildSet(input) {
             configuredProfile: configuredLaunch.profile,
             configuredModel: configuredLaunch.model,
             configuredVariant: configuredLaunch.variant,
+            configuredFastMode: delegation.worker_role_config_snapshot?.fast_mode === true,
             actualRequest: {
                 profile: executionProfile,
                 config_entries: executionConfigEntries,
@@ -4429,6 +4457,7 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
             configuredProfile: reviewerLaunchConfig.profile,
             configuredModel: reviewerLaunchConfig.model,
             configuredVariant: reviewerLaunchConfig.variant,
+            configuredFastMode: foremanConfig.agents.verifier.fast_mode === true,
             actualRequest: verificationRequest,
         });
         const reviewerPolicyDecision = createWorkerLaunchPolicyDecision({
@@ -5169,6 +5198,8 @@ function mapRoleToAutoEntrySelectedRole(role) {
             return 'scout';
         case 'code specialist':
             return 'raider';
+        case 'documenter':
+            return 'scribe';
         case 'verifier':
             return 'arbiter';
         case 'orchestrator':
@@ -5200,6 +5231,8 @@ function deriveAutoEntrySelectedRole(input) {
             return 'tactician';
         case 'scout':
             return 'scout';
+        case 'scribe':
+            return 'scribe';
         case 'raider':
             return 'raider';
         case 'arbiter':
@@ -5223,7 +5256,7 @@ function deriveAutoEntrySelectedRole(input) {
     }
 }
 function deriveAutoEntryBudgetClass(input) {
-    const planHasExecutionIntent = getRecommendationExecutionPlan(input.recommendation).phases.some((phase) => phase.owner_agent === 'raider');
+    const planHasExecutionIntent = getRecommendationExecutionPlan(input.recommendation).phases.some((phase) => phase.owner_agent === 'raider' || phase.owner_agent === 'scribe');
     switch (input.selectedRole) {
         case 'captain':
             return 'low_cost_read_only';
@@ -5231,6 +5264,8 @@ function deriveAutoEntryBudgetClass(input) {
             return planHasExecutionIntent && input.recommendation.mutation_intent === 'explicit_or_strong'
                 ? 'implementation_budget'
                 : 'low_cost_investigation';
+        case 'scribe':
+            return 'low_cost_investigation';
         case 'tactician':
             return 'planning_budget';
         case 'arbiter':
@@ -5249,6 +5284,7 @@ function deriveAutoEntryReviewRequirement(input) {
     }
     switch (input.selectedRole) {
         case 'raider':
+        case 'scribe':
         case 'arbiter':
             return 'required';
         case 'tactician':
@@ -5265,6 +5301,8 @@ function mapWorkflowRouteStepToSelectedRole(step) {
             return 'tactician';
         case 'scout':
             return 'scout';
+        case 'scribe':
+            return 'scribe';
         case 'raider':
             return 'raider';
         case 'arbiter':
@@ -6229,6 +6267,7 @@ async function advanceForemanRun(options) {
         configuredProfile: taskCard.role_config_snapshot.profile,
         configuredModel: taskCard.role_config_snapshot.model,
         configuredVariant: taskCard.role_config_snapshot.variant,
+        configuredFastMode: taskCard.role_config_snapshot.fast_mode === true,
         actualRequest: executionRequest,
     });
     if (executionDelegations.length > 0 &&
@@ -6260,6 +6299,7 @@ async function advanceForemanRun(options) {
             configuredProfile: executionDelegation.worker_role_config_snapshot?.profile ?? taskCard.role_config_snapshot.profile,
             configuredModel: executionDelegation.worker_role_config_snapshot?.model ?? taskCard.role_config_snapshot.model,
             configuredVariant: executionDelegation.worker_role_config_snapshot?.variant ?? taskCard.role_config_snapshot.variant,
+            configuredFastMode: executionDelegation.worker_role_config_snapshot?.fast_mode ?? taskCard.role_config_snapshot.fast_mode,
             actualRequest: executionRequest,
         });
         const executionPolicyDecision = createWorkerLaunchPolicyDecision({
@@ -6729,6 +6769,9 @@ async function retryForemanRun(options) {
     const runPaths = (0, runtime_1.createRunPaths)(options.cwd, options.runId);
     const { run, taskCard, latestHandoff, orchestratorState, hydrateTaskCards } = await (0, runtime_1.loadMutableRunContext)(runPaths);
     const taskCards = await hydrateTaskCards();
+    const repairTaskCard = taskCard.task_kind === 'review' && taskCard.review_of_task_card_ids.length > 0
+        ? taskCards.find((candidate) => candidate.task_card_id === taskCard.review_of_task_card_ids[0]) ?? taskCard
+        : taskCard;
     const { decision: currentDecision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     (0, runtime_1.assertRunContextIntegrity)({
         run,
@@ -6742,30 +6785,37 @@ async function retryForemanRun(options) {
     const retryHandoff = (0, runtime_1.createHandoffRecord)({
         handoffId: (0, node_crypto_1.randomUUID)(),
         runId: run.run_id,
-        taskCardId: taskCard.task_card_id,
+        taskCardId: repairTaskCard.task_card_id,
         fromRole: 'verifier',
-        toRole: taskCard.assigned_role,
+        toRole: repairTaskCard.assigned_role,
         summary: 'Verifier returned the blocked task to its assigned specialist role for an explicit retry attempt.',
     });
-    taskCard.review_pass_count += 1;
-    await retireExecutionStageDelegationsForRetry(runPaths, run, taskCard);
-    (0, runtime_1.reactivateBlockedTask)(run, taskCard, retryHandoff);
-    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, taskCard);
-    const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, taskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
+    if (repairTaskCard !== taskCard) {
+        taskCard.status = 'cancelled';
+        taskCard.output_handoff_id = retryHandoff.handoff_id;
+        taskCard.completed_at = (0, runtime_1.nowTimestamp)();
+        taskCard.updated_at = taskCard.completed_at;
+        taskCard.latest_failure = null;
+    }
+    repairTaskCard.review_pass_count += 1;
+    await retireExecutionStageDelegationsForRetry(runPaths, run, repairTaskCard);
+    (0, runtime_1.reactivateBlockedTask)(run, repairTaskCard, retryHandoff);
+    syncOrchestratorStateRequests(orchestratorState, options.cwd, run, repairTaskCard);
+    const { decision: nextDecision } = await decideCurrentOrchestratorStep(runPaths, run, repairTaskCard, orchestratorState.orchestration_policy, orchestratorState.verification_request);
     (0, runtime_1.setOrchestratorDecision)(orchestratorState, nextDecision);
     await (0, runtime_1.persistHandoffRecord)(runPaths, retryHandoff);
     await (0, runtime_1.persistOrchestratorState)(runPaths, orchestratorState);
     await persistRunArtifactsAndProgress(runPaths, {
         run,
         taskCards,
-        taskCard,
+        taskCard: repairTaskCard,
         latestHandoff: retryHandoff,
         decision: nextDecision,
         orchestrationPolicy: orchestratorState.orchestration_policy,
     });
     return {
         runId: run.run_id,
-        taskCardId: taskCard.task_card_id,
+        taskCardId: repairTaskCard.task_card_id,
         runDirectory: runPaths.runDir,
         status: run.status,
         stage: run.stage,

@@ -337,6 +337,7 @@ function normalizeLoadedRoleValue(candidate) {
         case 'planner':
         case 'explorer':
         case 'code specialist':
+        case 'documenter':
         case 'verifier':
             return candidate;
         default:
@@ -391,13 +392,19 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     const dispatchedConfigEntries = Object.prototype.hasOwnProperty.call(candidate, 'dispatched_config_entries')
         ? candidate.dispatched_config_entries
         : candidate.actual_config_entries;
+    const configuredFastMode = Object.prototype.hasOwnProperty.call(candidate, 'configured_fast_mode')
+        ? candidate.configured_fast_mode === true
+        : Array.isArray(candidate.actual_config_entries) && candidate.actual_config_entries.includes('service_tier=fast');
+    const dispatchedFastMode = Object.prototype.hasOwnProperty.call(candidate, 'dispatched_fast_mode')
+        ? candidate.dispatched_fast_mode === true
+        : Array.isArray(dispatchedConfigEntries) && dispatchedConfigEntries.includes('service_tier=fast');
     const normalizedDispatchedModel = typeof dispatchedModel === 'string' ? dispatchedModel : null;
     const normalizedDispatchedVariant = dispatchedVariant === 'low' || dispatchedVariant === 'medium' || dispatchedVariant === 'high' || dispatchedVariant === 'xhigh'
         ? dispatchedVariant
         : null;
     const normalizedDispatchedConfigEntries = Array.isArray(dispatchedConfigEntries)
         ? dispatchedConfigEntries
-        : normalizeAgentConfigEntries(normalizedDispatchedModel, normalizedDispatchedVariant, []);
+        : normalizeAgentConfigEntries(normalizedDispatchedModel, normalizedDispatchedVariant, dispatchedFastMode, []);
     const actualProfile = Object.prototype.hasOwnProperty.call(candidate, 'actual_profile')
         ? candidate.actual_profile
         : dispatchedProfile ?? null;
@@ -410,6 +417,9 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     const actualConfigEntries = Array.isArray(candidate.actual_config_entries)
         ? candidate.actual_config_entries
         : normalizedDispatchedConfigEntries;
+    const actualFastMode = Object.prototype.hasOwnProperty.call(candidate, 'actual_fast_mode')
+        ? candidate.actual_fast_mode === true
+        : actualConfigEntries.includes('service_tier=fast');
     const mismatchReasons = [];
     if (configuredProfile !== actualProfile) {
         mismatchReasons.push(`profile expected ${configuredProfile ?? 'none'} but launched ${actualProfile ?? 'none'}`);
@@ -419,6 +429,9 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
     }
     if (configuredVariant !== actualVariant) {
         mismatchReasons.push(`reasoning expected ${configuredVariant ?? 'none'} but launched ${actualVariant ?? 'none'}`);
+    }
+    if (configuredFastMode !== actualFastMode) {
+        mismatchReasons.push(`fast_mode expected ${configuredFastMode ? 'true' : 'false'} but launched ${actualFastMode ? 'true' : 'false'}`);
     }
     return {
         ...candidate,
@@ -431,13 +444,16 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
         configured_profile: configuredProfile ?? null,
         configured_model: configuredModel ?? null,
         configured_variant: configuredVariant ?? null,
+        configured_fast_mode: configuredFastMode,
         dispatched_profile: dispatchedProfile ?? null,
         dispatched_model: dispatchedModel ?? null,
         dispatched_variant: dispatchedVariant ?? null,
+        dispatched_fast_mode: dispatchedFastMode,
         dispatched_config_entries: normalizedDispatchedConfigEntries,
         actual_profile: actualProfile,
         actual_model: actualModel,
         actual_variant: actualVariant,
+        actual_fast_mode: actualFastMode,
         actual_config_entries: actualConfigEntries,
         observed_profile: Object.prototype.hasOwnProperty.call(candidate, 'observed_profile') ? candidate.observed_profile : null,
         observed_model: Object.prototype.hasOwnProperty.call(candidate, 'observed_model') ? candidate.observed_model : null,
@@ -474,6 +490,33 @@ function normalizeLoadedRoleModelLaunchEvidence(candidate) {
         recorded_at: Object.prototype.hasOwnProperty.call(candidate, 'recorded_at') && typeof candidate.recorded_at === 'string'
             ? candidate.recorded_at
             : nowTimestamp(),
+    };
+}
+function normalizeLoadedTaskRoleConfigSnapshot(candidate, fallbackRole) {
+    if (!isRecord(candidate)) {
+        return createTaskRoleConfigSnapshot(fallbackRole);
+    }
+    const role = typeof candidate.role === 'string' && constants_1.ROLES.includes(candidate.role)
+        ? candidate.role
+        : fallbackRole;
+    const variant = candidate.variant === 'low' || candidate.variant === 'medium' || candidate.variant === 'high' || candidate.variant === 'xhigh'
+        ? candidate.variant
+        : null;
+    const configEntries = Array.isArray(candidate.config_entries)
+        ? candidate.config_entries.filter((entry) => typeof entry === 'string')
+        : [];
+    const fastMode = Object.prototype.hasOwnProperty.call(candidate, 'fast_mode')
+        ? candidate.fast_mode === true
+        : configEntries.includes('service_tier=fast');
+    const model = typeof candidate.model === 'string' ? candidate.model : null;
+    return {
+        source: 'shared_role_config',
+        role,
+        profile: typeof candidate.profile === 'string' ? candidate.profile : null,
+        model,
+        variant,
+        fast_mode: fastMode,
+        config_entries: normalizeAgentConfigEntries(model, variant, fastMode, configEntries),
     };
 }
 function normalizeLoadedWorkerResult(candidate) {
@@ -614,7 +657,11 @@ function normalizeLoadedDelegationRecord(candidate) {
             ? normalizeLoadedWorkerRequest(candidate.worker_request)
             : null,
         worker_role_config_snapshot: Object.prototype.hasOwnProperty.call(candidate, 'worker_role_config_snapshot')
-            ? candidate.worker_role_config_snapshot
+            ? candidate.worker_role_config_snapshot === null
+                ? null
+                : normalizeLoadedTaskRoleConfigSnapshot(candidate.worker_role_config_snapshot, isRecord(candidate.child_agent) && typeof candidate.child_agent.role === 'string' && constants_1.ROLES.includes(candidate.child_agent.role)
+                    ? candidate.child_agent.role
+                    : 'code specialist')
             : null,
         worker_launch_evidence: Object.prototype.hasOwnProperty.call(candidate, 'worker_launch_evidence')
             ? normalizeLoadedRoleModelLaunchEvidence(candidate.worker_launch_evidence)
@@ -890,9 +937,11 @@ function decideNextActionFromRunState(input) {
     }
     const role = activePhase.owner_agent === 'arbiter'
         ? 'arbiter'
-        : activePhase.owner_agent === 'raider'
-            ? 'raider'
-            : 'scout';
+        : activePhase.owner_agent === 'scribe'
+            ? 'scribe'
+            : activePhase.owner_agent === 'raider'
+                ? 'raider'
+                : 'scout';
     return { type: 'launch_worker', phase_id: activePhase.phase_id, role };
 }
 function foldRunEventsToState(input) {
@@ -1498,6 +1547,11 @@ const DEFAULT_FOREMAN_AGENT_SETTINGS = {
         model: 'gpt-5.3-codex',
         variant: 'high',
     },
+    documenter: {
+        name: constants_1.FOREMAN_AGENT_ROSTER.documenter,
+        model: 'gpt-5.4-mini',
+        variant: 'medium',
+    },
     verifier: {
         name: constants_1.FOREMAN_AGENT_ROSTER.verifier,
         model: 'gpt-5.4',
@@ -1532,6 +1586,10 @@ function createEmptyRoleDefaults() {
                 profile: null,
                 config_entries: [],
             },
+            documenter: {
+                profile: null,
+                config_entries: [],
+            },
             verifier: {
                 profile: null,
                 config_entries: [],
@@ -1547,6 +1605,7 @@ function createDefaultForemanAgentConfig(role) {
         profile: null,
         model: defaults.model,
         variant: defaults.variant,
+        fast_mode: false,
         config_entries: configEntries,
     };
 }
@@ -1557,6 +1616,7 @@ function createDefaultForemanCompanionAgentConfig(role) {
         profile: null,
         model: defaults.model,
         variant: defaults.variant,
+        fast_mode: false,
         config_entries: [],
     };
 }
@@ -1603,6 +1663,7 @@ function createDefaultForemanConfig() {
             planner: createDefaultForemanAgentConfig('planner'),
             explorer: createDefaultForemanAgentConfig('explorer'),
             'code specialist': createDefaultForemanAgentConfig('code specialist'),
+            documenter: createDefaultForemanAgentConfig('documenter'),
             verifier: createDefaultForemanAgentConfig('verifier'),
         },
         companion_agents: {
@@ -1611,12 +1672,15 @@ function createDefaultForemanConfig() {
         },
     };
 }
-function normalizeAgentConfigEntries(model, variant, configEntries) {
+function normalizeAgentConfigEntries(model, variant, fastMode, configEntries) {
     const filteredEntries = configEntries.filter((entry) => {
         if (model !== null && entry.startsWith('model=')) {
             return false;
         }
         if (variant !== null && entry.startsWith('model_reasoning_effort=')) {
+            return false;
+        }
+        if (fastMode && entry.startsWith('service_tier=')) {
             return false;
         }
         return true;
@@ -1628,13 +1692,16 @@ function normalizeAgentConfigEntries(model, variant, configEntries) {
     if (variant !== null) {
         normalizedEntries.push(`model_reasoning_effort=${variant}`);
     }
+    if (fastMode) {
+        normalizedEntries.push('service_tier=fast');
+    }
     normalizedEntries.push(...filteredEntries);
     return normalizedEntries;
 }
 function createRequestSettingsFromForemanAgentConfig(agentConfig) {
     return {
         profile: agentConfig.profile,
-        config_entries: normalizeAgentConfigEntries(agentConfig.model, agentConfig.variant, agentConfig.config_entries),
+        config_entries: normalizeAgentConfigEntries(agentConfig.model, agentConfig.variant, agentConfig.fast_mode === true, agentConfig.config_entries),
     };
 }
 function getDefaultForemanAgentConfigForRole(role) {
@@ -1648,6 +1715,8 @@ function getDefaultForemanAgentConfigForRole(role) {
             return defaults.explorer ?? defaults.planner;
         case 'code specialist':
             return defaults['code specialist'];
+        case 'documenter':
+            return defaults.documenter ?? defaults['code specialist'];
         case 'verifier':
             return defaults.verifier;
     }
@@ -1662,6 +1731,8 @@ function getRunActiveAgentIdForRole(role) {
             return constants_1.FOREMAN_EXPLORER_AGENT_ID;
         case 'code specialist':
             return constants_1.FOREMAN_CODE_SPECIALIST_AGENT_ID;
+        case 'documenter':
+            return constants_1.FOREMAN_DOCUMENTER_AGENT_ID;
         case 'verifier':
             return constants_1.FOREMAN_VERIFIER_AGENT_ID;
         default:
@@ -1697,6 +1768,8 @@ function getForemanAgentConfigForRole(foremanConfig, role) {
             return foremanConfig.agents.explorer ?? getDefaultForemanAgentConfigForRole('explorer');
         case 'code specialist':
             return applyRoleDefaults(foremanConfig.agents['code specialist']);
+        case 'documenter':
+            return foremanConfig.agents.documenter ?? getDefaultForemanAgentConfigForRole('documenter');
         case 'verifier':
             return foremanConfig.agents.verifier;
     }
@@ -1724,6 +1797,8 @@ function getAgentIdForRole(role) {
             return constants_1.FOREMAN_EXPLORER_AGENT_ID;
         case 'code specialist':
             return constants_1.FOREMAN_CODE_SPECIALIST_AGENT_ID;
+        case 'documenter':
+            return constants_1.FOREMAN_DOCUMENTER_AGENT_ID;
         case 'verifier':
             return constants_1.FOREMAN_VERIFIER_AGENT_ID;
     }
@@ -1737,6 +1812,7 @@ function createTaskRoleConfigSnapshot(role, foremanConfig = createDefaultForeman
         profile: requestSettings.profile,
         model: agentConfig.model,
         variant: agentConfig.variant,
+        fast_mode: agentConfig.fast_mode === true,
         config_entries: [...requestSettings.config_entries],
     };
 }
@@ -1748,7 +1824,7 @@ function deriveTaskModelTierIntent(roleConfigSnapshot) {
         roleConfigSnapshot.variant === 'xhigh') {
         return 'high_tier';
     }
-    if (roleConfigSnapshot.role === 'planner' || roleConfigSnapshot.role === 'explorer' || model.includes('mini')) {
+    if (roleConfigSnapshot.role === 'planner' || roleConfigSnapshot.role === 'explorer' || roleConfigSnapshot.role === 'documenter' || model.includes('mini')) {
         return 'low_cost';
     }
     return 'standard';
@@ -1793,13 +1869,14 @@ function deriveRoleDefaultsFromForemanConfig(config) {
             planner: createRequestSettingsFromForemanAgentConfig(config.agents.planner),
             explorer: createRequestSettingsFromForemanAgentConfig(config.agents.explorer ?? createDefaultForemanConfig().agents.explorer),
             'code specialist': createRequestSettingsFromForemanAgentConfig(config.agents['code specialist']),
+            documenter: createRequestSettingsFromForemanAgentConfig(config.agents.documenter ?? createDefaultForemanConfig().agents.documenter),
             verifier: createRequestSettingsFromForemanAgentConfig(config.agents.verifier),
         },
     };
 }
 function createForemanConfigFromRoleDefaults(roleDefaults) {
     const config = createDefaultForemanConfig();
-    for (const role of ['planner', 'explorer', 'code specialist', 'verifier']) {
+    for (const role of ['planner', 'explorer', 'code specialist', 'documenter', 'verifier']) {
         const legacySettings = roleDefaults.role_defaults[role];
         if (!legacySettings) {
             continue;
@@ -1807,12 +1884,17 @@ function createForemanConfigFromRoleDefaults(roleDefaults) {
         const extractedSettings = extractDedicatedAgentSettings(legacySettings.config_entries);
         const baseAgentConfig = role === 'explorer'
             ? (config.agents.explorer ?? createDefaultForemanConfig().agents.explorer)
-            : config.agents[role];
+            : (config.agents[role] ?? createDefaultForemanConfig().agents[role]);
+        if (!baseAgentConfig) {
+            continue;
+        }
         config.agents[role] = {
             ...baseAgentConfig,
+            name: baseAgentConfig.name,
             profile: legacySettings.profile,
             model: extractedSettings.model,
             variant: extractedSettings.variant,
+            fast_mode: baseAgentConfig.fast_mode === true,
             config_entries: extractedSettings.configEntries,
         };
     }
@@ -1824,6 +1906,34 @@ function normalizeForemanConfigCandidate(candidate) {
     }
     const defaultConfig = createDefaultForemanConfig();
     const candidateAgents = isRecord(candidate.agents) ? candidate.agents : null;
+    const normalizeAgentCandidate = (value, fallback) => {
+        const candidateConfig = isRecord(value) ? value : {};
+        const profile = typeof candidateConfig.profile === 'string' || candidateConfig.profile === null
+            ? candidateConfig.profile
+            : fallback.profile;
+        const model = typeof candidateConfig.model === 'string' || candidateConfig.model === null
+            ? candidateConfig.model
+            : fallback.model;
+        const variant = candidateConfig.variant === 'low' ||
+            candidateConfig.variant === 'medium' ||
+            candidateConfig.variant === 'high' ||
+            candidateConfig.variant === 'xhigh' ||
+            candidateConfig.variant === null
+            ? candidateConfig.variant
+            : fallback.variant;
+        const configEntries = Array.isArray(candidateConfig.config_entries) &&
+            candidateConfig.config_entries.every((entry) => typeof entry === 'string')
+            ? candidateConfig.config_entries
+            : fallback.config_entries;
+        return {
+            name: typeof candidateConfig.name === 'string' ? candidateConfig.name : fallback.name,
+            profile,
+            model,
+            variant,
+            fast_mode: candidateConfig.fast_mode === true,
+            config_entries: [...configEntries],
+        };
+    };
     const candidateCodeSpecialist = candidateAgents && isRecord(candidateAgents['code specialist']) ? candidateAgents['code specialist'] : null;
     const shouldMigrateLegacyCodeSpecialistDefault = candidateCodeSpecialist &&
         candidateCodeSpecialist.model === 'gpt-5.4-mini' &&
@@ -1895,23 +2005,20 @@ function normalizeForemanConfigCandidate(candidate) {
         tool_routing: (0, tool_routing_1.normalizeForemanToolRoutingConfig)(candidate.tool_routing),
         agents: candidateAgents
             ? {
-                ...candidateAgents,
-                explorer: Object.prototype.hasOwnProperty.call(candidateAgents, 'explorer')
-                    ? candidateAgents.explorer
-                    : defaultConfig.agents.explorer,
+                orchestrator: normalizeAgentCandidate(candidateAgents.orchestrator, defaultConfig.agents.orchestrator),
+                planner: normalizeAgentCandidate(candidateAgents.planner, defaultConfig.agents.planner),
+                explorer: normalizeAgentCandidate(candidateAgents.explorer, defaultConfig.agents.explorer),
                 'code specialist': shouldMigrateLegacyCodeSpecialistDefault
                     ? defaultConfig.agents['code specialist']
-                    : candidateAgents['code specialist'],
+                    : normalizeAgentCandidate(candidateAgents['code specialist'], defaultConfig.agents['code specialist']),
+                documenter: normalizeAgentCandidate(candidateAgents.documenter, defaultConfig.agents.documenter),
+                verifier: normalizeAgentCandidate(candidateAgents.verifier, defaultConfig.agents.verifier),
             }
-            : candidate.agents,
+            : defaultConfig.agents,
         companion_agents: isRecord(candidate.companion_agents)
             ? {
-                companion_reader: isRecord(candidate.companion_agents.companion_reader)
-                    ? candidate.companion_agents.companion_reader
-                    : defaultConfig.companion_agents?.companion_reader,
-                companion_operator: isRecord(candidate.companion_agents.companion_operator)
-                    ? candidate.companion_agents.companion_operator
-                    : defaultConfig.companion_agents?.companion_operator,
+                companion_reader: normalizeAgentCandidate(candidate.companion_agents.companion_reader, defaultConfig.companion_agents.companion_reader),
+                companion_operator: normalizeAgentCandidate(candidate.companion_agents.companion_operator, defaultConfig.companion_agents.companion_operator),
             }
             : defaultConfig.companion_agents,
     };
@@ -2536,7 +2643,7 @@ function createInitialRunRecord(input) {
 function createInitialTaskCardRecord(input) {
     const timestamp = input.createdAt ?? nowTimestamp();
     const taskKind = input.taskKind ?? 'execution';
-    const assignedRole = getAssignedRoleForTaskKind(taskKind);
+    const assignedRole = input.roleConfigSnapshot?.role ?? getAssignedRoleForTaskKind(taskKind);
     const ownerRole = input.ownerRole ?? assignedRole;
     const roleConfigSnapshot = input.roleConfigSnapshot ?? createTaskRoleConfigSnapshot(assignedRole);
     const modelTierIntent = deriveTaskModelTierIntent(roleConfigSnapshot);
@@ -2676,7 +2783,7 @@ function createDefaultOrchestrationPolicy() {
         review: {
             mode: 'explicit_only',
             max_review_passes: 1,
-            max_active_reviewers: 2,
+            max_active_reviewers: 1,
         },
         autonomous_research: {
             mode: 'disabled',
@@ -3428,6 +3535,11 @@ function normalizeLoadedTaskCardRecord(candidate) {
         }
         const normalizedCurrentCandidate = {
             ...candidate,
+            role_config_snapshot: normalizeLoadedTaskRoleConfigSnapshot(candidate.role_config_snapshot, Object.prototype.hasOwnProperty.call(candidate, 'assigned_role') &&
+                typeof candidate.assigned_role === 'string' &&
+                constants_1.ROLES.includes(candidate.assigned_role)
+                ? candidate.assigned_role
+                : 'code specialist'),
             latest_model_launch: normalizeLoadedRoleModelLaunchEvidence(candidate.latest_model_launch),
             ownership_chain: Object.prototype.hasOwnProperty.call(candidate, 'ownership_chain')
                 ? normalizeLoadedOwnershipChain(candidate.ownership_chain)
@@ -3443,7 +3555,7 @@ function normalizeLoadedTaskCardRecord(candidate) {
         ? candidate.fan_in_from_task_card_ids
         : [];
     const roleConfigSnapshot = Object.prototype.hasOwnProperty.call(candidate, 'role_config_snapshot')
-        ? candidate.role_config_snapshot
+        ? normalizeLoadedTaskRoleConfigSnapshot(candidate.role_config_snapshot, assignedRole)
         : createTaskRoleConfigSnapshot(assignedRole);
     const normalizedCandidate = {
         ...candidate,

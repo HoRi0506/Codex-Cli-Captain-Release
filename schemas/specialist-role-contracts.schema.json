@@ -11,11 +11,12 @@
     "contracts": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["planner", "explorer", "code_specialist", "verifier"],
+      "required": ["planner", "explorer", "code_specialist", "documenter", "verifier"],
       "properties": {
         "planner": { "$ref": "#/$defs/contract" },
         "explorer": { "$ref": "#/$defs/contract" },
         "code_specialist": { "$ref": "#/$defs/contract" },
+        "documenter": { "$ref": "#/$defs/contract" },
         "verifier": { "$ref": "#/$defs/contract" }
       }
     }
@@ -94,7 +95,7 @@
       "properties": {
         "role": {
           "type": "string",
-          "enum": ["planner", "explorer", "code specialist", "verifier"]
+          "enum": ["planner", "explorer", "code specialist", "documenter", "verifier"]
         },
         "wrapper_doc_path": {
           "type": "string",

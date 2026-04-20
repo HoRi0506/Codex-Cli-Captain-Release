@@ -19,6 +19,8 @@ function getRosterNameForRole(role, foremanConfig) {
                 return (foremanConfig.agents.explorer?.name ?? constants_1.FOREMAN_AGENT_ROSTER.explorer);
             case 'code specialist':
                 return foremanConfig.agents['code specialist'].name;
+            case 'documenter':
+                return (foremanConfig.agents.documenter?.name ?? constants_1.FOREMAN_AGENT_ROSTER.documenter);
             case 'verifier':
                 return foremanConfig.agents.verifier.name;
         }
@@ -32,6 +34,8 @@ function getRosterNameForRole(role, foremanConfig) {
             return constants_1.FOREMAN_AGENT_ROSTER.explorer;
         case 'code specialist':
             return constants_1.FOREMAN_AGENT_ROSTER.codeSpecialist;
+        case 'documenter':
+            return constants_1.FOREMAN_AGENT_ROSTER.documenter;
         case 'verifier':
             return constants_1.FOREMAN_AGENT_ROSTER.verifier;
     }
@@ -49,9 +53,11 @@ function getRoleConfigForRole(role, foremanConfig) {
         case 'planner':
             return foremanConfig.agents.planner;
         case 'explorer':
-            return foremanConfig.agents.explorer ?? { name: 'scout', profile: null, model: null, variant: null, config_entries: [] };
+            return foremanConfig.agents.explorer ?? { model: null, variant: null };
         case 'code specialist':
             return foremanConfig.agents['code specialist'];
+        case 'documenter':
+            return foremanConfig.agents.documenter ?? { name: 'scribe', profile: null, model: null, variant: null, fast_mode: false, config_entries: [] };
         case 'verifier':
             return foremanConfig.agents.verifier;
     }
@@ -91,6 +97,7 @@ function normalizePublicAgentName(value) {
         case 'tactician':
         case 'scout':
         case 'raider':
+        case 'scribe':
         case 'arbiter':
         case 'sentinel':
         case 'companion_reader':
@@ -104,6 +111,8 @@ function normalizePublicAgentName(value) {
             return 'scout';
         case 'code specialist':
             return 'raider';
+        case 'documenter':
+            return 'scribe';
         case 'verifier':
             return 'arbiter';
         default:
