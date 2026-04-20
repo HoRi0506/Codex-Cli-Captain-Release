@@ -134,5 +134,5 @@ These commands are shipped in the release tarball.
 - `docs/install.md`: full install/update guide
 - `docs/release/notes/v1.6.4.md`: release notes
 
-Source commit: 071ebbee216568392ee7bccdaa6ee6b3bd5984d5
+Source commit: 3527b5cefe4e3b3b65d692f4a6745e41c35b3eae
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases

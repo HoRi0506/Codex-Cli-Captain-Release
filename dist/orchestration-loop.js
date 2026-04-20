@@ -4,7 +4,9 @@ exports.clampOrchestrationLoopMaxSteps = clampOrchestrationLoopMaxSteps;
 exports.loadOrchestrationLoopSnapshot = loadOrchestrationLoopSnapshot;
 exports.resolveOrchestrationLoopCommand = resolveOrchestrationLoopCommand;
 exports.runBoundedOrchestrationLoop = runBoundedOrchestrationLoop;
+const node_child_process_1 = require("node:child_process");
 const promises_1 = require("node:timers/promises");
+const node_util_1 = require("node:util");
 const orchestrator_1 = require("./orchestrator");
 const run_command_1 = require("./run-command");
 const runtime_1 = require("./runtime");
@@ -25,6 +27,7 @@ const MAX_ORCHESTRATION_LOOP_MAX_STEPS = 12;
 const DEFAULT_PROCESS_WATCH_TIMEOUT_MS = 9_000;
 const DEFAULT_PROCESS_WATCH_INTERVAL_MS = 500;
 const PROCESS_EXIT_FOLD_GRACE_MS = 2_000;
+const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const DEFAULT_DISPATCHERS = {
     advance: run_command_1.advanceForemanRun,
     verify: run_command_1.verifyForemanRun,
@@ -89,7 +92,7 @@ function clampProcessWatchIntervalMs(value) {
     }
     return Math.max(50, Math.trunc(value));
 }
-function isProcessAlive(processId) {
+function isProcessAliveBySignal(processId) {
     try {
         process.kill(processId, 0);
         return true;
@@ -97,6 +100,27 @@ function isProcessAlive(processId) {
     catch (error) {
         if (error && typeof error === 'object' && 'code' in error && error.code === 'EPERM') {
             return true;
+        }
+        return false;
+    }
+}
+async function isProcessAliveByPs(processId) {
+    try {
+        const { stdout } = await execFileAsync('ps', ['-p', String(processId), '-o', 'pid='], {
+            timeout: 1_000,
+            maxBuffer: 16 * 1024,
+        });
+        return stdout
+            .split(/\s+/)
+            .filter(Boolean)
+            .some((entry) => Number.parseInt(entry, 10) === processId);
+    }
+    catch (error) {
+        if (typeof error === 'object' &&
+            error !== null &&
+            'code' in error &&
+            error.code === 'ENOENT') {
+            return isProcessAliveBySignal(processId);
         }
         return false;
     }
@@ -177,7 +201,12 @@ async function waitForProcessBackedFanInProgress(options, currentState) {
         if (watchedDelegations.length === 0) {
             return latestState;
         }
-        const aliveWorkers = watchedDelegations.filter((delegation) => isProcessAlive(delegation.processId));
+        const aliveWorkers = [];
+        for (const delegation of watchedDelegations) {
+            if (await isProcessAliveByPs(delegation.processId)) {
+                aliveWorkers.push(delegation);
+            }
+        }
         if (aliveWorkers.length === 0) {
             const foldDeadline = Math.min(Date.now() + PROCESS_EXIT_FOLD_GRACE_MS, deadline);
             while (Date.now() <= foldDeadline) {
