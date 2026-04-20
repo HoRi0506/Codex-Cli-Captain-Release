@@ -4012,7 +4012,15 @@ async function executeDelegatedGraphChildSet(input) {
             await cancelRemainingGraphChildDelegations(input.runPaths, input.run, input.activeTaskCard, remainingQueuedDelegations, workerLaunchEvidence.mismatch_summary ?? 'Configured role launch mismatch.');
             break;
         }
-        const outcome = await executeCodex(input.options, buildExecutionRequest(delegation.worker_request.prompt, executionProfile, executionConfigEntries), input.runPaths, input.run, input.taskCards, input.activeTaskCard, input.latestHandoff, input.decision, false);
+        const outcome = await executeCodex(input.options, buildExecutionRequest(delegation.worker_request.prompt, executionProfile, executionConfigEntries), input.runPaths, input.run, input.taskCards, input.activeTaskCard, input.latestHandoff, input.decision, false, {
+            onProcessStarted: async (processId) => {
+                const processDelegation = await (0, runtime_1.markDelegationProcessStartedWithVisibilitySync)(input.runPaths, {
+                    delegationId: delegation.delegation_id,
+                    processId,
+                });
+                syncDelegationChildAgent(input.run, processDelegation);
+            },
+        });
         if (outcome.kind === 'completed' && sourceTaskCard !== null) {
             const exploreArtifact = createExploreArtifactFromOutcome(input.run, sourceTaskCard, outcome);
             if (exploreArtifact !== null) {
@@ -4059,7 +4067,7 @@ async function finalizeRawEventsFile(pendingPath, rawStream, threadId) {
     }
     return null;
 }
-async function executeCodex(options, executionRequest, runPaths, run, taskCards, taskCard, latestHandoff, orchestratorDecision, persistExecutionThread = true) {
+async function executeCodex(options, executionRequest, runPaths, run, taskCards, taskCard, latestHandoff, orchestratorDecision, persistExecutionThread = true, callbacks = {}) {
     const initialMutationFingerprint = requiresWorkspaceMutationEvidence(taskCard)
         ? await captureWorkspaceMutationFingerprint(options.cwd)
         : null;
@@ -4098,6 +4106,9 @@ async function executeCodex(options, executionRequest, runPaths, run, taskCards,
             resolve({ code, signal });
         });
     });
+    if (child.pid !== undefined) {
+        await callbacks.onProcessStarted?.(child.pid);
+    }
     const registerTerminalEvent = (kind, summary) => {
         if (terminalEvent && terminalEvent !== kind) {
             compatibilityFailure = 'Codex emitted conflicting terminal JSONL event types.';
@@ -4356,7 +4367,7 @@ async function executePlannerCodex(options) {
         summary: 'Planner output validated successfully.',
     };
 }
-async function executeVerifierCodex(options, verificationRequest) {
+async function executeVerifierCodex(options, verificationRequest, callbacks = {}) {
     const verifierArgs = buildPlainCodexArgs(verificationRequest);
     const child = (0, node_child_process_1.spawn)(options.codexPath, verifierArgs, {
         cwd: options.cwd,
@@ -4375,11 +4386,15 @@ async function executeVerifierCodex(options, verificationRequest) {
     child.on('error', (error) => {
         spawnFailure = `Unable to start Codex executable: ${error.message}`;
     });
-    const closeResult = await new Promise((resolve) => {
+    const closePromise = new Promise((resolve) => {
         child.on('close', (code, signal) => {
             resolve({ code, signal });
         });
     });
+    if (child.pid !== undefined) {
+        await callbacks.onProcessStarted?.(child.pid);
+    }
+    const closeResult = await closePromise;
     if (spawnFailure) {
         return {
             kind: 'blocked_dependency',
@@ -4494,7 +4509,15 @@ async function executeBoundedReviewerSwarm(options, runPaths, run, taskCard, ver
             workerPolicyDecision: reviewerPolicyDecision,
         });
         syncDelegationChildAgent(run, runningDelegation);
-        const reviewerOutcome = await executeVerifierCodex(options, verificationRequest);
+        const reviewerOutcome = await executeVerifierCodex(options, verificationRequest, {
+            onProcessStarted: async (processId) => {
+                const processDelegation = await (0, runtime_1.markDelegationProcessStartedWithVisibilitySync)(runPaths, {
+                    delegationId: delegation.delegation_id,
+                    processId,
+                });
+                syncDelegationChildAgent(run, processDelegation);
+            },
+        });
         if (reviewerOutcome.kind === 'resolved' && reviewerOutcome.verification) {
             const completedDelegation = await (0, runtime_1.updateDelegationWithVisibilitySync)(runPaths, {
                 delegationId: delegation.delegation_id,
@@ -6393,7 +6416,17 @@ async function advanceForemanRun(options) {
             outcome = await executeCodex({
                 ...options,
                 codexPath,
-            }, executionRequest, runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, decision);
+            }, executionRequest, runPaths, run, await ensureTaskCards(), taskCard, currentLatestHandoff, decision, true, executionDelegation
+                ? {
+                    onProcessStarted: async (processId) => {
+                        const processDelegation = await (0, runtime_1.markDelegationProcessStartedWithVisibilitySync)(runPaths, {
+                            delegationId: executionDelegation.delegation_id,
+                            processId,
+                        });
+                        syncDelegationChildAgent(run, processDelegation);
+                    },
+                }
+                : {});
         }
         catch (error) {
             if (executionDelegation) {

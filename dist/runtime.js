@@ -57,6 +57,7 @@ exports.persistDelegationArtifact = persistDelegationArtifact;
 exports.persistDelegationWithVisibilitySync = persistDelegationWithVisibilitySync;
 exports.updateDelegationWithVisibilitySync = updateDelegationWithVisibilitySync;
 exports.markDelegationLaunchingWithVisibilitySync = markDelegationLaunchingWithVisibilitySync;
+exports.markDelegationProcessStartedWithVisibilitySync = markDelegationProcessStartedWithVisibilitySync;
 exports.updateDelegationPolicyDecisionWithVisibilitySync = updateDelegationPolicyDecisionWithVisibilitySync;
 exports.createOrchestrationAttemptArtifactFilePath = createOrchestrationAttemptArtifactFilePath;
 exports.loadOrchestrationAttemptArtifact = loadOrchestrationAttemptArtifact;
@@ -171,6 +172,9 @@ function createDelegationWorkerLifecycleRecord(input) {
         queued_at: input.createdAt,
         launch_requested_at: input.launchRequestedAt ?? null,
         started_at: input.startedAt ?? null,
+        process_id: input.processId ?? null,
+        process_started_at: input.processStartedAt ?? null,
+        process_last_seen_at: input.processLastSeenAt ?? null,
         last_progress_at: input.lastProgressAt ?? input.createdAt,
         returned_at: input.returnedAt ?? null,
         stale_at: input.staleAt ?? null,
@@ -195,6 +199,9 @@ function normalizeLoadedWorkerLifecycle(candidate, fallback) {
             queued_at: candidate.queued_at,
             launch_requested_at: typeof candidate.launch_requested_at === 'string' ? candidate.launch_requested_at : null,
             started_at: typeof candidate.started_at === 'string' ? candidate.started_at : null,
+            process_id: typeof candidate.process_id === 'number' ? candidate.process_id : null,
+            process_started_at: typeof candidate.process_started_at === 'string' ? candidate.process_started_at : null,
+            process_last_seen_at: typeof candidate.process_last_seen_at === 'string' ? candidate.process_last_seen_at : null,
             last_progress_at: candidate.last_progress_at,
             returned_at: typeof candidate.returned_at === 'string' ? candidate.returned_at : null,
             stale_at: typeof candidate.stale_at === 'string' ? candidate.stale_at : null,
@@ -2493,6 +2500,7 @@ async function updateDelegationWithVisibilitySync(paths, input) {
                 reclaim_state: input.status === 'completed' ? 'resumable' : 'not_needed',
                 launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? delegation.updated_at,
                 started_at: delegation.worker_lifecycle?.started_at ?? delegation.updated_at,
+                process_last_seen_at: timestamp,
                 last_progress_at: timestamp,
                 stale_at: null,
                 timed_out_at: null,
@@ -2532,6 +2540,7 @@ async function updateDelegationWithVisibilitySync(paths, input) {
                 reclaim_state: 'not_needed',
                 launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? delegation.updated_at,
                 started_at: delegation.worker_lifecycle?.started_at ?? delegation.updated_at,
+                process_last_seen_at: timestamp,
                 last_progress_at: timestamp,
                 stale_at: null,
                 timed_out_at: null,
@@ -2565,6 +2574,34 @@ async function markDelegationLaunchingWithVisibilitySync(paths, input) {
         stale_at: null,
         timed_out_at: null,
         summary: summarizeWorkerLifecycleState('launching'),
+    };
+    await persistDelegationWithVisibilitySync(paths, delegation);
+    return delegation;
+}
+async function markDelegationProcessStartedWithVisibilitySync(paths, input) {
+    const delegation = await loadDelegationArtifact(paths, input.delegationId);
+    if (delegation.child_agent.status !== 'running') {
+        throw new Error(`Only running delegations may record a worker process; current status is ${delegation.child_agent.status}.`);
+    }
+    const timestamp = nowTimestamp();
+    delegation.updated_at = timestamp;
+    delegation.worker_lifecycle = {
+        ...(delegation.worker_lifecycle ??
+            createDelegationWorkerLifecycleRecord({
+                createdAt: delegation.created_at,
+            })),
+        state: 'running',
+        reclaim_state: 'not_needed',
+        launch_requested_at: delegation.worker_lifecycle?.launch_requested_at ?? timestamp,
+        started_at: delegation.worker_lifecycle?.started_at ?? timestamp,
+        process_id: input.processId,
+        process_started_at: delegation.worker_lifecycle?.process_started_at ?? timestamp,
+        process_last_seen_at: timestamp,
+        last_progress_at: timestamp,
+        stale_at: null,
+        timed_out_at: null,
+        returned_at: null,
+        summary: summarizeWorkerLifecycleState('running'),
     };
     await persistDelegationWithVisibilitySync(paths, delegation);
     return delegation;

@@ -2068,6 +2068,18 @@ function summarizeVisibleWorkerLifecycleState(state) {
             return 'timed out and needs bounded reclaim';
     }
 }
+function isProcessAlive(processId) {
+    try {
+        process.kill(processId, 0);
+        return true;
+    }
+    catch (error) {
+        if (error && typeof error === 'object' && 'code' in error && error.code === 'EPERM') {
+            return true;
+        }
+        return false;
+    }
+}
 function createWorkerLifecycleView(delegation) {
     const lifecycle = delegation.worker_lifecycle;
     if (lifecycle === null || lifecycle === undefined) {
@@ -2079,8 +2091,14 @@ function createWorkerLifecycleView(delegation) {
     let reclaimState = lifecycle.reclaim_state;
     let staleAt = lifecycle.stale_at;
     let timedOutAt = lifecycle.timed_out_at;
+    const processAlive = typeof lifecycle.process_id === 'number' && lifecycle.process_id > 0 ? isProcessAlive(lifecycle.process_id) : null;
     if (delegation.child_agent.status === 'running' && elapsedSinceProgressMs !== null) {
-        if (elapsedSinceProgressMs >= lifecycle.timeout_after_ms) {
+        if (processAlive === false) {
+            state = 'stale';
+            reclaimState = 'reclaim_needed';
+            staleAt = staleAt ?? lifecycle.last_progress_at;
+        }
+        else if (elapsedSinceProgressMs >= lifecycle.timeout_after_ms) {
             state = 'timed_out';
             reclaimState = 'reclaim_needed';
             timedOutAt = timedOutAt ?? lifecycle.last_progress_at;
@@ -2121,6 +2139,10 @@ function createWorkerLifecycleView(delegation) {
         queued_at: lifecycle.queued_at,
         launch_requested_at: lifecycle.launch_requested_at,
         started_at: lifecycle.started_at,
+        process_id: lifecycle.process_id ?? null,
+        process_started_at: lifecycle.process_started_at ?? null,
+        process_last_seen_at: lifecycle.process_last_seen_at ?? null,
+        process_alive: processAlive,
         last_progress_at: lifecycle.last_progress_at,
         returned_at: lifecycle.returned_at,
         stale_at: staleAt,
@@ -2152,6 +2174,10 @@ function createReadableWorkerSnapshot(delegation, foremanConfig) {
             queued_at: delegation.created_at,
             launch_requested_at: null,
             started_at: null,
+            process_id: null,
+            process_started_at: null,
+            process_last_seen_at: null,
+            process_alive: null,
             last_progress_at: delegation.updated_at,
             returned_at: delegation.completed_at,
             stale_at: null,
@@ -4632,6 +4658,9 @@ function validateForemanOrchestrateLoopInputs(input, progressionMode, currentSta
             return;
         case 'await_repair_decision':
             if (!input.repair_action) {
+                if (progressionMode === 'drain_until_boundary') {
+                    return;
+                }
                 throw new Error('foreman_orchestrate requires repair_action when the current persisted decision is await_repair_decision. Choose retry or replan explicitly.');
             }
             if (input.repair_action === 'replan') {
@@ -5180,6 +5209,7 @@ async function orchestrateForemanRun(input, sessionContext = DEFAULT_MCP_SESSION
                 replanPrompt: input.replan_prompt,
                 resolveOutcome: input.resolve_outcome,
                 resolveSummary: input.resolve_summary,
+                autoPolicy: progressionMode === 'drain_until_boundary' ? 'bounded_repair' : 'off',
                 maxSteps,
                 stopAtTaskBoundary: progressionMode !== 'drain_until_boundary',
             });

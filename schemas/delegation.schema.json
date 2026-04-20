@@ -327,6 +327,18 @@
           "type": ["string", "null"],
           "minLength": 1
         },
+        "process_id": {
+          "type": ["integer", "null"],
+          "minimum": 1
+        },
+        "process_started_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
+        "process_last_seen_at": {
+          "type": ["string", "null"],
+          "minLength": 1
+        },
         "last_progress_at": {
           "type": "string",
           "minLength": 1
