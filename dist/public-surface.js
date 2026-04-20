@@ -30,6 +30,11 @@ exports.FOREMAN_NAMED_AGENT_SURFACES = [
         packagedFileName: 'foreman-raider.toml',
     },
     {
+        rosterName: 'scribe',
+        customAgentName: 'foreman_scribe',
+        packagedFileName: 'foreman-scribe.toml',
+    },
+    {
         rosterName: 'arbiter',
         customAgentName: 'foreman_arbiter',
         packagedFileName: 'foreman-arbiter.toml',
