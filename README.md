@@ -71,7 +71,20 @@ Healthy install output should include:
 - `skill=matching_install`
 - `agents=matching_install`
 - coherent model and companion-tool policy
+- `notebooklm_archive=disabled` or an explicit NotebookLM readiness state
 - clean or explainable run hygiene
+
+## Optional NotebookLM Archive
+
+NotebookLM is optional. Foreman does not register it automatically because it is a third-party MCP with a browser login step.
+
+```bash
+codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
+```
+
+Restart Codex CLI, then complete NotebookLM browser login when Codex calls the NotebookLM MCP auth tool.
+
+For archive targets, prefer `notebook_url`: open the target notebook in NotebookLM and copy the browser URL or shared notebook link. Leave `notebook_id` as `null` unless a specific NotebookLM MCP workflow gives you a stable id. Never put Google usernames or passwords in `foreman-config.json`.
 
 ## Run Hygiene
 
@@ -103,5 +116,5 @@ codex-foreman maintain-runs --cwd /absolute/workspace/path --action archive --ap
 - `docs/install.md`: full install/update guide
 - `docs/release/notes/v1.6.1.md`: release notes
 
-Source commit: a26e0631be6653227bbf17f293a0be13386c145f
+Source commit: 16302b92dc48c24bb8699e24255d9393f8cb1e69
 Release assets: https://github.com/HoRi0506/Codex-Foreman-release/releases

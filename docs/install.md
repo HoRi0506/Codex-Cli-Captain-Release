@@ -107,7 +107,7 @@ Current package: codex-foreman@1.6.1
 Public entry: $cap (skill=cap)
 Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium
 Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.
-NotebookLM archive: NotebookLM archive target is disabled.
+NotebookLM archive: NotebookLM archive target is disabled. To enable it, register notebooklm MCP, complete browser auth, then set archive_targets.notebooklm.enabled=true with notebook_url or notebook_id.
 Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.
 ```
 

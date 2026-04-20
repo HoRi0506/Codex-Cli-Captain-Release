@@ -600,7 +600,7 @@ function createNotebookLmArchiveTargetSummary(input) {
     if (!target?.enabled) {
         return {
             notebookLmArchiveTargetStatus: 'disabled',
-            notebookLmArchiveTargetSummary: 'NotebookLM archive target is disabled.',
+            notebookLmArchiveTargetSummary: 'NotebookLM archive target is disabled. To enable it, register notebooklm MCP, complete browser auth, then set archive_targets.notebooklm.enabled=true with notebook_url or notebook_id.',
         };
     }
     const notebookLmServer = input.otherInstalledMcpServers.find((server) => server.name === 'notebooklm') ?? null;

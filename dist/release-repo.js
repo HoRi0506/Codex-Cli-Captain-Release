@@ -22,7 +22,7 @@ function createHealthyCheckInstallExample(packageVersion) {
         `Public entry: ${public_surface_1.FOREMAN_PUBLIC_ENTRY_LABEL} (skill=${public_surface_1.FOREMAN_PUBLIC_ENTRY_SKILL_NAME})`,
         'Model policy: Configured role-model policy: captain=gpt-5.4/high tactician=gpt-5.4/medium scout=gpt-5.4-mini/medium raider=gpt-5.3-codex/high arbiter=gpt-5.4/medium companion_reader=gpt-5.4-mini/medium companion_operator=gpt-5.4-mini/medium',
         'Companion tool policy: Configured companion routing keeps tool work under specialist ownership: filesystem->companion_reader/gpt-5.4-mini/medium, git(read)->companion_reader/gpt-5.4-mini/medium git(mutation)->companion_operator/gpt-5.4-mini/medium, context7->companion_reader/gpt-5.4-mini/medium, fetch->companion_reader/gpt-5.4-mini/medium, openaiDeveloperDocs->companion_reader/gpt-5.4-mini/medium.',
-        'NotebookLM archive: NotebookLM archive target is disabled.',
+        'NotebookLM archive: NotebookLM archive target is disabled. To enable it, register notebooklm MCP, complete browser auth, then set archive_targets.notebooklm.enabled=true with notebook_url or notebook_id.',
         'Run hygiene: clean; workspace=<cwd> active=0 blocked=0 fresh=0 stale=0 resumable=none.',
     ].join('\n');
 }
@@ -275,7 +275,20 @@ Healthy install output should include:
 - \`skill=matching_install\`
 - \`agents=matching_install\`
 - coherent model and companion-tool policy
+- \`notebooklm_archive=disabled\` or an explicit NotebookLM readiness state
 - clean or explainable run hygiene
+
+## Optional NotebookLM Archive
+
+NotebookLM is optional. Foreman does not register it automatically because it is a third-party MCP with a browser login step.
+
+\`\`\`bash
+codex mcp add notebooklm -- npx -y notebooklm-mcp@latest
+\`\`\`
+
+Restart Codex CLI, then complete NotebookLM browser login when Codex calls the NotebookLM MCP auth tool.
+
+For archive targets, prefer \`notebook_url\`: open the target notebook in NotebookLM and copy the browser URL or shared notebook link. Leave \`notebook_id\` as \`null\` unless a specific NotebookLM MCP workflow gives you a stable id. Never put Google usernames or passwords in \`foreman-config.json\`.
 
 ## Run Hygiene
 
