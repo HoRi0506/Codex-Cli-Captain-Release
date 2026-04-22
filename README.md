@@ -6,13 +6,14 @@ This repository is not the development source. It exists to publish the release 
 
 ## Install
 
-Copy this into Codex CLI, Claude Code, or a similar AI coding CLI:
+Copy this into Codex CLI:
 
 ```text
 Install Codex-Foreman from https://github.com/HoRi0506/Codex-Foreman-release by running:
 curl -fsSL https://raw.githubusercontent.com/HoRi0506/Codex-Foreman-release/main/install.sh | bash
 
-After it finishes, run:
+After installation finishes, you must restart Codex CLI.
+Then run:
 codex-foreman check-install
 ```
 
@@ -20,6 +21,8 @@ If you want to run the installer directly in your shell:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/HoRi0506/Codex-Foreman-release/main/install.sh | bash
+
+# restart Codex CLI
 codex-foreman check-install
 ```
 
