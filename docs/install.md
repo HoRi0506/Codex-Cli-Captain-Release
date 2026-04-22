@@ -51,11 +51,12 @@ Foreman install check: status=ok version=0.0.1 entry=$cap registration=matching_
 ## What Setup Does
 
 - registers or refreshes the `codex-foreman` MCP entry in Codex CLI
-- creates or reuses `~/.config/foreman/foreman-config.toml`
+- creates `~/.config/foreman/foreman-config.toml` on first install using the canonical shared-config format
+- reuses the existing `~/.config/foreman/foreman-config.toml` when it is already present
 - migrates legacy `~/.config/foreman/foreman-config.json` when present
 - installs or refreshes the public `$cap` skill under `CODEX_HOME`
 
-The shared TOML config is the user-facing place to select per-role model, profile, reasoning tier (`variant`), and extra Codex config overrides.
+The generated shared TOML config includes the default per-role `model`, reasoning tier (`variant`), `fast_mode`, and `config_entries` values. Runtime dispatch reads those values from `foreman-config.toml` when it launches delegated `codex exec` work, rather than hardcoding model or reasoning choices in the installer flow.
 
 ## Use
 
