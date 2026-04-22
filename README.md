@@ -12,7 +12,8 @@ Copy this into Codex CLI:
 Install Codex-Foreman from https://github.com/HoRi0506/Codex-Foreman-release by running:
 curl -fsSL https://raw.githubusercontent.com/HoRi0506/Codex-Foreman-release/main/install.sh | bash
 
-After installation finishes, you must restart Codex CLI.
+After installation finishes, fully exit Codex CLI.
+Start a new Codex CLI session.
 Then run:
 codex-foreman check-install
 ```
@@ -22,7 +23,8 @@ If you want to run the installer directly in your shell:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/HoRi0506/Codex-Foreman-release/main/install.sh | bash
 
-# restart Codex CLI
+# fully exit Codex CLI
+# start a new Codex CLI session
 codex-foreman check-install
 ```
 

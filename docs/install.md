@@ -17,7 +17,12 @@ The installer script:
 - runs `codex-foreman setup`
 - runs `codex-foreman check-install`
 
-After it finishes, restart Codex CLI.
+The installer's own `check-install` run is only an immediate self-check.
+For the real post-install verification path, fully exit Codex CLI, start a new Codex CLI session, and then run:
+
+```bash
+codex-foreman check-install
+```
 
 ## Manual Install
 
@@ -26,10 +31,15 @@ After it finishes, restart Codex CLI.
 
 ```bash
 ./bin/codex-foreman setup
-./bin/codex-foreman check-install
 ```
 
-3. restart Codex CLI
+3. fully exit Codex CLI
+4. start a new Codex CLI session
+5. run:
+
+```bash
+./bin/codex-foreman check-install
+```
 
 ## Installer Variables
 
