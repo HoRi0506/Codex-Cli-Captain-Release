@@ -1,6 +1,6 @@
 ---
 name: cap
-description: Enter the current user request through the installed Codex-Cli-Captain MCP so host Codex/captain can run the 0.0.1 LongWay loop instead of answering purely through the host session.
+description: Enter the current user request through the installed Codex-Cli-Captain MCP so host Codex/captain can run the 0.0.2 LongWay loop instead of answering purely through the host session.
 metadata:
   short-description: Captain LongWay loop entry
 ---
@@ -90,11 +90,14 @@ Prefer the LongWay block order:
 ## Token discipline
 
 - Prefer `ccc status --json '{...}'` first and use `ccc activity --json '{...}'` only when status is insufficient for the next decision.
+- Treat `ccc activity` as a diagnostics-only fallback. Do not call both `status` and `activity` at the same boundary unless the missing field is necessary for the next captain decision.
 - Before emitting a captain LongWay block, refresh or reuse the latest `ccc status` truth and carry `token_usage` into the block whenever it is available.
 - Do not spend host-local tokens on mutation, review, or broad repository inspection when a matching CCC specialist path exists.
 - Do not perform broad host-local workspace inspection just to answer a `$cap` request unless CCC has already degraded visibly.
 - If status shows `next_step=await_fan_in` with `can_advance=true` or `run_truth_surface.resume_action=advance`, treat that as a resumable CCC boundary and call the bounded advance path; do not classify it as a degraded stall.
 - If status shows `reclaim_plan.reclaim_needed_worker_count > 0` or a worker timeout or reclaim boundary, call the bounded CCC reclaim path before considering host-local fallback.
+- After launching a worker, do not immediately issue another `ccc status` or `ccc activity` poll just to restate the same checkpoint. Poll only when you need new truth for the next captain move or the next public LongWay block.
+- Once a visible degraded host-local fallback begins, stop additional CCC polling unless you need one final bounded resolve call.
 - Do not repeat unchanged visibility lines on every poll, except that `Tokens:` should still be repeated on each public captain LongWay block when `token_usage` is available.
 
 ## Required workflow
@@ -111,15 +114,16 @@ Prefer the LongWay block order:
 7. Launch at most one bounded specialist step at a time with `ccc orchestrate --json '{...}'`.
 8. After each specialist result, return to a captain checkpoint before materializing the next specialist.
 9. When captain needs a different next specialist in the same run, call `ccc orchestrate --json '{...}'` with:
-   `repair_action`: the role hint or agent hint such as `tactician`, `scout`, `raider`, `scribe`, `arbiter`, or `retry_current_specialist`
+   `repair_action`: the role hint or agent hint such as `tactician`, `scout`, `raider`, `scribe`, `arbiter`, `companion_reader`, `companion_operator`, or `retry_current_specialist`
    `replan_prompt`: the exact bounded next task for that specialist
    Optional `resolve_summary`: a short captain summary for the next LongWay item title
-10. After that replan call, read `ccc status --json '{...}'` again so the captain checkpoint is visible, then run another bounded `ccc orchestrate --json '{...}'` call to launch the selected specialist.
-11. Do not let the host session bounce directly from `agent -> next agent` without a captain LongWay update.
-12. Do not default to `progression_mode=drain_until_boundary` for ordinary `$cap` work. Use bounded single-step progression so captain can inspect the result and update the LongWay between specialist passes.
-13. If a worker stalls, let CCC reclaim it first. Only after reclaim and an explicit captain retry or reassignment fail should the host consider a visible degraded fallback.
-14. To close the loop honestly, have captain call `ccc orchestrate --json '{...}'` with `resolve_outcome` and `resolve_summary` when acceptance is met, blocked, failed, or cancelled.
-15. Reply to the operator only when the request is complete, explicitly blocked, or waiting on a real operator decision.
+10. If the run is currently at `await_fan_in`, prefer a single `ccc orchestrate --json '{...}'` call that collapses fan-in and applies `repair_action` plus `replan_prompt` or `resolve_outcome` in the same call.
+11. After a replan call that returns `next_step=execute_task`, run one bounded `ccc orchestrate --json '{...}'` call to launch the selected specialist. Read `ccc status --json '{...}'` again only when captain needs refreshed truth for the next operator-facing LongWay block or the next decision.
+12. Do not let the host session bounce directly from `agent -> next agent` without a captain LongWay update.
+13. Do not default to `progression_mode=drain_until_boundary` for ordinary `$cap` work. Use bounded single-step progression so captain can inspect the result and update the LongWay between specialist passes.
+14. If a worker stalls, let CCC reclaim it first. Only after reclaim and an explicit captain retry or reassignment fail should the host consider a visible degraded fallback.
+15. To close the loop honestly, have captain call `ccc orchestrate --json '{...}'` with `resolve_outcome` and `resolve_summary` when acceptance is met, blocked, failed, or cancelled. If the run is still at `await_fan_in`, prefer the combined collapse plus resolve call instead of a separate collapse poll.
+16. Reply to the operator only when the request is complete, explicitly blocked, or waiting on a real operator decision.
 
 ## Specialist selection
 
@@ -131,6 +135,8 @@ Use the packaged CCC specialist roster deliberately.
 - `ccc_scribe`: bounded docs, README, release-note, or operator-guidance writing
 - `ccc_arbiter`: optional review or pass or needs_work or blocked judgment when risk or ambiguity justifies it
 - `ccc_sentinel`: ownership or execution-path classification only
+- `ccc_companion_reader`: tool-routed lightweight read-only work such as filesystem, docs, or fetch-backed evidence gathering when the routing policy selects the companion reader
+- `ccc_companion_operator`: tool-routed lightweight mutation or operator-side work such as git-backed actions when the routing policy selects the companion operator
 
 Do not route to generic Codex helper agents when a matching packaged CCC specialist is available.
 
@@ -161,4 +167,4 @@ Be conservative.
 - Packaged skill updates require a fresh Codex session before the new behavior is visible.
 - The packaged run session can still be cleared explicitly with `$cap close current run` or `$cap clear run session`.
 - `$cap` remains the only public CCC harness entrypoint; the internal specialist roster is not a public command surface.
-- `ccc_auto_entry` still exists for compatibility and diagnostics, but it is no longer the default public `$cap` entry path for `0.0.1`.
+- `ccc_auto_entry` still exists for compatibility and diagnostics, but it is no longer the default public `$cap` entry path for `0.0.2`.

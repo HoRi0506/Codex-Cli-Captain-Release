@@ -2,6 +2,8 @@
 
 Install Codex-Cli-Captain for Codex CLI.
 
+Current public release: `0.0.2`.
+
 Codex is already smart. Use `$cap` when you want captain to route work across the right agents in order, using the models and reasoning levels from `ccc-config.toml` instead of burning your most expensive model on every step.
 
 ## Install
@@ -23,9 +25,14 @@ ccc check-install
 - `ccc` CLI and MCP entrypoint
 - `$cap` skill
 - `~/.config/foreman/ccc-config.toml`
+- runtime companion routing that can send lightweight filesystem/docs/fetch/git work to the configured `gpt-5.4-mini` companion roles
 
 ## Healthy Check
 
 ```text
-CCC install check: status=ok version=0.0.1 entry=$cap registration=matching_registration config=present skill=matching_install
+CCC install check: status=ok version=0.0.2 entry=$cap registration=matching_registration config=present skill=matching_install
 ```
+
+## Release Note
+
+- [`docs/release/notes/v0.0.2.md`](./docs/release/notes/v0.0.2.md): current public release card body
