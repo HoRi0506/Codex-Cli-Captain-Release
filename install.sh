@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="HoRi0506/Codex-Foreman-release"
-VERSION="${CODEX_FOREMAN_VERSION:-v0.0.1}"
-INSTALL_ROOT="${CODEX_FOREMAN_INSTALL_ROOT:-$HOME/.local/share/codex-foreman}"
-BIN_DIR="${CODEX_FOREMAN_BIN_DIR:-$HOME/.local/bin}"
+REPO="HoRi0506/Codex-Cli-Captain-Release"
+VERSION="${CCC_VERSION:-v0.0.1}"
+INSTALL_ROOT="${CCC_INSTALL_ROOT:-$HOME/.local/share/ccc}"
+BIN_DIR="${CCC_BIN_DIR:-$HOME/.local/bin}"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -40,12 +40,13 @@ case "$ARCH" in
     ;;
 esac
 
-ASSET="codex-foreman-${VERSION#v}-${OS}-${ARCH}.tar.gz"
-DOWNLOAD_URL="${CODEX_FOREMAN_DOWNLOAD_URL:-https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}}"
-TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/codex-foreman-install.XXXXXX")"
+ASSET="ccc-${VERSION#v}-${OS}-${ARCH}.tar.gz"
+DOWNLOAD_URL="${CCC_DOWNLOAD_URL:-https://github.com/${REPO}/releases/download/${VERSION}/${ASSET}}"
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/ccc-install.XXXXXX")"
 EXTRACT_DIR="${TMP_DIR}/extract"
 TARGET_DIR="${INSTALL_ROOT}/current"
-TARGET_BIN="${BIN_DIR}/codex-foreman"
+TARGET_BIN="${BIN_DIR}/ccc"
+LEGACY_BIN="${BIN_DIR}/codex-foreman"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -64,31 +65,36 @@ curl -fsSL "$DOWNLOAD_URL" -o "${TMP_DIR}/${ASSET}" || {
 echo "Unpacking ${ASSET}..."
 tar -xzf "${TMP_DIR}/${ASSET}" -C "$EXTRACT_DIR"
 
-if [ ! -x "${EXTRACT_DIR}/bin/codex-foreman" ]; then
-  echo "The downloaded bundle does not contain bin/codex-foreman." >&2
+if [ ! -x "${EXTRACT_DIR}/bin/ccc" ]; then
+  echo "The downloaded bundle does not contain bin/ccc." >&2
   exit 1
 fi
 
 rm -rf "$TARGET_DIR"
 mkdir -p "$TARGET_DIR"
 cp -R "${EXTRACT_DIR}/." "$TARGET_DIR/"
-ln -sfn "${TARGET_DIR}/bin/codex-foreman" "$TARGET_BIN"
+ln -sfn "${TARGET_DIR}/bin/ccc" "$TARGET_BIN"
 
 echo "Refreshing Codex MCP registration..."
+codex mcp remove ccc >/dev/null 2>&1 || true
 codex mcp remove codex-foreman >/dev/null 2>&1 || true
-codex mcp add codex-foreman -- "${TARGET_DIR}/bin/codex-foreman" mcp
+codex mcp add ccc -- "${TARGET_DIR}/bin/ccc" mcp
+
+if [ -L "$LEGACY_BIN" ]; then
+  rm -f "$LEGACY_BIN"
+fi
 
 echo "Running setup..."
-"${TARGET_DIR}/bin/codex-foreman" setup
+"${TARGET_DIR}/bin/ccc" setup
 
 echo
 echo "Running check-install..."
-"${TARGET_DIR}/bin/codex-foreman" check-install
+"${TARGET_DIR}/bin/ccc" check-install
 
 echo
 echo "Install complete."
 echo "Installed root: ${TARGET_DIR}"
 echo "Binary link: ${TARGET_BIN}"
-echo "If ${BIN_DIR} is not on your PATH, add it before using codex-foreman directly."
+echo "If ${BIN_DIR} is not on your PATH, add it before using ccc directly."
 echo "You must restart Codex CLI before using \$cap or relying on the new MCP registration."
-echo "After restarting Codex CLI, run: codex-foreman check-install"
+echo "After restarting Codex CLI, run: ccc check-install"
