@@ -2,7 +2,7 @@
 
 Install Codex-Cli-Captain for Codex CLI.
 
-Use `$cap` when you want captain to route work across the right agents in order, using the models and reasoning levels from `ccc-config.toml`.
+Codex is already smart. Use `$cap` when you want captain to route work across the right agents in order, using the models and reasoning levels from `ccc-config.toml` instead of burning your most expensive model on every step.
 
 ## Install
 
