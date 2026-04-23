@@ -28,6 +28,9 @@ ccc check-install
 - CCC-managed custom agents synced from `ccc-config.toml`
 - runtime companion routing that can send lightweight filesystem/docs/fetch/git work to the configured `gpt-5.4-mini` companion roles
 - compact captain/subagent status payloads for lower repeated token cost
+- lane-aware raider fan-out/fan-in V1 with stable `raider-a` through `raider-d` lanes, a default of 2 lanes only for explicit disjoint parallel work, and a hard maximum of 4 lanes
+- lower-noise `--text`, `--quiet`, and `--json-file` surfaces for repeated lifecycle updates
+- host-side token status for custom subagents is best-effort only; use `child_agent_id` for the CCC role or managed agent and `thread_id` for the raw host Codex thread/session identifier
 
 ## Healthy Check
 

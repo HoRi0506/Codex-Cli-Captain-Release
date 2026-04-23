@@ -28,22 +28,26 @@ Use compact CLI surfaces by default. Full JSON/status is debug-only.
 1. Ensure a meaningful request remains after `$cap`; otherwise ask one concise clarification.
 2. Verify workspace write support once with `test -w .`.
 3. If not writable, state CCC needs workspace-write, then stop or do one visible read-only fallback if the request is read-only.
-4. Start with one bounded Way checkpoint:
-   `ccc start --json '{"prompt":"<request>","title":"<short>","intent":"<short>","goal":"<short>","scope":"<bounded>","acceptance":"<done when>","task_kind":"way","compact":true}'`
+4. Start with one bounded Way checkpoint using low-noise lifecycle output:
+   `ccc start --quiet --json '{"prompt":"<request>","title":"<short>","intent":"<short>","goal":"<short>","scope":"<bounded>","acceptance":"<done when>","task_kind":"way","compact":true}'`
 5. For decisions, use:
-   `ccc status --json '{"run_id":"<run_id>","compact":true}'`
+   `ccc status --text --json '{"run_id":"<run_id>"}'`
 6. Use `command_templates` from compact status. Do not run `ccc ... --help`, broad `rg`, or session-history searches to discover syntax.
 7. If `preferred_specialist_execution_mode=codex_subagent` and a custom agent is available, use that subagent first.
 8. Follow `subagent_spawn_contract`: use the named custom agent, avoid full-history fork, and omit agent/model/reasoning overrides already defined by the custom agent.
 9. Record lifecycle with CLI, not MCP, when requested:
-   `ccc subagent-update --json '{...,"compact":true}'`
+   `ccc subagent-update --quiet --json '{...,"compact":true}'`
+   - Set `child_agent_id` to the CCC custom agent name from contract (`ccc_raider`, `ccc_tactician`, `ccc_scout`, etc.), not to raw host session identifiers.
+   - Put raw host agent/session identifiers in `thread_id` when useful for correlation.
+   - Do not claim CCC can control host Codex `/agent` Spawned/Waiting row labels.
 10. Required lifecycle order: `spawned -> completed|failed|stalled -> merged`.
 11. Subagent fan-in must be compact structured data:
    `summary`, `status`, `evidence_paths`, `next_action`, `open_questions`, `confidence`.
 12. If `codex_exec_fallback_allowed=false`, do not call `ccc orchestrate` as fallback for that task-card until a terminal subagent update or explicit `fallback_reason` is recorded.
 13. Replan/resolve through compact orchestrate templates:
-   `ccc orchestrate --json '{...,"compact":true}'`
-14. Reply only when complete, blocked, or waiting on a real operator decision. Do not print the final answer twice.
+   `ccc orchestrate --quiet --json '{...,"compact":true}'`
+14. Prefer `--json-file` for repeated lifecycle payloads to avoid shell-quoted raw JSON noise.
+15. Reply only when complete, blocked, or waiting on a real operator decision. Do not print the final answer twice.
 
 ## Routing
 

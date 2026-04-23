@@ -77,6 +77,10 @@ For the public `$cap` path, `0.0.2` keeps explicit captain-first entry as canoni
 
 `0.0.2` also makes generic companion tool routing real at runtime. When the routing policy in `ccc-config.toml` selects a companion owner, lightweight filesystem/docs/fetch/git inspection work is delegated to `companion_reader`, and git mutation work is delegated to `companion_operator`, using the configured mini-model profile during the actual worker launch.
 
+`0.0.2` also adds lane-aware raider fan-out/fan-in V1. Stable lanes are `raider-a` through `raider-d`; the default fan-out is 2 lanes only for explicit disjoint parallel work, the hard maximum is 4 lanes, and fan-in waits for every active lane before merge. `subagent-update` records `lane_id` so lane-level routing stays visible in compact lifecycle output.
+
+Prefer `--text`, `--quiet`, and `--json-file` for lower-noise repeated lifecycle calls. Host-side token status for custom subagents is limited and best-effort only. For correlation, use `child_agent_id` for the CCC role or managed agent name and `thread_id` for the raw host Codex session/thread identifier.
+
 ## Use
 
 After restarting Codex CLI:
