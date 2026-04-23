@@ -61,12 +61,13 @@ CCC install check: status=ok version=0.0.1 entry=$cap registration=matching_regi
 ## What Setup Does
 
 - registers or refreshes the `ccc` MCP entry in Codex CLI
-- creates `~/.config/foreman/foreman-config.toml` on first install using the canonical shared-config format
-- reuses the existing `~/.config/foreman/foreman-config.toml` when it is already present
+- creates `~/.config/foreman/ccc-config.toml` on first install using the canonical shared-config format
+- reuses the existing `~/.config/foreman/ccc-config.toml` when it is already present
+- migrates legacy `~/.config/foreman/foreman-config.toml` when present
 - migrates legacy `~/.config/foreman/foreman-config.json` when present
 - installs or refreshes the public `$cap` skill under `CODEX_HOME`
 
-The generated shared TOML config includes the default per-role `model`, reasoning tier (`variant`), `fast_mode`, and `config_entries` values. Runtime dispatch reads those values from `foreman-config.toml` when it launches delegated `codex exec` work, rather than hardcoding model or reasoning choices in the installer flow.
+The generated shared TOML config includes the default per-role `model`, reasoning tier (`variant`), `fast_mode`, and `config_entries` values. Runtime dispatch reads those values from `ccc-config.toml` when it launches delegated `codex exec` work, rather than hardcoding model or reasoning choices in the installer flow.
 
 For the public `$cap` path, `0.0.1` now treats explicit captain-first entry as canonical. Ordinary `$cap` work should start with an explicit bounded CCC run, let `Way` create a `LongWay`, and then let captain select and reassign specialists one at a time inside the same run. `ccc_auto_entry` remains available for compatibility and diagnostics, but it is no longer the default public `$cap` front door.
 
