@@ -1,12 +1,18 @@
 # Codex-Cli-Captain-Release
 
-[English](./README.md) | [한국어](./README.ko.md) | [日本語](./README.ja.md)
+<p align="center">
+  <a href="./README.md">English</a> ·
+  <a href="./README.ko.md">한국어</a> ·
+  <a href="./README.ja.md">日本語</a>
+</p>
 
-Codex CLI용 Codex-Cli-Captain 설치 저장소입니다.
+<p align="center">
+  <img src="./docs/assets/ccc-banner.svg" alt="CCC Codex-Cli-Captain banner" width="100%">
+</p>
 
 현재 공개 버전: `0.0.3`.
 
-`$cap`은 Codex가 captain 역할을 하면서 `ccc-config.toml`의 모델과 reasoning 설정에 따라 적절한 에이전트로 작업을 라우팅하게 합니다.
+Codex CLI는 이미 똑똑합니다. 그 똑똑함을 조금 더 잘 활용하고 싶으신가요? 100달러 요금제도 나왔고, 이제는 모델을 더 막연히 쓰기보다 합리적인 과정으로 쓰고 싶을 때입니다. CCC에 오신 것을 환영합니다. 이제 요청 앞에 `$cap`만 붙이면, Codex-Cli-Captain이 captain-led 흐름으로 작업을 정리하고 적절한 에이전트를 거쳐 결과를 돌려줍니다.
 
 ## 설치
 
@@ -48,22 +54,3 @@ ccc check-install
 | `verifier` | `arbiter` | `gpt-5.4` | `medium` | 리뷰, 리스크, 회귀 확인 |
 | `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `medium` | 저비용 filesystem/docs/web/git/gh 읽기 작업 |
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `medium` | 저비용 git/gh 변경 및 좁은 도구 실행 |
-
-## 포함 내용
-
-- `ccc` CLI와 MCP entrypoint
-- compact `$cap` skill
-- `~/.config/foreman/ccc-config.toml`
-- `ccc-config.toml` 기준으로 동기화되는 CCC-managed custom agents
-- 한국어, 영어, 일본어, 중국어 요청 신호에 대한 라우팅 점검
-- 가벼운 filesystem/docs/fetch/git/gh 작업을 `gpt-5.4-mini` companion 역할로 라우팅
-- 강화된 raider 모듈화 원칙
-- compact prompt와 `--text`, `--quiet`, `--json-file` 저소음 CLI surface
-- raw usage event가 있을 때 token 총량과 agent별 게이지 출력, 없을 때 명확한 unavailable 이유 출력
-- 최소 release repo, stripped binary, 민감 문자열 검사 기반 릴리즈 위생
-
-## 정상 확인
-
-```text
-CCC install check: status=ok version=0.0.3 entry=$cap registration=matching_registration config=present skill=matching_install
-```
