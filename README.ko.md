@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <img src="./docs/assets/ccc-banner.svg" alt="CCC Codex-Cli-Captain banner" width="100%">
+  <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
 현재 공개 버전: `0.0.3`.

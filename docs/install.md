@@ -73,10 +73,11 @@ CCC install check: status=ok version=0.0.3 entry=$cap registration=matching_regi
 - registers or refreshes the `ccc` MCP entry in Codex CLI
 - creates `~/.config/foreman/ccc-config.toml` on first install using the canonical shared-config format
 - reuses the existing `~/.config/foreman/ccc-config.toml` when it is already present
+- backfills missing `companion_agents` / `tool_routing` defaults, including `gh` routing, without overwriting user-set values
 - installs or refreshes the public `$cap` skill under `CODEX_HOME`
 - syncs CCC-managed Codex custom agents under `CODEX_HOME/agents`
 
-The generated shared TOML config includes per-role model settings, companion-agent settings, and git/gh-oriented companion routing.
+The generated shared TOML config includes per-role model settings, companion-agent settings, and git/gh-oriented companion routing. Quiet lifecycle lines include compact token fields such as `tokens=3.1k` or explicit unavailable reason codes when host usage data is not exposed.
 
 ## Use
 

@@ -32,6 +32,7 @@ Use compact CLI surfaces by default. Full JSON/status is debug-only.
    `ccc start --quiet --json '{"prompt":"<request>","title":"<short>","intent":"<short>","goal":"<short>","scope":"<bounded>","acceptance":"<done when>","task_kind":"way","compact":true}'`
 5. For decisions, use:
    `ccc status --text --json '{"run_id":"<run_id>"}'`
+   - quiet lifecycle lines (`start` / `orchestrate` / `subagent-update` / `status`) already include compact token usage or explicit unavailable reason fields; prefer those over ad-hoc token guesses.
 6. Use `command_templates` from compact status. Do not run `ccc ... --help`, broad `rg`, or session-history searches to discover syntax.
 7. If `preferred_specialist_execution_mode=codex_subagent` and a custom agent is available, use that subagent first.
 8. Follow `subagent_spawn_contract`: use the named custom agent, avoid full-history fork, and omit agent/model/reasoning overrides already defined by the custom agent.
@@ -73,3 +74,4 @@ Do not route to generic helper agents when a matching CCC specialist exists.
 - On stalls, prefer CCC reclaim/retry/reassign before degraded host-local fallback.
 - `arbiter` is optional; use it only for real risk, ambiguity, failed tests, or release-critical judgment.
 - Stored LongWay text should stay English; answer the operator in their language.
+- If the operator references external file paths outside the workspace, keep those exact paths in scope when sandbox-readable; if blocked, return the exact blocked path and required approval instead of broad "workspace-only" wording.
