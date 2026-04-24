@@ -1,6 +1,6 @@
-# Install & Update Codex-Cli-Captain 0.0.3
+# Install & Update Codex-Cli-Captain 0.0.4
 
-Use this guide for the Rust-only `0.0.3` release bundle.
+Use this guide for the Rust-only `0.0.4` release bundle.
 
 ## Quick Install & Update
 
@@ -71,7 +71,7 @@ If the host reports file-descriptor pressure such as `Too many open files (os er
 
 ## Installer Variables
 
-- `CCC_VERSION`: release tag to install, defaults to `v0.0.3`
+- `CCC_VERSION`: release tag to install, defaults to `v0.0.4`
 - `CCC_INSTALL_ROOT`: install root, defaults to `~/.local/share/ccc`
 - `CCC_BIN_DIR`: directory for the `ccc` symlink, defaults to `~/.local/bin`
 - `CCC_DOWNLOAD_URL`: explicit asset URL override, useful for local testing
@@ -81,8 +81,8 @@ If the host reports file-descriptor pressure such as `Too many open files (os er
 Release builder asset-name validation uses the same print-only convention:
 
 ```bash
-CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.3 windows-x86_64
-CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.3 windows-arm64
+CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.4 windows-x86_64
+CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.4 windows-arm64
 ```
 
 For a local no-download check across installer and builder asset names, run `./scripts/verify-release-asset-matrix.sh`.
@@ -127,7 +127,7 @@ Prefer `--text`, `--quiet`, and `--json-file` for lower-noise repeated lifecycle
 Expected top block:
 
 ```text
-CCC install check: status=ok version=0.0.3 entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
+CCC install check: status=ok version=0.0.4 entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
 Install surface: status=current restart=not-required mcp=matching_registration skill=matching_install custom_agents=matching_sync
 ```
 

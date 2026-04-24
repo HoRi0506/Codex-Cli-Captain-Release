@@ -1,6 +1,6 @@
 ---
 name: cap
-description: Enter the current user request through Codex-Cli-Captain so host Codex runs the 0.0.3 captain-first LongWay loop instead of answering locally.
+description: Enter the current user request through Codex-Cli-Captain so host Codex runs the 0.0.4 captain-first LongWay loop instead of answering locally.
 metadata:
   short-description: Captain LongWay loop entry
 ---

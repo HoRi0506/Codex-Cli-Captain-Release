@@ -10,7 +10,7 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
-Current public release: `0.0.3`.
+Current public release: `0.0.4`.
 
 Codex CLI is already smart. Want to use that intelligence with a little more structure? New higher-budget plans are here, and your work deserves a captain that spends that budget on a reasonable path, not random wandering. Welcome to CCC: add `$cap` to your request, and Codex-Cli-Captain will guide the work through a captain-led process before returning the result.
 
@@ -77,4 +77,4 @@ Direct `codex exec` fallback is blocked while a custom subagent is available unl
 
 ## Release Note
 
-- [`docs/release/notes/v0.0.3.md`](./docs/release/notes/v0.0.3.md): current public release card body
+- [`docs/release/notes/v0.0.4.md`](./docs/release/notes/v0.0.4.md): current public release card body
