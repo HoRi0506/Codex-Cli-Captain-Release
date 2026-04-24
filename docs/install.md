@@ -48,6 +48,8 @@ If a new `$cap` request arrives while an earlier run or subagent is still active
 
 Because host custom subagents cannot always be forcibly canceled by CCC, captain should treat stale work as reclaimed or merged and continue from the combined latest request.
 
+Host Codex as captain owns LongWay, routing, lifecycle, fan-in, review, validation, and commit boundaries. Ordinary read-only investigation, docs edits, code/config mutation, and review judgment should go to `ccc_scout`, `ccc_scribe`, `ccc_raider`, and `ccc_arbiter` via custom subagents when available; direct captain work stays limited to explicit fallback, trivial operator-side fixes, or recorded CCC degradation.
+
 ## Parallel Lanes
 
 - scout lanes default to 2 read-only lanes when broad or parallel investigation is useful, with a max of 4

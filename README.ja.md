@@ -54,7 +54,9 @@ ccc check-install
 
 `--text` と quiet lifecycle 出力では token ゲージを常に表示します。raw usage event がある場合、CCC は token 合計と stacked gauge を表示し、host custom subagent が usage event を公開しない場合は推測せず placeholder gauge と unavailable reason を表示します。
 
-登録済み custom subagent が既定の実行経路です。利用可能な custom subagent がある間は、明示的な fallback または codex override が記録されていない限り、直接の `codex exec` fallback をブロックします。
+登録済み custom subagent が既定の実行経路です。host Codex は captain として LongWay、routing、lifecycle、fan-in、review、validation、commit boundary を担当します。ordinary `$cap` の作業はまず適切な specialist に委任し、read-only 調査は `ccc_scout`、docs/operator text は `ccc_scribe`、code/config 変更は `ccc_raider`、review 判断は `ccc_arbiter` が担当します。captain が直接作業するのは、明示的な fallback、些細な operator-side 修正、または CCC が明確に degraded したと記録できる場合に限ります。
+
+利用可能な custom subagent がある間は、明示的な fallback または codex override が記録されていない限り、直接の `codex exec` fallback をブロックします。
 
 ## 推奨ロール設定
 

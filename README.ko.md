@@ -54,7 +54,9 @@ ccc check-install
 
 `--text`와 quiet lifecycle 출력에는 토큰 게이지가 항상 표시됩니다. Raw usage 이벤트가 있으면 CCC는 토큰 합계와 stacked gauge를 출력하고, host custom subagent가 usage 이벤트를 노출하지 않으면 추정 없이 placeholder gauge와 unavailable reason을 함께 출력합니다.
 
-등록된 custom subagent가 기본 실행 경로입니다. 사용 가능한 custom subagent가 있는 동안에는 명시적 fallback 또는 codex override가 기록되지 않는 한 직접 `codex exec` fallback을 막습니다.
+등록된 custom subagent가 기본 실행 경로입니다. host Codex는 captain으로서 LongWay, routing, lifecycle, fan-in, review, validation, commit boundary를 책임집니다. ordinary `$cap` 작업은 먼저 맞는 specialist에게 넘겨야 하며, read-only 조사는 `ccc_scout`, docs/operator text는 `ccc_scribe`, code/config 변경은 `ccc_raider`, review 판단은 `ccc_arbiter`가 맡습니다. captain이 직접 작업하는 경우는 명시적 fallback, 정말 사소한 operator-side 수정, 또는 CCC가 눈에 띄게 degraded 되었다고 기록할 수 있는 경우로만 제한합니다.
+
+사용 가능한 custom subagent가 있는 동안에는 명시적 fallback 또는 codex override가 기록되지 않는 한 직접 `codex exec` fallback을 막습니다.
 
 ## 추천 역할 설정
 

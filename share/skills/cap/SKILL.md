@@ -19,6 +19,8 @@ Public flow: `captain -> Way -> captain -> specialist -> captain -> ... -> end`.
 - Prefer Codex custom subagents over detached `codex exec`; keep `codex exec` as explicit fallback only.
 - `/agent` is inspection/thread switching only, not the orchestrator.
 - Do not let one specialist hand off directly to another; always return to captain.
+- Host Codex as captain owns LongWay, routing, lifecycle, fan-in, review, validation, and commit boundaries. For ordinary `$cap` work, route read-only investigation to `ccc_scout`, docs/operator text to `ccc_scribe`, code/config mutation to `ccc_raider`, and review judgment to `ccc_arbiter` via custom subagents when available. Direct captain edits/work are fallback only, trivial operator-side fixes, or recorded CCC degradation.
+- For ordinary `$cap` mutation/rewrite work, route through CCC specialists first: docs/operator text -> `ccc_scribe`, code/config mutation -> `ccc_raider`, read-only evidence -> `ccc_scout`, review judgment -> `ccc_arbiter`.
 - For ordinary `$cap`, do not call `mcp__ccc__...` tools. Use the local `ccc` CLI; MCP is diagnostics-only unless the operator asks for it.
 
 ## Active Requests
@@ -26,6 +28,8 @@ Public flow: `captain -> Way -> captain -> specialist -> captain -> ... -> end`.
 When a new `$cap` request arrives while an earlier run or subagent is still active, CCC surfaces the active run and recommends merge, replan, or reclaim handling.
 
 Host custom subagents cannot always be forcibly canceled by CCC, so captain should mark stale work as reclaimed or merged and continue from the combined latest request.
+
+If the operator intervenes while a subagent is active, route the request only through captain. Record the intervention as a bounded delta plus rationale in LongWay/task-card state, classify it as clarification-only, bounded scope amendment, or direction/risk correction, and choose exactly one action: same-worker amend if safe, reclaim if forced interruption is unsupported or scope changed materially, or reassignment to a better-fit specialist. Keep stale output visible and do not let it overwrite the chosen path unless captain explicitly merges it. Use the same bounded retry/reassign budget as dissatisfaction repair, with no unlimited amend loops, scope widening without explicit replan or re-scope, or duplicate mutable workers just for intervention.
 
 ## Compact Loop
 
@@ -48,8 +52,7 @@ Use compact CLI surfaces by default. Full JSON/status is debug-only.
    - Put raw host agent/session identifiers in `thread_id` when useful for correlation.
    - Do not claim CCC can control host Codex `/agent` Spawned/Waiting row labels.
 10. Required lifecycle order: `spawned -> completed|failed|stalled -> merged`.
-11. Subagent fan-in must be compact structured data:
-   `summary`, `status`, `evidence_paths`, `next_action`, `open_questions`, `confidence`.
+11. Subagent fan-in must be compact structured data: `summary`, `status`, `evidence_paths`, `next_action`, `open_questions`, `confidence`. If a subagent result is unsatisfactory, record the rationale and next action, keep the prior result visible, and send only one bounded repair or reassignment with a narrowed prompt.
 12. If `codex_exec_fallback_allowed=false`, do not call `ccc orchestrate` as fallback for that task-card until a terminal subagent update or explicit `fallback_reason` is recorded.
 13. Replan/resolve through compact orchestrate templates:
    `ccc orchestrate --quiet --json '{...,"compact":true}'`
@@ -70,6 +73,7 @@ Use CCC-managed custom agents when available:
 - `ccc_companion_operator`: lightweight mutation/operator-side work
 
 Do not route to generic helper agents when a matching CCC specialist exists.
+Captain owns LongWay updates, lifecycle recording, fan-in, validation, and commit boundaries. Direct captain edits are fallback only or genuinely trivial operator-side fixes.
 
 ## Parallel Lanes
 
