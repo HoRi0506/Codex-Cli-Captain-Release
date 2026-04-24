@@ -105,11 +105,13 @@ Prefer `--text`, `--quiet`, and `--json-file` for lower-noise repeated lifecycle
 Expected top block:
 
 ```text
-CCC install check: status=ok version=0.0.3 entry=$cap registration=matching_registration config=present skill=matching_install
+CCC install check: status=ok version=0.0.3 entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
+Install surface: status=current restart=not-required mcp=matching_registration skill=matching_install custom_agents=matching_sync
 ```
 
 Base install expectation:
 
-- `status=ok` when the Rust MCP registration, config file, and `$cap` skill all match the local binary
+- `status=ok` when the Rust MCP registration, config file, `$cap` skill, and CCC-managed custom agents all match the local binary
 - `status=warning` when one of those surfaces is missing or mismatched
-- custom-agent sync health is also reported in the detailed payload and summary lines
+- `installSurfaceVisibility` groups `mcp_registration`, `ccc_config`, `cap_skill`, and `custom_agents` with normalized `status`, `action_status`, `restart_status`, and summary fields
+- setup/check-install reports whether those surfaces are current, missing, stale, migrated, conflicting, unreadable, and whether setup plus Codex CLI restart is required
