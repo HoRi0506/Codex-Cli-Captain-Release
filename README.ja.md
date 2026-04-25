@@ -46,9 +46,9 @@ ccc check-install
 
 ## 設定変更の反映
 
-`~/.config/ccc/ccc-config.toml` を編集した後、Codex CLI に次を貼り付けてください。既存の `~/.config/foreman/ccc-config.toml` は fallback として読み込まれ、`ccc setup` が新しい場所へ migration します。新しく生成されるインストール用 `~/.config/ccc/ccc-config.toml` はすべての `gpt-5.4-mini` mini role に reasoning `variant = "high"` と `fast_mode = true` を使い、`ccc setup` は既存のユーザー変更済み値を保持したまま不足している生成デフォルトを補完し、古い CCC 生成デフォルトをアップグレードします。
+`~/.config/ccc/ccc-config.toml` を編集した後、Codex CLI に次を貼り付けてください。新しく生成されるインストール用 `~/.config/ccc/ccc-config.toml` はすべての `gpt-5.4-mini` mini role に reasoning `variant = "high"` と `fast_mode = true` を使い、`ccc setup` は既存のユーザー変更済み値を保持したまま不足している生成デフォルトを補完し、古い CCC 生成デフォルトをアップグレードします。
 
-生成デフォルトは captain の reasoning 品質を維持したまま、handoff のコストを下げます。設定済みの mini/specialist role はより速い service path を使い、delegated worker に渡す作業説明は必要な長さに短くし、`$cap` と custom-agent instructions も compact に保ちます。
+生成デフォルトは captain の reasoning をデフォルトで medium に維持したまま、handoff のコストを下げます。設定済みの mini/specialist role はより速い service path を使い、delegated worker に渡す作業説明は必要な長さに短くし、`$cap` と custom-agent instructions も compact に保ちます。
 
 ```text
 Run:
@@ -66,7 +66,7 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 
 | CCC role | Agent | 推奨モデル | Reasoning | 用途 |
 | --- | --- | --- | --- | --- |
-| `orchestrator` | `captain` | `gpt-5.5` | `high` | LongWay 管理と最終ルーティング判断 |
+| `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay 管理と最終ルーティング判断 |
 | `way` | `tactician` | `gpt-5.5` | `medium` | 計画と次の作業選択 |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | 読み取り専用の repo 調査 |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | コード/config の変更と修復 |

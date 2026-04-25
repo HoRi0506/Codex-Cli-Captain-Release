@@ -46,9 +46,9 @@ For updates, run the same install command again. It downloads the current releas
 
 ## Reapply Config Changes
 
-After editing `~/.config/ccc/ccc-config.toml`, paste this into Codex CLI. Existing `~/.config/foreman/ccc-config.toml` installs are read as a fallback and migrated by `ccc setup`. Fresh installs generate `~/.config/ccc/ccc-config.toml` with every `gpt-5.4-mini` mini role set to reasoning `variant = "high"` and `fast_mode = true`, and `ccc setup` preserves any existing user-customized values while backfilling missing generated defaults or upgrading stale CCC-generated defaults.
+After editing `~/.config/ccc/ccc-config.toml`, paste this into Codex CLI.  Fresh installs generate `~/.config/ccc/ccc-config.toml` with every `gpt-5.4-mini` mini role set to reasoning `variant = "high"` and `fast_mode = true`, and `ccc setup` preserves any existing user-customized values while backfilling missing generated defaults or upgrading stale CCC-generated defaults.
 
-Generated defaults keep the captain's reasoning quality unchanged while making handoffs cheaper: configured mini/specialist roles stay on the faster service path, copied task details are shortened before they are sent to delegated workers, and the refreshed `$cap` skill plus custom-agent instructions stay compact while the active-specialist drift guardrail keeps stale output from silently overriding the captain's chosen path.
+Generated defaults keep the captain reasoning at medium by default while making handoffs cheaper: configured mini/specialist roles stay on the faster service path, copied task details are shortened before they are sent to delegated workers, and the refreshed `$cap` skill plus custom-agent instructions stay compact while the active-specialist drift guardrail keeps stale output from silently overriding the captain's chosen path.
 
 ```text
 Run:
@@ -66,7 +66,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 
 | CCC role | Agent | Recommended model | Reasoning | Notes |
 | --- | --- | --- | --- | --- |
-| `orchestrator` | `captain` | `gpt-5.5` | `high` | LongWay ownership and final routing judgment |
+| `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay ownership and final routing judgment |
 | `way` | `tactician` | `gpt-5.5` | `medium` | Planning and bounded next-move selection |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |

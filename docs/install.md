@@ -104,10 +104,7 @@ For a local no-download check across installer and builder asset names plus the 
 - registers or refreshes the MCP entrypoint
 - creates `~/.config/ccc/ccc-config.toml` on first install using the canonical shared-config format
 - reuses the existing `~/.config/ccc/ccc-config.toml` when it is already present
-- migrates or reads the previous `~/.config/foreman/ccc-config.toml` fallback when present
 - backfills missing `companion_agents` / `tool_routing` defaults (including `gh` routing) in existing `ccc-config.toml` files while preserving user-customized values
-- migrates legacy `~/.config/foreman/foreman-config.toml` when present
-- migrates legacy `~/.config/foreman/foreman-config.json` when present
 - installs or refreshes the packaged `$cap` skill
 - syncs CCC-managed Codex custom agents under `CODEX_HOME/agents`
 
@@ -121,7 +118,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 
 | CCC role | Agent | Recommended model | Reasoning | Notes |
 | --- | --- | --- | --- | --- |
-| `orchestrator` | `captain` | `gpt-5.5` | `high` | LongWay ownership and final routing judgment |
+| `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay ownership and final routing judgment |
 | `way` | `tactician` | `gpt-5.5` | `medium` | Planning and bounded next-move selection |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |

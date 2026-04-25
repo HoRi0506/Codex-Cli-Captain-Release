@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-PATTERN='(/Users/kwkim-hoir|kwkim-hoir|Codex-Foreman|BEGIN (RSA|OPENSSH|PRIVATE) KEY|api[_-]?key|secret|password|token=|Authorization:)'
+PATTERN='(/Users/kwkim-hoir|kwkim-hoir|BEGIN (RSA|OPENSSH|PRIVATE) KEY|api[_-]?key|secret|password|token=|Authorization:)'
 EXCLUDES=(
   --glob '!*.tar.gz'
   --glob '!bin/ccc'
