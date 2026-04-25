@@ -113,7 +113,7 @@ For a local no-download check across installer and builder asset names plus the 
 
 The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values.
 
-Captain keeps its configured reasoning quality; token/speed tuning focuses on fast mini/specialist service tiers, shorter delegated worker prompt excerpts, and compact packaged `$cap` plus custom-agent instructions.
+Captain keeps its configured reasoning quality; token/speed tuning focuses on fast mini/specialist service tiers, delegated worker scope/acceptance/task excerpts capped at 420/280/900 characters, and compact packaged `$cap` plus custom-agent instructions.
 
 ## Recommended Role Defaults
 

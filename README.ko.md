@@ -48,7 +48,7 @@ ccc check-install
 
 `~/.config/ccc/ccc-config.toml`을 수정한 뒤 Codex CLI에 아래 문구를 붙여넣으세요. 기존 `~/.config/foreman/ccc-config.toml` 설치는 fallback으로 읽고 `ccc setup`이 새 위치로 마이그레이션합니다. 새로 생성된 설치용 `~/.config/ccc/ccc-config.toml`은 모든 `gpt-5.4-mini` mini role에 reasoning `variant = "high"`와 `fast_mode = true`를 사용하며, `ccc setup`은 기존에 사용자가 수정한 값을 유지한 채 빠진 생성 기본값을 채우고 오래된 CCC 생성 기본값은 업그레이드합니다.
 
-생성 기본값은 captain reasoning 품질은 유지하고, 설정된 mini/specialist role은 fast service를 사용하며, delegated worker prompt excerpt 길이와 `$cap`/custom-agent 지시문을 압축해 토큰 overhead를 줄입니다.
+생성 기본값은 captain reasoning 품질은 유지하고, 설정된 mini/specialist role은 fast service를 사용하며, delegated worker scope/acceptance/task prompt excerpt를 420/280/900자로 제한하고 `$cap`/custom-agent 지시문을 압축해 토큰 overhead를 줄입니다.
 
 ```text
 Run:
