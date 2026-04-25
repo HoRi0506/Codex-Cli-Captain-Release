@@ -2,6 +2,8 @@
 
 Use this guide for the Rust-only `0.0.4` release bundle.
 
+> Beta notice: `0.0.4` is still a beta release. macOS is the primary verified path. Linux and Windows install/run surfaces are included, but they may not work reliably in every environment yet.
+
 ## Quick Install & Update
 
 macOS and Linux:
@@ -109,7 +111,9 @@ For a local no-download check across installer and builder asset names plus the 
 - installs or refreshes the packaged `$cap` skill
 - syncs CCC-managed Codex custom agents under `CODEX_HOME/agents`
 
-The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set the `gpt-5.4-mini` mini roles (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values.
+The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values.
+
+Captain keeps its configured reasoning quality; token/speed tuning focuses on fast mini/specialist service tiers, shorter delegated worker prompt excerpts, and compact packaged `$cap` plus custom-agent instructions.
 
 ## Recommended Role Defaults
 

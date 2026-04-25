@@ -12,6 +12,8 @@
 
 Current public release: `0.0.4`.
 
+> Beta notice: `0.0.4` is still a beta release. macOS is the primary verified path. Linux and Windows install/run surfaces are included, but they may not work reliably in every environment yet.
+
 Codex CLI is already smart. Want to use that intelligence with a little more structure? New higher-budget plans are here, and your work deserves a captain that spends that budget on a reasonable path, not random wandering. Welcome to CCC: add `$cap` to your request, and Codex-Cli-Captain will guide the work through a captain-led process before returning the result.
 
 ## Install & Update
@@ -44,7 +46,9 @@ For updates, run the same install command again. It downloads the current releas
 
 ## Reapply Config Changes
 
-After editing `~/.config/ccc/ccc-config.toml`, paste this into Codex CLI. Existing `~/.config/foreman/ccc-config.toml` installs are read as a fallback and migrated by `ccc setup`. Fresh installs generate `~/.config/ccc/ccc-config.toml` with the `gpt-5.4-mini` mini roles set to `variant = "high"` and `fast_mode = true`, and `ccc setup` preserves any existing user-customized values while backfilling missing generated defaults or upgrading stale CCC-generated defaults.
+After editing `~/.config/ccc/ccc-config.toml`, paste this into Codex CLI. Existing `~/.config/foreman/ccc-config.toml` installs are read as a fallback and migrated by `ccc setup`. Fresh installs generate `~/.config/ccc/ccc-config.toml` with every `gpt-5.4-mini` mini role set to reasoning `variant = "high"` and `fast_mode = true`, and `ccc setup` preserves any existing user-customized values while backfilling missing generated defaults or upgrading stale CCC-generated defaults.
+
+Generated defaults keep captain reasoning quality unchanged, keep mini/specialist roles on fast service where configured, cap delegated worker prompt excerpts, and use compact `$cap`/custom-agent instructions to reduce token overhead.
 
 ```text
 Run:

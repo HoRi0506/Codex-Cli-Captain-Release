@@ -20,8 +20,10 @@
     ".gitignore",
     "bin",
     "install.sh",
+    "install.ps1",
     "share",
     "docs",
+    "scripts",
     "release-repo-manifest.json"
   ]
 }

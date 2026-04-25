@@ -73,7 +73,7 @@ fi
 
 mkdir -p "${STAGE_DIR}" "${EXTRACT_DIR}"
 
-for entry in README.md README.ko.md README.ja.md install.sh install.ps1 release-repo-manifest.json bin share docs; do
+for entry in README.md README.ko.md README.ja.md install.sh install.ps1 release-repo-manifest.json bin share docs scripts; do
   if [ -e "${REPO_ROOT}/${entry}" ]; then
     cp -R "${REPO_ROOT}/${entry}" "${STAGE_DIR}/${entry}"
   fi

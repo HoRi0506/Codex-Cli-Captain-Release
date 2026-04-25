@@ -12,6 +12,8 @@
 
 현재 공개 버전: `0.0.4`.
 
+> 베타 안내: `0.0.4`는 아직 베타 릴리즈입니다. macOS가 우선 검증 경로입니다. Linux와 Windows 설치/실행 표면도 포함되어 있지만, 환경에 따라 아직 정상 동작하지 않을 수 있습니다.
+
 Codex CLI는 이미 똑똑합니다. 그 똑똑함을 조금 더 잘 활용하고 싶으신가요? 100달러 요금제도 나왔고, 이제는 모델을 더 막연히 쓰기보다 합리적인 과정으로 쓰고 싶을 때입니다. CCC에 오신 것을 환영합니다. 이제 요청 앞에 `$cap`만 붙이면, Codex-Cli-Captain이 captain-led 흐름으로 작업을 정리하고 적절한 에이전트를 거쳐 결과를 돌려줍니다.
 
 ## 설치 및 업데이트
@@ -44,7 +46,9 @@ ccc check-install
 
 ## 설정 변경 반영
 
-`~/.config/ccc/ccc-config.toml`을 수정한 뒤 Codex CLI에 아래 문구를 붙여넣으세요. 기존 `~/.config/foreman/ccc-config.toml` 설치는 fallback으로 읽고 `ccc setup`이 새 위치로 마이그레이션합니다. 새로 생성된 설치용 `~/.config/ccc/ccc-config.toml`은 `gpt-5.4-mini` mini role에 `variant = "high"`와 `fast_mode = true`를 사용하며, `ccc setup`은 기존에 사용자가 수정한 값을 유지한 채 빠진 생성 기본값을 채우고 오래된 CCC 생성 기본값은 업그레이드합니다.
+`~/.config/ccc/ccc-config.toml`을 수정한 뒤 Codex CLI에 아래 문구를 붙여넣으세요. 기존 `~/.config/foreman/ccc-config.toml` 설치는 fallback으로 읽고 `ccc setup`이 새 위치로 마이그레이션합니다. 새로 생성된 설치용 `~/.config/ccc/ccc-config.toml`은 모든 `gpt-5.4-mini` mini role에 reasoning `variant = "high"`와 `fast_mode = true`를 사용하며, `ccc setup`은 기존에 사용자가 수정한 값을 유지한 채 빠진 생성 기본값을 채우고 오래된 CCC 생성 기본값은 업그레이드합니다.
+
+생성 기본값은 captain reasoning 품질은 유지하고, 설정된 mini/specialist role은 fast service를 사용하며, delegated worker prompt excerpt 길이와 `$cap`/custom-agent 지시문을 압축해 토큰 overhead를 줄입니다.
 
 ```text
 Run:
