@@ -62,7 +62,7 @@ ccc check-install
 
 ## Recommended Role Defaults
 
-For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `$cap` workflows can spend more Codex usage through repeated captain and specialist handoffs. Adjust reasoning by your working style, task risk, and observed token usage: keep higher reasoning for broad planning, risky code changes, or reviews, and lower it for narrow, repetitive, or low-risk tasks.
+For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `$cap` workflows can spend more Codex usage through repeated captain and specialist handoffs. Adjust reasoning by your working style and task risk: keep higher reasoning for broad planning, risky code changes, or reviews, and lower it for narrow, repetitive, or low-risk tasks.
 
 | CCC role | Agent | Recommended model | Reasoning | Notes |
 | --- | --- | --- | --- | --- |
@@ -76,10 +76,6 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | Low-cost bounded git/gh mutation and narrow tool work |
 
 `gpt-5.5` is recommended for the high-value roles when Codex is signed in with ChatGPT. If it is unavailable in the current account or execution path, use `gpt-5.4` for those roles until rollout reaches that path.
-
-## Token & Context Visibility
-
-`ccc status --text` and quiet lifecycle lines show token gauges when raw usage is available. Host custom subagents can also report `context_tokens` or `estimated_context_tokens` through `ccc subagent-update`; when raw token usage is unavailable but a context estimate is recorded, status shows `Context: <amount> estimated`, agent-by-agent context breakdown, and `token_usage_visibility.status=context_available`.
 
 ## Release Note
 
