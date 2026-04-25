@@ -93,6 +93,17 @@ cleanup() {
 }
 trap cleanup EXIT
 
+prune_old_release_bundles() {
+  local candidate
+
+  for candidate in "${RELEASES_DIR}"/*-"${OS}"-"${ARCH}"; do
+    if [ ! -d "$candidate" ] || [ "$candidate" = "$BUNDLE_DIR" ]; then
+      continue
+    fi
+    rm -rf "$candidate"
+  done
+}
+
 mkdir -p "$EXTRACT_DIR" "$BIN_DIR" "$INSTALL_ROOT" "$RELEASES_DIR"
 
 echo "Downloading ${ASSET}..."
@@ -136,6 +147,8 @@ echo "Running setup..."
 echo
 echo "Running check-install..."
 "${TARGET_DIR}/bin/ccc" check-install
+
+prune_old_release_bundles
 
 echo
 echo "Install complete."
