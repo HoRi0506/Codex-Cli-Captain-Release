@@ -48,7 +48,7 @@ For updates, run the same install command again. It downloads the current releas
 
 After editing `~/.config/ccc/ccc-config.toml`, paste this into Codex CLI. Existing `~/.config/foreman/ccc-config.toml` installs are read as a fallback and migrated by `ccc setup`. Fresh installs generate `~/.config/ccc/ccc-config.toml` with every `gpt-5.4-mini` mini role set to reasoning `variant = "high"` and `fast_mode = true`, and `ccc setup` preserves any existing user-customized values while backfilling missing generated defaults or upgrading stale CCC-generated defaults.
 
-Generated defaults keep captain reasoning quality unchanged, keep mini/specialist roles on fast service where configured, cap delegated worker scope/acceptance/task prompt excerpts at 420/280/900 characters, and use compact `$cap`/custom-agent instructions to reduce token overhead.
+Generated defaults keep the captain's reasoning quality unchanged while making handoffs cheaper: configured mini/specialist roles stay on the faster service path, copied task details are shortened before they are sent to delegated workers, and `$cap` plus custom-agent instructions stay compact.
 
 ```text
 Run:
@@ -60,23 +60,7 @@ Then run:
 ccc check-install
 ```
 
-## Active Runs And Parallel Work
-
-When a new `$cap` request arrives while an earlier run or subagent is still active, CCC now surfaces that active run and recommends merge, replan, or reclaim handling. Host custom subagents cannot always be forcibly canceled by CCC, so the captain records stale work honestly and continues from the combined latest request.
-
-If Codex reports file-descriptor pressure such as `Too many open files (os error 24)`, pause new reviewer or specialist launches. Keep the work single-path until each active host agent has a terminal lifecycle update, is merged or reclaimed by captain, and is closed in the host session so thread/file handles are released.
-
-- scout lanes default to 2 read-only lanes for broad investigation, max 4
-- raider lanes default to 2 lanes for broad or multi-file mutation, max 4
-- single-file or shared-scope mutation stays sequential
-
-Token gauges are always visible in `--text` and quiet lifecycle output. When raw usage events are available, CCC prints totals and a stacked gauge; when host custom subagents do not expose usage events, CCC prints a placeholder gauge with an explicit unavailable reason instead of guessing. Structured status/activity payloads also expose `token_usage_visibility.status` and `token_usage_visibility.unavailable_reason_code`. Review pressure also accounts for active runs, stale/reclaim-needed workers, file-handle pressure, token soft limits, low OS memory availability, and single-thread CPU pressure before adding reviewer load.
-
-Registered custom subagents are the default execution path. Host Codex as captain owns LongWay, routing, lifecycle, fan-in, review, validation, and commit boundaries. Ordinary `$cap` work should go to the matching specialist first: read-only investigation to `ccc_scout`, docs/operator text to `ccc_scribe`, code/config mutation to `ccc_raider`, and review judgment to `ccc_arbiter`. Route-backed lightweight filesystem/docs/fetch/git/gh work should use the configured companion owner: git and `gh` reads go to `companion_reader`, and git or `gh` mutations go to `companion_operator` unless the captain records fallback/degradation. The captain should only do the work directly for explicit fallback, trivial operator-side fixes, or recorded CCC degradation.
-
-Direct `codex exec` fallback is blocked while a custom subagent is available unless an explicit fallback or codex override is recorded.
-
-For release notes, plans, checklists, and other `.md`-backed requests where the operator asks CCC to finish or continue work to completion, CCC records completion discipline in run/status surfaces. The captain should derive remaining items from the referenced source and continue bounded slices until each in-scope item is complete, explicitly deferred, or blocked on a concrete operator decision.
+For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `$cap` workflows can spend more Codex usage through repeated captain and specialist handoffs. Adjust reasoning by your working style, task risk, and observed token usage: keep higher reasoning for broad planning, risky code changes, or reviews, and lower it for narrow, repetitive, or low-risk tasks.
 
 ## Recommended Role Defaults
 

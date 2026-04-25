@@ -48,7 +48,7 @@ ccc check-install
 
 `~/.config/ccc/ccc-config.toml`을 수정한 뒤 Codex CLI에 아래 문구를 붙여넣으세요. 기존 `~/.config/foreman/ccc-config.toml` 설치는 fallback으로 읽고 `ccc setup`이 새 위치로 마이그레이션합니다. 새로 생성된 설치용 `~/.config/ccc/ccc-config.toml`은 모든 `gpt-5.4-mini` mini role에 reasoning `variant = "high"`와 `fast_mode = true`를 사용하며, `ccc setup`은 기존에 사용자가 수정한 값을 유지한 채 빠진 생성 기본값을 채우고 오래된 CCC 생성 기본값은 업그레이드합니다.
 
-생성 기본값은 captain reasoning 품질은 유지하고, 설정된 mini/specialist role은 fast service를 사용하며, delegated worker scope/acceptance/task prompt excerpt를 420/280/900자로 제한하고 `$cap`/custom-agent 지시문을 압축해 토큰 overhead를 줄입니다.
+생성 기본값은 captain의 reasoning 품질은 그대로 유지하면서 handoff 비용을 줄입니다. 설정된 mini/specialist role은 더 빠른 service 경로를 유지하고, delegated worker에게 넘기는 작업 설명은 필요한 길이로 줄이며, `$cap`과 custom-agent 지시문도 compact하게 유지합니다.
 
 ```text
 Run:
@@ -60,21 +60,7 @@ Then run:
 ccc check-install
 ```
 
-## 활성 Run과 병렬 작업
-
-이전 run이나 subagent가 아직 active 상태일 때 새 `$cap` 요청이 들어오면, CCC는 기존 active run을 보여주고 merge, replan, reclaim 중 어떤 처리가 필요한지 권고합니다. 호스트 custom subagent는 CCC가 항상 강제로 취소할 수 있는 대상이 아니므로, captain이 stale 작업을 기록하고 최신 요청과 합쳐서 이어갑니다.
-
-Codex가 `Too many open files (os error 24)` 같은 file descriptor 압박을 보고하면 새 reviewer나 specialist를 더 열지 않습니다. 각 active host agent를 terminal lifecycle update로 기록하고, captain이 merge 또는 reclaim한 뒤, host session에서 해당 agent를 close해서 thread/file handle이 해제될 때까지 단일 경로로 진행합니다.
-
-- scout는 넓은 조사에서 기본 2개의 읽기 전용 lane을 사용하고 최대 4개까지 확장합니다
-- raider는 넓거나 여러 파일을 수정하는 작업에서 기본 2개 lane을 사용하고 최대 4개까지 확장합니다
-- 단일 파일 또는 공유 범위 수정은 순차 실행을 유지합니다
-
-`--text`와 quiet lifecycle 출력에는 토큰 게이지가 항상 표시됩니다. Raw usage 이벤트가 있으면 CCC는 토큰 합계와 stacked gauge를 출력하고, host custom subagent가 usage 이벤트를 노출하지 않으면 추정 없이 placeholder gauge와 unavailable reason을 함께 출력합니다. Structured status/activity payload도 `token_usage_visibility.status`와 `token_usage_visibility.unavailable_reason_code`를 노출합니다. 리뷰 압박 판단은 active run, stale/reclaim-needed worker, file-handle pressure, token soft limit, 낮은 OS memory availability, single-thread CPU pressure도 함께 봅니다.
-
-등록된 custom subagent가 기본 실행 경로입니다. host Codex는 captain으로서 LongWay, routing, lifecycle, fan-in, review, validation, commit boundary를 책임집니다. ordinary `$cap` 작업은 먼저 맞는 specialist에게 넘겨야 하며, read-only 조사는 `ccc_scout`, docs/operator text는 `ccc_scribe`, code/config 변경은 `ccc_raider`, review 판단은 `ccc_arbiter`가 맡습니다. Route-backed lightweight filesystem/docs/fetch/git/gh 작업은 설정된 companion owner를 사용해야 합니다. Git과 `gh` 읽기는 `companion_reader`, git 또는 `gh` 변경은 captain이 fallback/degradation을 기록하지 않는 한 `companion_operator`가 맡습니다. captain이 직접 작업하는 경우는 명시적 fallback, 정말 사소한 operator-side 수정, 또는 CCC가 눈에 띄게 degraded 되었다고 기록할 수 있는 경우로만 제한합니다.
-
-사용 가능한 custom subagent가 있는 동안에는 명시적 fallback 또는 codex override가 기록되지 않는 한 직접 `codex exec` fallback을 막습니다.
+CCC를 자주 사용한다면 ChatGPT Pro $100 요금제를 시작점으로 권장합니다. `$cap` workflow는 captain과 specialist handoff를 반복하면서 Codex 사용량을 더 많이 쓸 수 있기 때문입니다. Reasoning은 사용자의 작업 스타일, 작업 위험도, 실제 토큰 사용량에 맞춰 조정하세요. 넓은 계획, 위험한 코드 변경, 리뷰에는 높은 reasoning을 유지하고, 좁고 반복적이거나 위험이 낮은 작업에는 낮춰도 됩니다.
 
 ## 추천 역할 설정
 
