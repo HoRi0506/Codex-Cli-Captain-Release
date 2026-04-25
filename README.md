@@ -77,6 +77,10 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 
 `gpt-5.5` is recommended for the high-value roles when Codex is signed in with ChatGPT. If it is unavailable in the current account or execution path, use `gpt-5.4` for those roles until rollout reaches that path.
 
+## Token & Context Visibility
+
+`ccc status --text` and quiet lifecycle lines show token gauges when raw usage is available. Host custom subagents can also report `context_tokens` or `estimated_context_tokens` through `ccc subagent-update`; when raw token usage is unavailable but a context estimate is recorded, status shows `Context: <amount> estimated`, agent-by-agent context breakdown, and `token_usage_visibility.status=context_available`.
+
 ## Release Note
 
 - [`docs/release/notes/v0.0.4.md`](./docs/release/notes/v0.0.4.md): current public release card body

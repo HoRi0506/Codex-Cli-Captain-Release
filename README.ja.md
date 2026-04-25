@@ -76,3 +76,7 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | 低コストの git/gh 変更と狭い tool 実行 |
 
 `gpt-5.5` は ChatGPT 認証の Codex で高価値ロールに推奨されるモデルです。現在のアカウントや実行経路でまだ利用できない場合、そのロールは rollout が届くまで `gpt-5.4` を使います。
+
+## トークンとコンテキスト表示
+
+`ccc status --text` と quiet lifecycle line は、raw usage がある場合に token gauge を表示します。Host custom subagent は `ccc subagent-update` で `context_tokens` または `estimated_context_tokens` も記録できます。raw token usage がなく、context 推定値しかない場合、status は `Context: <amount> estimated`、agent 別 context breakdown、`token_usage_visibility.status=context_available` を表示します。
