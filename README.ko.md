@@ -12,7 +12,7 @@
 
 현재 공개 버전: `0.0.5-pre`.
 
-> 사전 릴리즈 안내: `0.0.5-pre`는 아직 사전 릴리즈입니다. 현재 게시된 pre-release asset은 `darwin-arm64`입니다. Linux, Windows, 다른 platform asset은 아직 이 pre-release에 게시하지 않았습니다.
+> 사전 릴리즈 안내: `0.0.5-pre`는 아직 사전 릴리즈입니다. macOS는 공식 지원 경로이며, macOS arm64는 로컬에서 설치와 동작을 확인했습니다. Linux/Windows asset은 초기 테스트용으로 제공되며 같은 `ccc setup` / `ccc check-install` 흐름을 사용할 것으로 기대하지만, 실제 Linux/Windows 환경에서의 검증은 아직 충분하지 않습니다.
 
 Codex CLI는 이미 똑똑합니다. 그 똑똑함을 조금 더 잘 활용하고 싶으신가요? 100달러 요금제도 나왔고, 이제는 모델을 더 막연히 쓰기보다 합리적인 과정으로 쓰고 싶을 때입니다. CCC에 오신 것을 환영합니다. 이제 요청 앞에 `$cap`만 붙이면, Codex-Cli-Captain이 captain-led 흐름으로 작업을 정리하고 적절한 에이전트를 거쳐 결과를 돌려줍니다.
 

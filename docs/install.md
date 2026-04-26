@@ -2,7 +2,7 @@
 
 Use this guide for the Rust-only `0.0.5-pre` release bundle.
 
-> Pre-release notice: `0.0.5-pre` is still a pre-release. The published pre-release asset is currently `darwin-arm64`; Linux, Windows, and other platform assets are not published for this pre-release yet.
+> Pre-release notice: `0.0.5-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 ## Quick Install & Update
 
@@ -38,6 +38,12 @@ Supported release asset platforms are:
 - `windows-arm64`
 
 The Bash installer performs native installs on macOS and Linux. The PowerShell installer performs native installs on Windows and supports `windows-x86_64` and `windows-arm64`.
+
+Platform support status:
+
+- macOS: officially supported; macOS arm64 is locally tested.
+- Linux: early-testing asset path; not fully verified on real Linux environments yet.
+- Windows: early-testing asset path; not fully verified on real Windows environments yet.
 
 For updates, run the same install command again. The installer downloads the selected release asset, updates `~/.local/share/ccc/current` and the linked `ccc` binary, then refreshes setup and check-install.
 

@@ -12,7 +12,7 @@
 
 現在の公開バージョン: `0.0.5-pre`.
 
-> プレリリース注意: `0.0.5-pre` はまだプレリリースです。現在公開している pre-release asset は `darwin-arm64` です。Linux、Windows、その他 platform asset はこの pre-release ではまだ公開していません。
+> プレリリース注意: `0.0.5-pre` はまだプレリリースです。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ `ccc setup` / `ccc check-install` の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。
 
 Codex CLI はすでに賢いツールです。その賢さをもう少し構造的に使いたいと思いませんか。より大きな利用枠のプランも登場し、ただ試行錯誤するだけではなく、納得できる手順で結果を得たい場面が増えています。CCC へようこそ。リクエストの先頭に `$cap` を付けるだけで、Codex-Cli-Captain が captain-led の流れで作業を整理し、適切なエージェントを通して結果を返します。
 

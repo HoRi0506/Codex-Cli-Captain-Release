@@ -12,7 +12,7 @@
 
 Current public release: `0.0.5-pre`.
 
-> Pre-release notice: `0.0.5-pre` is still a pre-release. The published pre-release asset is currently `darwin-arm64`; Linux, Windows, and other platform assets are not published for this pre-release yet.
+> Pre-release notice: `0.0.5-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 Codex CLI is already smart. Want to use that intelligence with a little more structure? New higher-budget plans are here, and your work deserves a captain that spends that budget on a reasonable path, not random wandering. Welcome to CCC: add `$cap` to your request, and Codex-Cli-Captain will guide the work through a captain-led process before returning the result.
 
