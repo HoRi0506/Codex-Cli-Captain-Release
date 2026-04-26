@@ -108,7 +108,7 @@ For a local no-download check across installer and builder asset names plus the 
 - installs or refreshes the packaged `$cap` skill
 - syncs CCC-managed Codex custom agents under `CODEX_HOME/agents`
 
-The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values.
+The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values, including the `way`/tactician default from `gpt-5.5` `medium` to `gpt-5.5` `high`.
 
 Captain keeps its configured reasoning quality; token/speed tuning focuses on fast mini/specialist service tiers, delegated worker scope/acceptance/task excerpts capped at 420/280/900 characters, and compact packaged `$cap` plus custom-agent instructions.
 
@@ -119,7 +119,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 | CCC role | Agent | Recommended model | Reasoning | Notes |
 | --- | --- | --- | --- | --- |
 | `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay ownership and final routing judgment |
-| `way` | `tactician` | `gpt-5.5` | `medium` | Planning and bounded next-move selection |
+| `way` | `tactician` | `gpt-5.5` | `high` | Planning and bounded next-move selection |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README, release notes, and operator text |

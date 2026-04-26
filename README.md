@@ -67,7 +67,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 | CCC role | Agent | Recommended model | Reasoning | Notes |
 | --- | --- | --- | --- | --- |
 | `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay ownership and final routing judgment |
-| `way` | `tactician` | `gpt-5.5` | `medium` | Planning and bounded next-move selection |
+| `way` | `tactician` | `gpt-5.5` | `high` | Planning and bounded next-move selection |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README, release notes, and operator text |

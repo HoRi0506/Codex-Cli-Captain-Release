@@ -67,7 +67,7 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 | CCC role | Agent | 推奨モデル | Reasoning | 用途 |
 | --- | --- | --- | --- | --- |
 | `orchestrator` | `captain` | `gpt-5.5` | `medium` | LongWay 管理と最終ルーティング判断 |
-| `way` | `tactician` | `gpt-5.5` | `medium` | 計画と次の作業選択 |
+| `way` | `tactician` | `gpt-5.5` | `high` | 計画と次の作業選択 |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | 読み取り専用の repo 調査 |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | コード/config の変更と修復 |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README、リリースノート、利用者向け文言 |
