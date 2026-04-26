@@ -80,11 +80,3 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 ## Release Note
 
 - [`docs/release/notes/v0.0.5.md`](./docs/release/notes/v0.0.5.md): pre-release card body
-
-## 0.0.5 Pre-Release Planning
-
-The source repo is preparing `0.0.5-pre` around the captain-constrained MCP control plane, no-mutation preflight, and reducing `$cap` toward bootstrap guidance. Keep this release repo on `0.0.5-pre` until that pre-release runtime, docs, and validation are ready to publish.
-
-The pre-release card body lives at `docs/release/notes/v0.0.5.md`. The public release tree keeps `share/skills/cap/SKILL.md` as a thin placeholder; `scripts/build-release-asset.sh` swaps in the authoritative skill from the source repo when it builds an installable asset, so browsing the release repo no longer exposes the full installable skill text.
-
-The release-repo history rewrite decision remains deferred until an explicit release-operator call.

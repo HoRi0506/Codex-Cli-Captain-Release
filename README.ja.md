@@ -76,11 +76,3 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | 低コストの git/gh 変更と狭い tool 実行 |
 
 `gpt-5.5` は ChatGPT 認証の Codex で高価値ロールに推奨されるモデルです。現在のアカウントや実行経路でまだ利用できない場合、そのロールは rollout が届くまで `gpt-5.4` を使います。
-
-## 0.0.5 Pre-Release Planning
-
-ソース repo は captain-constrained MCP control plane、no-mutation preflight、そして `$cap` skill を bootstrap guidance へ縮小する方向で `0.0.5-pre` を準備中です。その pre-release runtime、docs、validation が public release の準備状態になるまで、この release repo は `0.0.5-pre` 基準で維持します。
-
-pre-release card 本文は `docs/release/notes/v0.0.5.md` にあります。public release tree は `share/skills/cap/SKILL.md` を薄い placeholder のままにし、`scripts/build-release-asset.sh` が installable asset を作るときに source repo の authoritative skill に差し替えるため、release repo を閲覧しても installable skill 全文は露出しません。
-
-release-repo の history rewrite は、明示的な release-operator の決定があるまで deferred のままにします。
