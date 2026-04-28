@@ -1,4 +1,4 @@
-# Codex-Cli-Captain-Release
+# Codex-Cli-Captain
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -10,11 +10,20 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
+<p align="center"><em>Codex CLI는 이미 똑똑하지만, end-to-end 작업을 길게 돌리다 보면 토큰 비용과 drift가 신경 쓰이기 시작합니다. 그런 일이 생기면 CCC를 써 보세요. CCC는 더 큰 작업을 captain-led <code>$cap</code> 흐름으로 돌리고 싶은 Codex CLI 사용자를 위한 도구로, 계획, 조사, 구현, 검토를 역할별 에이전트로 나누고, 진행 상황과 담당을 보이게 유지하며, 작업에 맞는 모델을 골라 토큰 비용과 실패 위험을 줄입니다.</em></p>
+
 현재 공개 버전: `0.0.6-pre`.
 
-> 사전 릴리즈 안내: `0.0.6-pre`는 아직 사전 릴리즈입니다. macOS는 공식 지원 경로이며, macOS arm64는 로컬에서 설치와 동작을 확인했습니다. Linux/Windows asset은 초기 테스트용으로 제공되며 같은 `ccc setup` / `ccc check-install` 흐름을 사용할 것으로 기대하지만, 실제 Linux/Windows 환경에서의 검증은 아직 충분하지 않습니다.
+<table>
+<tr>
+<td>
 
-> **CCC 포지셔닝:** Codex CLI는 이미 똑똑합니다. CCC는 더 큰 개발 작업을 더 분명하게 운영하고 싶은 Codex CLI 사용자를 위한 captain-led `$cap` 흐름을 더합니다. 계획, 조사, 구현, 검토를 역할별 에이전트에게 맡기고, 진행 상황과 담당을 보이게 유지하며, 작업에 맞는 모델을 써서 토큰 비용을 줄이고 실패 위험도 낮춥니다.
+<strong>주의 - 사전 릴리즈 기본 권장 경로</strong><br><br>
+<code>0.0.6-pre</code>는 아직 사전 릴리즈입니다. macOS는 공식 지원 경로이며, macOS arm64는 로컬에서 설치와 동작을 확인했습니다. Linux/Windows asset은 초기 테스트용으로 제공되며 같은 <code>ccc setup</code> / <code>ccc check-install</code> 흐름을 사용할 것으로 기대하지만, 실제 Linux/Windows 환경에서의 검증은 아직 충분하지 않습니다.
+
+</td>
+</tr>
+</table>
 
 ## 설치 및 업데이트
 

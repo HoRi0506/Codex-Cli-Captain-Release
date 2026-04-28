@@ -1,4 +1,4 @@
-# Codex-Cli-Captain-Release
+# Codex-Cli-Captain
 
 <p align="center">
   <a href="./README.md">English</a> ·
@@ -10,11 +10,20 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
+<p align="center"><em>Codex CLI is already smart, but end-to-end work can make token cost and drift start to matter. When that happens, try CCC. It is for Codex CLI users who want a captain-led <code>$cap</code> flow for larger work: planning, investigation, implementation, and review are split across role-specific agents, progress and ownership stay visible, and task-appropriate models help reduce token cost and failure risk.</em></p>
+
 Current public release: `0.0.6-pre`.
 
-> Pre-release notice: `0.0.6-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
+<table>
+<tr>
+<td>
 
-> **CCC positioning:** Codex CLI is already smart, and CCC adds a captain-led `$cap` workflow for Codex CLI users who want a clearer way to run larger development work. It routes planning, investigation, implementation, and review to role-specific agents, keeps progress and ownership visible, and chooses the right model for each task so you spend fewer tokens and reduce failure risk.
+<strong>CAUTION - PRE-RELEASE DEFAULT PATH</strong><br><br>
+<code>0.0.6-pre</code> is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same <code>ccc setup</code> / <code>ccc check-install</code> flow, but they have not yet been fully verified on real Linux or Windows environments.
+
+</td>
+</tr>
+</table>
 
 ## Install & Update
 
