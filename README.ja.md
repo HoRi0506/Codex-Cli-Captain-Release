@@ -10,7 +10,11 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
-<p align="center"><em>Codex CLI はすでに賢いですが、エンドツーエンドの作業が大きくなるとトークンコストや drift が気になってきます。そんなときは CCC を試してください。CCC は、より大きな作業を captain-led <code>$cap</code> 流れで回したい Codex CLI ユーザー向けに、計画、調査、実装、レビューをロール別エージェントへ分け、進捗と担当を見えるままに保ち、作業に合ったモデルを選んでトークンコストと失敗リスクを下げます。</em></p>
+<p align="center"><em>Codex CLI で end-to-end の作業を進めたいですか？<br>
+でも、高性能モデルで end-to-end を回すのは少し気になりますか？<br>
+そんなときは CCC を試してみてください。<br>
+やりたいことの前に <code>$cap</code> を付けるだけです。<br>
+きっと想像以上の展開になります。</em></p>
 
 現在の公開バージョン: `0.0.6-pre`.
 

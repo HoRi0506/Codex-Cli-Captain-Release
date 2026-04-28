@@ -10,7 +10,11 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
-<p align="center"><em>Codex CLI is already smart, but end-to-end work can make token cost and drift start to matter. When that happens, try CCC. It is for Codex CLI users who want a captain-led <code>$cap</code> flow for larger work: planning, investigation, implementation, and review are split across role-specific agents, progress and ownership stay visible, and task-appropriate models help reduce token cost and failure risk.</em></p>
+<p align="center"><em>Want to do end-to-end work in Codex CLI?<br>
+Worried about running the whole thing on a high-capability model?<br>
+Then give CCC a try.<br>
+Just put <code>$cap</code> in front of what you want to do.<br>
+Watch the magic happen.</em></p>
 
 Current public release: `0.0.6-pre`.
 
