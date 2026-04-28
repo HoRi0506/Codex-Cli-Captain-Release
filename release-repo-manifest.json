@@ -20,9 +20,7 @@
     "bin",
     "install.sh",
     "install.ps1",
-    "share",
-    "docs",
-    "scripts",
+    "docs/assets",
     "release-repo-manifest.json"
   ]
 }
