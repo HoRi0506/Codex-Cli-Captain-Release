@@ -91,11 +91,3 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 `gpt-5.5` is recommended for the high-value roles when Codex is signed in with ChatGPT. If it is unavailable in the current account or execution path, use `gpt-5.4` for those roles until rollout reaches that path.
 
 When a subagent result is unsatisfactory or needs-work, CCC canonicalizes it into a bounded specialist follow-up and prefers repair or reassignment through a specialist instead of local captain repair whenever that route is available.
-
-## Release Note
-
-- [`docs/release/notes/v0.0.7-pre.md`](./docs/release/notes/v0.0.7-pre.md): pre-release card body
-
-## Source Branch Flow
-
-Source development now happens on `develop`. Validated release candidates are merged to `main`, then public release assets and GitHub release cards are published from that released `main` state.
