@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INSTALLER="${REPO_ROOT}/install.ps1"
 BUILDER="${REPO_ROOT}/scripts/build-release-asset.sh"
-VERSION="0.0.6-pre"
+VERSION="0.0.7-pre"
 
 fail() {
   echo "windows install smoke failed: $*" >&2

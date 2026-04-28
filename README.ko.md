@@ -16,14 +16,14 @@
 여러분은 그저 하고자 하는 것 앞에 <code>$cap</code>만 붙이면 됩니다.<br>
 그러면 놀라운 일이 펼쳐질 거예요!</em></p>
 
-현재 공개 버전: `0.0.6-pre`.
+현재 공개 버전: `0.0.7-pre`.
 
 <table>
 <tr>
 <td>
 
 <strong>주의 - 사전 릴리즈 기본 권장 경로</strong><br><br>
-<code>0.0.6-pre</code>는 아직 사전 릴리즈입니다. macOS는 공식 지원 경로이며, macOS arm64는 로컬에서 설치와 동작을 확인했습니다. Linux/Windows asset은 초기 테스트용으로 제공되며 같은 <code>ccc setup</code> / <code>ccc check-install</code> 흐름을 사용할 것으로 기대하지만, 실제 Linux/Windows 환경에서의 검증은 아직 충분하지 않습니다.
+<code>0.0.7-pre</code>는 아직 사전 릴리즈입니다. macOS는 공식 지원 경로이며, macOS arm64는 로컬에서 설치와 동작을 확인했습니다. Linux/Windows asset은 초기 테스트용으로 제공되며 같은 <code>ccc setup</code> / <code>ccc check-install</code> 흐름을 사용할 것으로 기대하지만, 실제 Linux/Windows 환경에서의 검증은 아직 충분하지 않습니다.
 
 </td>
 </tr>

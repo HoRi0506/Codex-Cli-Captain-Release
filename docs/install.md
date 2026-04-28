@@ -1,8 +1,8 @@
-# Install & Update Codex-Cli-Captain 0.0.6-pre
+# Install & Update Codex-Cli-Captain 0.0.7-pre
 
-Use this guide for the Rust-only `0.0.6-pre` release bundle.
+Use this guide for the Rust-only `0.0.7-pre` release bundle.
 
-> Pre-release notice: `0.0.6-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
+> Pre-release notice: `0.0.7-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 ## Quick Install & Update
 
@@ -88,7 +88,7 @@ For document/checklist-backed requests where the operator asks CCC to finish or 
 
 ## Installer Variables
 
-- `CCC_VERSION`: release tag to install, defaults to `v0.0.6-pre`
+- `CCC_VERSION`: release tag to install, defaults to `v0.0.7-pre`
 - `CCC_INSTALL_ROOT`: install root, defaults to `~/.local/share/ccc`
 - `CCC_BIN_DIR`: directory for the `ccc` symlink, defaults to `~/.local/bin`
 - `CCC_DOWNLOAD_URL`: explicit asset URL override, useful for local testing
@@ -98,7 +98,7 @@ For document/checklist-backed requests where the operator asks CCC to finish or 
 Release builder asset-name validation uses the same print-only convention:
 
 ```bash
-CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.6-pre windows-x86_64
+CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.7-pre windows-x86_64
 ```
 
 For a local no-download check across installer and builder asset names plus the Windows install smoke, run `./scripts/verify-release-asset-matrix.sh`. The Windows-specific smoke can also be run directly with `./scripts/verify-windows-install-smoke.sh`.
@@ -144,7 +144,7 @@ Prefer `--text`, `--quiet`, and `--json-file` for lower-noise repeated lifecycle
 Expected top block:
 
 ```text
-CCC install check: status=ok version=0.0.6-pre entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
+CCC install check: status=ok version=0.0.7-pre entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
 Install surface: status=current restart=not-required mcp=matching_registration skill=matching_install custom_agents=matching_sync
 ```
 

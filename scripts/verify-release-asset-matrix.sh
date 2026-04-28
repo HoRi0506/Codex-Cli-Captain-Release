@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INSTALLER="${REPO_ROOT}/install.sh"
 BUILDER="${REPO_ROOT}/scripts/build-release-asset.sh"
 WINDOWS_SMOKE="${REPO_ROOT}/scripts/verify-windows-install-smoke.sh"
-VERSION="0.0.6-pre"
+VERSION="0.0.7-pre"
 SUPPORTED_PLATFORMS=(
   darwin-arm64
   darwin-x86_64
