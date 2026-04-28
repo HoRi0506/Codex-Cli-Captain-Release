@@ -10,9 +10,9 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
-現在の公開バージョン: `0.0.5-pre`.
+現在の公開バージョン: `0.0.6-pre`.
 
-> プレリリース注意: `0.0.5-pre` はまだプレリリースです。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ `ccc setup` / `ccc check-install` の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。
+> プレリリース注意: `0.0.6-pre` はまだプレリリースです。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ `ccc setup` / `ccc check-install` の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。
 
 Codex CLI はすでに賢いツールです。その賢さをもう少し構造的に使いたいと思いませんか。より大きな利用枠のプランも登場し、ただ試行錯誤するだけではなく、納得できる手順で結果を得たい場面が増えています。CCC へようこそ。リクエストの先頭に `$cap` を付けるだけで、Codex-Cli-Captain が captain-led の流れで作業を整理し、適切なエージェントを通して結果を返します。
 
@@ -71,7 +71,7 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | 読み取り専用の repo 調査 |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | コード/config の変更と修復 |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README、リリースノート、利用者向け文言 |
-| `verifier` | `arbiter` | `gpt-5.5` | `medium` | レビュー、リスク、回帰確認 |
+| `verifier` | `arbiter` | `gpt-5.5` | `high` | レビュー、リスク、回帰確認 |
 | `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `high` | 低コストの filesystem/docs/web/git/gh 読み取り作業 |
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | 低コストの git/gh 変更と狭い tool 実行 |
 

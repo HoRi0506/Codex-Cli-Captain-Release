@@ -10,9 +10,9 @@
   <img src="./docs/assets/ccc-banner.png" alt="CCC Codex-Cli-Captain banner" width="100%">
 </p>
 
-Current public release: `0.0.5-pre`.
+Current public release: `0.0.6-pre`.
 
-> Pre-release notice: `0.0.5-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
+> Pre-release notice: `0.0.6-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 Codex CLI is already smart. Want to use that intelligence with a little more structure? New higher-budget plans are here, and your work deserves a captain that spends that budget on a reasonable path, not random wandering. Welcome to CCC: add `$cap` to your request, and Codex-Cli-Captain will guide the work through a captain-led process before returning the result.
 
@@ -71,7 +71,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README, release notes, and operator text |
-| `verifier` | `arbiter` | `gpt-5.5` | `medium` | Review, risk, regression, and acceptance checks |
+| `verifier` | `arbiter` | `gpt-5.5` | `high` | Review, risk, regression, and acceptance checks |
 | `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `high` | Low-cost filesystem/docs/web/git/gh read work |
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | Low-cost bounded git/gh mutation and narrow tool work |
 
@@ -81,4 +81,8 @@ When a subagent result is unsatisfactory or needs-work, CCC canonicalizes it int
 
 ## Release Note
 
-- [`docs/release/notes/v0.0.5.md`](./docs/release/notes/v0.0.5.md): pre-release card body
+- [`docs/release/notes/v0.0.6.md`](./docs/release/notes/v0.0.6.md): pre-release card body
+
+## Source Branch Flow
+
+Source development now happens on `develop`. Validated release candidates are merged to `main`, then public release assets and GitHub release cards are published from that released `main` state.

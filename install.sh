@@ -2,12 +2,12 @@
 set -euo pipefail
 
 REPO="HoRi0506/Codex-Cli-Captain-Release"
-VERSION="${CCC_VERSION:-v0.0.5-pre}"
+VERSION="${CCC_VERSION:-v0.0.6-pre}"
 INSTALL_ROOT="${CCC_INSTALL_ROOT:-$HOME/.local/share/ccc}"
 BIN_DIR="${CCC_BIN_DIR:-$HOME/.local/bin}"
 PLATFORM_OVERRIDE="${CCC_PLATFORM:-}"
 PRINT_ASSET="${CCC_PRINT_ASSET:-}"
-SUPPORTED_PLATFORMS="darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64 windows-arm64"
+SUPPORTED_PLATFORMS="darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -18,7 +18,7 @@ need_cmd() {
 
 is_supported_platform() {
   case "$1" in
-    darwin-arm64|darwin-x86_64|linux-arm64|linux-x86_64|windows-x86_64|windows-arm64) return 0 ;;
+    darwin-arm64|darwin-x86_64|linux-arm64|linux-x86_64|windows-x86_64) return 0 ;;
     *) return 1 ;;
   esac
 }

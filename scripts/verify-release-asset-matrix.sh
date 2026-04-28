@@ -6,14 +6,13 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 INSTALLER="${REPO_ROOT}/install.sh"
 BUILDER="${REPO_ROOT}/scripts/build-release-asset.sh"
 WINDOWS_SMOKE="${REPO_ROOT}/scripts/verify-windows-install-smoke.sh"
-VERSION="0.0.5-pre"
+VERSION="0.0.6-pre"
 SUPPORTED_PLATFORMS=(
   darwin-arm64
   darwin-x86_64
   linux-arm64
   linux-x86_64
   windows-x86_64
-  windows-arm64
 )
 
 fail() {
@@ -66,11 +65,11 @@ for platform in "${SUPPORTED_PLATFORMS[@]}"; do
 done
 
 expect_failure_contains \
-  "Supported platforms: darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64 windows-arm64" \
+  "Supported platforms: darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64" \
   env CCC_PRINT_ASSET=1 CCC_VERSION="v${VERSION}" CCC_PLATFORM="unsupported-platform" "$INSTALLER"
 
 expect_failure_contains \
-  "Supported platforms: darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64 windows-arm64" \
+  "Supported platforms: darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64" \
   env CCC_PRINT_ASSET=1 "$BUILDER" "$VERSION" "unsupported-platform"
 
 expect_failure_contains \

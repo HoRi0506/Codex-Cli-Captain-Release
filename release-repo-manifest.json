@@ -1,15 +1,14 @@
 {
-  "generated_at": "2026-04-25T07:55:58Z",
+  "generated_at": "2026-04-28T06:23:25Z",
   "package_name": "ccc",
-  "package_version": "0.0.5-pre",
+  "package_version": "0.0.6-pre",
   "platform": "darwin-arm64",
   "supported_platforms": [
     "darwin-arm64",
     "darwin-x86_64",
     "linux-arm64",
     "linux-x86_64",
-    "windows-x86_64",
-    "windows-arm64"
+    "windows-x86_64"
   ],
   "public_entry_skill_name": "cap",
   "public_entry_label": "$cap",

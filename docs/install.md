@@ -1,8 +1,8 @@
-# Install & Update Codex-Cli-Captain 0.0.5-pre
+# Install & Update Codex-Cli-Captain 0.0.6-pre
 
-Use this guide for the Rust-only `0.0.5-pre` release bundle.
+Use this guide for the Rust-only `0.0.6-pre` release bundle.
 
-> Pre-release notice: `0.0.5-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
+> Pre-release notice: `0.0.6-pre` is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same `ccc setup` / `ccc check-install` flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 ## Quick Install & Update
 
@@ -35,9 +35,8 @@ Supported release asset platforms are:
 - `linux-arm64`
 - `linux-x86_64`
 - `windows-x86_64`
-- `windows-arm64`
 
-The Bash installer performs native installs on macOS and Linux. The PowerShell installer performs native installs on Windows and supports `windows-x86_64` and `windows-arm64`.
+The Bash installer performs native installs on macOS and Linux. The PowerShell installer performs native installs on Windows and supports `windows-x86_64` for this pre-release.
 
 Platform support status:
 
@@ -89,7 +88,7 @@ For document/checklist-backed requests where the operator asks CCC to finish or 
 
 ## Installer Variables
 
-- `CCC_VERSION`: release tag to install, defaults to `v0.0.5-pre`
+- `CCC_VERSION`: release tag to install, defaults to `v0.0.6-pre`
 - `CCC_INSTALL_ROOT`: install root, defaults to `~/.local/share/ccc`
 - `CCC_BIN_DIR`: directory for the `ccc` symlink, defaults to `~/.local/bin`
 - `CCC_DOWNLOAD_URL`: explicit asset URL override, useful for local testing
@@ -99,8 +98,7 @@ For document/checklist-backed requests where the operator asks CCC to finish or 
 Release builder asset-name validation uses the same print-only convention:
 
 ```bash
-CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.5-pre windows-x86_64
-CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.5-pre windows-arm64
+CCC_PRINT_ASSET=1 ./scripts/build-release-asset.sh 0.0.6-pre windows-x86_64
 ```
 
 For a local no-download check across installer and builder asset names plus the Windows install smoke, run `./scripts/verify-release-asset-matrix.sh`. The Windows-specific smoke can also be run directly with `./scripts/verify-windows-install-smoke.sh`.
@@ -114,7 +112,7 @@ For a local no-download check across installer and builder asset names plus the 
 - installs or refreshes the packaged `$cap` skill
 - syncs CCC-managed Codex custom agents under `CODEX_HOME/agents`
 
-The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values, including the `way`/tactician default from `gpt-5.5` `medium` to `gpt-5.5` `high`.
+The generated shared TOML config includes default per-role `model`, reasoning tier (`variant`), `fast_mode`, companion-agent settings, generated-defaults version metadata, and git/gh-oriented companion routing. Fresh installs set every `gpt-5.4-mini` mini role (`explorer`, `documenter`, `companion_reader`, and `companion_operator`) to reasoning `variant = "high"` and `fast_mode = true`, while `ccc setup` preserves existing user-customized values, backfills missing generated defaults, and upgrades stale generated defaults when they match older CCC-generated values, including the `way`/tactician and `verifier`/arbiter defaults from `gpt-5.5` `medium` to `gpt-5.5` `high`.
 
 Captain keeps its configured reasoning quality; token/speed tuning focuses on fast mini/specialist service tiers, delegated worker scope/acceptance/task excerpts capped at 420/280/900 characters, and compact packaged `$cap` plus custom-agent instructions.
 
@@ -129,7 +127,7 @@ For regular CCC use, ChatGPT Pro $100 is the recommended starting plan because `
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | Read-only repo evidence |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | Code/config mutation and repair |
 | `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README, release notes, and operator text |
-| `verifier` | `arbiter` | `gpt-5.5` | `medium` | Review, risk, regression, and acceptance checks |
+| `verifier` | `arbiter` | `gpt-5.5` | `high` | Review, risk, regression, and acceptance checks |
 | `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `high` | Low-cost filesystem/docs/web/git/gh read work |
 | `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | Low-cost bounded git/gh mutation and narrow tool work |
 
@@ -146,7 +144,7 @@ Prefer `--text`, `--quiet`, and `--json-file` for lower-noise repeated lifecycle
 Expected top block:
 
 ```text
-CCC install check: status=ok version=0.0.5-pre entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
+CCC install check: status=ok version=0.0.6-pre entry=$cap registration=matching_registration config=canonical-current config_action=preserved config_restart=not-required skill=matching_install
 Install surface: status=current restart=not-required mcp=matching_registration skill=matching_install custom_agents=matching_sync
 ```
 

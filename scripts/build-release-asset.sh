@@ -6,7 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 MANIFEST_PATH="${REPO_ROOT}/release-repo-manifest.json"
 SOURCE_SKILL_PATH="${CCC_SKILL_SOURCE_PATH:-${REPO_ROOT}/../Codex-Cli-Captain/skills/cap/SKILL.md}"
 PRINT_ASSET="${CCC_PRINT_ASSET:-}"
-SUPPORTED_PLATFORMS="darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64 windows-arm64"
+SUPPORTED_PLATFORMS="darwin-arm64 darwin-x86_64 linux-arm64 linux-x86_64 windows-x86_64"
 
 need_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -27,7 +27,7 @@ manifest_value() {
 
 is_supported_platform() {
   case "$1" in
-    darwin-arm64|darwin-x86_64|linux-arm64|linux-x86_64|windows-x86_64|windows-arm64) return 0 ;;
+    darwin-arm64|darwin-x86_64|linux-arm64|linux-x86_64|windows-x86_64) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -85,6 +85,12 @@ for entry in README.md README.ko.md README.ja.md install.sh install.ps1 release-
     cp -R "${REPO_ROOT}/${entry}" "${STAGE_DIR}/${entry}"
   fi
 done
+
+if [ -f "${STAGE_DIR}/release-repo-manifest.json" ]; then
+  sed "s/\"platform\": \"[^\"]*\"/\"platform\": \"${PLATFORM}\"/" \
+    "${STAGE_DIR}/release-repo-manifest.json" > "${STAGE_DIR}/release-repo-manifest.json.tmp"
+  mv "${STAGE_DIR}/release-repo-manifest.json.tmp" "${STAGE_DIR}/release-repo-manifest.json"
+fi
 
 mkdir -p "${STAGE_DIR}/share/skills/cap"
 cp "${SOURCE_SKILL_PATH}" "${STAGE_DIR}/share/skills/cap/SKILL.md"

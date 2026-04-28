@@ -15,12 +15,11 @@ $SupportedPlatforms = @(
     "darwin-x86_64",
     "linux-arm64",
     "linux-x86_64",
-    "windows-x86_64",
-    "windows-arm64"
+    "windows-x86_64"
 )
 
 if ([string]::IsNullOrWhiteSpace($Version)) {
-    $Version = "v0.0.5-pre"
+    $Version = "v0.0.6-pre"
 }
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
     $InstallRoot = Join-Path $env:LOCALAPPDATA "ccc"
@@ -44,7 +43,7 @@ function Resolve-CccPlatform {
     }
 
     switch ($env:PROCESSOR_ARCHITECTURE) {
-        "ARM64" { return "windows-arm64" }
+        "ARM64" { throw "Windows on ARM is not published for this pre-release yet." }
         "AMD64" { return "windows-x86_64" }
         default { throw "Unsupported Windows architecture: $env:PROCESSOR_ARCHITECTURE" }
     }
