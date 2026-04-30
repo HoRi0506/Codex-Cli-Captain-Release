@@ -16,14 +16,14 @@ Then give CCC a try.<br>
 Just put <code>$cap</code> in front of what you want to do.<br>
 Watch the magic happen.</em></p>
 
-Current public release: `0.0.8-pre`.
+Current public release: `0.0.7-pre`.
 
 <table>
 <tr>
 <td>
 
 <strong>CAUTION - PRE-RELEASE DEFAULT PATH</strong><br><br>
-<code>0.0.8-pre</code> is still a pre-release. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same <code>ccc setup</code> / <code>ccc check-install</code> flow, but they have not yet been fully verified on real Linux or Windows environments.
+<code>0.0.7-pre</code> is the current public pre-release default while <code>0.0.8-pre</code> is repaired. macOS is the officially supported path, with macOS arm64 locally tested. Linux and Windows assets are provided for early testing and are expected to use the same <code>ccc setup</code> / <code>ccc check-install</code> flow, but they have not yet been fully verified on real Linux or Windows environments.
 
 </td>
 </tr>
