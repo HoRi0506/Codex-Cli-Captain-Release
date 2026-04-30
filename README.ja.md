@@ -16,14 +16,14 @@
 やりたいことの前に <code>$cap</code> を付けるだけです。<br>
 きっと想像以上の展開になります。</em></p>
 
-現在の公開バージョン: `0.0.7-pre`.
+現在の公開バージョン: `0.0.8-pre`.
 
 <table>
 <tr>
 <td>
 
 <strong>注意 - プレリリースの推奨デフォルト経路</strong><br><br>
-<code>0.0.7-pre</code> はまだプレリリースです。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ <code>ccc setup</code> / <code>ccc check-install</code> の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。
+<code>0.0.8-pre</code> はまだプレリリースです。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ <code>ccc setup</code> / <code>ccc check-install</code> の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。
 
 </td>
 </tr>
