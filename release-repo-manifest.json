@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-05-01T10:21:50Z",
+  "generated_at": "2026-05-01T17:22:46Z",
   "package_name": "ccc",
-  "package_version": "0.0.9-pre",
+  "package_version": "0.0.10-pre",
   "platform": "darwin-arm64",
   "supported_platforms": [
     "darwin-arm64",
