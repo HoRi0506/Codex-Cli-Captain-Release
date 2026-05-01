@@ -16,14 +16,14 @@
 やりたいことの前に <code>$cap</code> を付けるだけです。<br>
 きっと想像以上の展開になります。</em></p>
 
-現在の公開バージョン: `0.0.8-pre`.
+現在の公開バージョン: `0.0.9-pre`.
 
 <table>
 <tr>
 <td>
 
 <strong>注意 - プレリリースの推奨デフォルト経路</strong><br><br>
-<code>0.0.8-pre</code> が現在の公開プレリリース default です。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ <code>ccc setup</code> / <code>ccc check-install</code> の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。必要であれば <code>CCC_VERSION=v0.0.7-pre</code> で以前のプレリリースをインストールできます。
+<code>0.0.9-pre</code> が現在の公開プレリリース default です。macOS は正式サポート対象で、macOS arm64 はローカルでインストールと動作を確認済みです。Linux/Windows asset は初期テスト用に提供しており、同じ <code>ccc setup</code> / <code>ccc check-install</code> の流れで動作する想定ですが、実際の Linux/Windows 環境での検証はまだ十分ではありません。必要であれば <code>CCC_VERSION=v0.0.8-pre</code> で以前のプレリリースをインストールできます。
 
 </td>
 </tr>
@@ -59,7 +59,7 @@ ccc check-install
 
 ## 設定変更の反映
 
-`~/.config/ccc/ccc-config.toml` を編集した後、Codex CLI に次を貼り付けてください。新しく生成されるインストール用 `~/.config/ccc/ccc-config.toml` はすべての `gpt-5.4-mini` mini role に reasoning `variant = "high"` と `fast_mode = true` を使い、`ccc setup` は既存のユーザー変更済み値を保持したまま不足している生成デフォルトを補完し、古い CCC 生成デフォルトをアップグレードします。
+`~/.config/ccc/ccc-config.toml` を編集した後、Codex CLI に次を貼り付けてください。新しく生成されるインストール用 `~/.config/ccc/ccc-config.toml` は `explorer` に reasoning `variant = "high"` を、`documenter`、`companion_reader`、`companion_operator` に `variant = "medium"` を使い、すべての role は `fast_mode = true` を維持します。`ccc setup` は既存のユーザー変更済み値を保持したまま不足している生成デフォルトを補完し、古い CCC 生成デフォルトをアップグレードします。
 
 生成デフォルトは captain の reasoning をデフォルトで medium に維持したまま、handoff のコストを下げます。設定済みの mini/specialist role はより速い service path を使い、delegated worker に渡す作業説明は必要な長さに短くし、`$cap` と custom-agent instructions も compact に保ちます。
 
@@ -83,10 +83,10 @@ CCC を日常的に使う場合は、ChatGPT Pro $100 plan を開始点として
 | `way` | `tactician` | `gpt-5.5` | `high` | 計画と次の作業選択 |
 | `explorer` | `scout` | `gpt-5.4-mini` | `high` | 読み取り専用の repo 調査 |
 | `code specialist` | `raider` | `gpt-5.5` | `high` | コード/config の変更と修復 |
-| `documenter` | `scribe` | `gpt-5.4-mini` | `high` | README、リリースノート、利用者向け文言 |
+| `documenter` | `scribe` | `gpt-5.4-mini` | `medium` | README、リリースノート、利用者向け文言 |
 | `verifier` | `arbiter` | `gpt-5.5` | `high` | レビュー、リスク、回帰確認 |
-| `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `high` | 低コストの filesystem/docs/web/git/gh 読み取り作業 |
-| `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `high` | 低コストの git/gh 変更と狭い tool 実行 |
+| `companion_reader` | `companion_reader` | `gpt-5.4-mini` | `medium` | 低コストの filesystem/docs/web/git/gh 読み取り作業 |
+| `companion_operator` | `companion_operator` | `gpt-5.4-mini` | `medium` | 低コストの git/gh 変更と狭い tool 実行 |
 
 `gpt-5.5` は ChatGPT 認証の Codex で高価値ロールに推奨されるモデルです。現在のアカウントや実行経路でまだ利用できない場合、そのロールは rollout が届くまで `gpt-5.4` を使います。
 
